@@ -457,5 +457,5 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 
 - **Commit:** `31d36f9` (`feat(enclave): add verifiable Nitro attestation bootstrap`).
-- **Pushed to Remote:** Yes, on `felix/nitro-attestation`.
+- **Pushed to Remote:** Yes, on `tee/nitro-attestation`.
 - **PR:** Not created; the user requested a creation link.
