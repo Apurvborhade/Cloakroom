@@ -1,0 +1,11 @@
+{
+  "name": "cloakroom",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TEE private intent network",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.13.1"
+}
