@@ -7,7 +7,7 @@ For the Anon-RPC prize, the video must also show chain reads going through Anon-
 1. Show the attestation page and state the trust model in one sentence.
 2. Alice and Bob deposit from different wallets. The explorer shows two plain transfers to two EOAs.
 3. The app shows each user's confidential balance.
-4. Alice signs a conditional swap. The CRE simulation posts the price that triggers it.
+4. Alice signs a conditional swap. The enclave's next price check triggers it.
 5. The explorer shows the swap sent from an EOA that neither user funded.
 6. Alice withdraws to a fresh wallet and receives a normal transfer.
 7. Run the replay, wrong-destination and double-spend attacks. All are rejected.
