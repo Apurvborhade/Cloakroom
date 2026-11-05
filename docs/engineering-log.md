@@ -270,7 +270,7 @@ This document is the canonical, chronological record of all backend and accounti
 
 - **Date:** 2026-11-06
 - **Task Number & Title:** Task 3 — Implement FIFO SerialQueue
-- **Status:** Implemented & Tested (Ready for review on branch `feat/serial-queue`)
+- **Status:** Complete & Committed
 - **Objective:** Implement the FIFO serialized execution queue in `services/enclave/src/queue.ts` satisfying the `@cloakroom/shared` `SerialQueue` interface, ensuring strict concurrency of 1, FIFO execution ordering, and robust error isolation.
 
 ### Files Created
@@ -311,8 +311,8 @@ This document is the canonical, chronological record of all backend and accounti
 ### Exact Verification Commands & Results
 - `pnpm --filter @cloakroom/enclave typecheck`: Exited with code 0 (0 errors).
 - `pnpm --filter @cloakroom/enclave build`: Exited with code 0.
-- `pnpm typecheck`: Exited with code 0 (both packages pass).
-- `pnpm test`: Exited with code 0 (51 passed in 4 test files across monorepo).
+- `pnpm typecheck`: Exited with code 0 (all workspace packages pass).
+- `pnpm test`: Exited with code 0 (106 passed in 6 test files across monorepo).
 - `pnpm build`: Exited with code 0.
 - `git diff --check`: Clean (0 whitespace errors or conflicts).
 
@@ -324,4 +324,6 @@ This document is the canonical, chronological record of all backend and accounti
 - `FifoSerialQueue` exported from `@cloakroom/enclave` for use in upcoming ledger and watcher integrations.
 
 ### Commit Reference
-- Pending review (branch `feat/serial-queue`).
+- **Commit:** `977821f984a7fbfa234d4bd019e1c36460889df1`
+- **Commit Message:** `feat(enclave): implement FIFO serial queue with error isolation`
+- **Pushed to Remote:** `origin/main`
