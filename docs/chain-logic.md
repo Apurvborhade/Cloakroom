@@ -47,7 +47,7 @@ On each price report the enclave evaluates pending intents. When a condition is 
 
 1. Create an `opId`, call `inventory.hold`, and register the expected destination with the signing guard.
 2. Get a quote for exactly `amountIn` from the Uniswap Trading API, with the chosen EOA as recipient. Set `minOut = quote.out * (1 - maxSlippageBps / 10000)`.
-3. Compare the quote's implied price with the oracle price. If they differ by more than `PRICE_TOLERANCE_BPS`, stop and leave the intent pending. On Sepolia the oracle price comes from the pool, not the market: see [decisions.md](decisions.md) section 5.
+3. Compare the quote's implied price with the oracle price. If they differ by more than `PRICE_TOLERANCE_BPS`, stop and leave the intent pending. On Sepolia the oracle price comes from the pool, not the market: see [the reference price decision](decisions/2026-11-06-0229-sepolia-reference-price.md).
 4. Treat the API's transaction as untrusted data. Require `to === UNIVERSAL_ROUTER_ADDRESS`, run it through `eth_call`, and require the simulated output to be at least `minOut`.
 5. Take the next nonce from a local per-EOA counter, sign, compute the hash from the serialized transaction, journal `EXEC_BROADCAST`, then send the raw transaction.
 6. After `CONFIRMATIONS` blocks, sum the ERC-20 Transfer logs to the EOA in the receipt. That sum is `amountOut`.

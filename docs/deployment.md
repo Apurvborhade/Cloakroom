@@ -6,7 +6,7 @@ The enclave ships as one Docker image built reproducibly, so a judge can rebuild
 
 ## Docker image
 
-Starting point from the spec. See [decisions.md](decisions.md) gap 3.8 before relying on the `node_modules` copy.
+Starting point from the spec. See [Dockerfile and pnpm](decisions/2026-11-06-0151-dockerfile-pnpm.md) before relying on the `node_modules` copy.
 
 ```dockerfile
 FROM node:20-bookworm-slim@sha256:<pin-the-digest> AS build
@@ -40,7 +40,7 @@ Mirrored in [`.env.example`](../.env.example).
 | `UNISWAP_API_KEY` | from the developer platform | Quotes and swap calldata |
 | `PRICE_TOLERANCE_BPS` | `100` | Max gap between a report and the enclave's own quote |
 | `MAX_SLIPPAGE_BPS_CAP` | `100` | Upper limit on a user's slippage setting |
-| `FEE_BPS` | `10` | Fee: see [decisions.md](decisions.md) gap 3.1 |
+| `FEE_BPS` | `10` | Fee: see [fee model](decisions/2026-11-06-0151-fee-model.md) |
 | `DEPOSIT_SESSION_TTL_SEC` | `900` | Lifetime of a deposit address |
 | `ORACLE_HMAC_SECRET` | random 32 bytes | Authenticates price reports |
 | `ADMIN_ADDRESS`, `SEEDING_ENABLED` | wallet, `true` then `false` | Operator seeding endpoint, turned off after setup |

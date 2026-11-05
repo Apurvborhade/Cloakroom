@@ -34,13 +34,13 @@ Read: [frontend.md](../frontend.md), [cre-workflow.md](../cre-workflow.md), [pri
 - [ ] Balance panel on every page
 - [ ] `/withdraw` with status and the payout transaction link
 - [ ] Session key flow, optional but it saves wallet popups
-- [ ] [Gap 3.2](../decisions.md) with Shreyas and [gap 3.6](../decisions.md) with Felix
+- [ ] [Missing EIP-712 types](../decisions/2026-11-06-0151-missing-eip712-types.md) with Shreyas and [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Felix
 
 ### Phase 2 (hours 12 to 22)
 
 - [ ] `/swap`: form, readable summary before signing, intent list, cancel
 - [ ] CRE workflow: read the Sepolia pool price, parse to 1e18 fixed point, post with `X-Report-Auth`, and log the external API price ([cre-workflow.md](../cre-workflow.md))
-- [ ] Agree the report format and HMAC with Apurva, and [gap 3.5](../decisions.md) with Shreyas
+- [ ] Agree the report format and HMAC with Apurva, and [oracle body format](../decisions/2026-11-06-0151-oracle-body-format.md) with Shreyas
 
 ### Phase 3 (hours 22 to 29)
 
