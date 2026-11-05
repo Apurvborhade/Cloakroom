@@ -32,6 +32,7 @@ Anything left out, such as the wallet's own signing RPC, goes in the README leak
 ## UX rules
 
 - Show amounts in human units but sign base units. Display the exact trigger price the wallet will sign.
+- On Sepolia, show the current pool price beside the trigger price field, because it is far from the market price.
 - Never display custody EOA addresses other than the one deposit address for the open session.
 - Show "TEE-simulated" in a banner whenever the attestation badge is not real.
 - No analytics or third-party scripts. The EF CROPS prize rejects trackers in the client.

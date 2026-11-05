@@ -16,6 +16,7 @@ For the Anon-RPC prize, the video must also show chain reads going through Anon-
 ## Say out loud
 
 - The inventory was operator-seeded before the demo.
+- Testnet pools do not track the market, so the trigger price follows the Sepolia pool price, not the real ETH price.
 - The set of 4 to 6 EOAs is small, and we claim no anonymity.
 - Out of scope: key handover, multi-node or threshold custody, slashing, general DeFi execution, ZK proofs.
 - If running on a fork, call it a fork-based demonstration. If outside a TEE, call it TEE-simulated and make no confidentiality claim.
