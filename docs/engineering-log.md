@@ -142,3 +142,61 @@ This document is the canonical, chronological record of all backend and accounti
 - **Commit:** `ea8b807b539c381c81ef80a52df2f0269f8c679e`
 - **Commit Message:** `feat(shared): implement protocol types, schemas, and team contracts`
 - **Pushed to Remote:** `origin/main` (clean fast-forward push)
+
+---
+
+## Task A1: Custody Inventory
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A1 (Apurva's workstream) — Custody Inventory and EOA Selection
+- **Status:** Committed on branch `feat/inventory`. Not pushed by this entry.
+- **Objective:** Track what each custody EOA holds on-chain, and choose which EOA runs an operation, so an owner's swap or payout never comes from an address linked to them.
+
+### Files Created
+- `services/enclave/src/inventory.ts`
+- `services/enclave/test/inventory.test.ts`
+
+### Files Modified
+- `package.json` (`test`, `test:watch` and `typecheck` now build `@cloakroom/shared` first)
+- `docs/enclave.md`
+- `docs/decisions/2026-11-06-0258-deposit-journal-events.md`
+- `docs/roles/apurva-onchain.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Implementation Details
+- `refresh` reads every balance at one block, and ignores a result older than the one already applied.
+- `pick` chooses the least recently used inventory EOA that can cover the amount, skipping excluded and busy EOAs.
+- `hold` and `free` allow one operation per EOA at a time.
+- `getPhysicalBalances` implements `InventoryReader`. It counts deposit EOAs in full and leaves out inventory gas reserves.
+- `replay` rebuilds EOA roles and owner links from `JournalEvent`.
+
+### Architectural Decisions
+- `pick` also requires the gas reserve for ERC-20 sends, which the spec's sketch does not, because the EOA still pays gas.
+- Owner links live in `Inventory`, through `linkOwner` and `eoasLinkedTo`, because the spec's `exclude` set needs a source.
+- After an operation confirms, callers must run `refresh` and then `free`, so spent funds never look available.
+
+### Tests Added
+- `services/enclave/test/inventory.test.ts`: 32 tests against a local Anvil chain, including one with the real `DepositWatcher`.
+- Eight deliberate bugs were introduced to check the tests, and each one made a test fail.
+
+### Exact Verification Commands & Results
+- `pnpm test`: Exited with code 0 (75 passed in 4 test files).
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Not run on Sepolia, and not yet connected to a real `KeyManager`.
+- `watcher.ts` cannot use the real `Journal` until the deposit event conflict is resolved: see `docs/decisions/2026-11-06-0258-deposit-journal-events.md`.
+- Holds are not rebuilt on boot. `Executor.recover` will need to do this for unfinished operations.
+- A relabelled deposit EOA has its gas reserve taken out of reconcile totals, so operator-seeded funds must cover that gap.
+- `anvil_setBalance` also rewrites the latest block's stored state, so tests of historical reads must use real transactions.
+- The earlier deposit watcher work was merged before this log's conventions were adopted, and has no entry here.
+
+### Integration Handoffs
+- **Shreyas:** `Inventory` implements `InventoryReader` for `reconcile()`. The deposit journal event conflict needs resolving with Apurva.
+- **Felix:** `Inventory` needs `list()` from `KeyManager`, returning `CustodyEOA[]`.
+
+### Commit Reference
+- **Commits:** `2a96f3deffd9f5e7c1e3975866aeacc2e284d6dd` (`feat(enclave): add custody inventory and EOA selection`), `355717875a44e39e4e6859d45063805acff743a0` (`test(enclave): cover inventory against a local Anvil chain`)
+- **Pushed to Remote:** No
