@@ -232,6 +232,26 @@ describe('DepositWatcher', () => {
     expect(order).toEqual(['DEPOSIT_SESSION_OPENED', 'DEPOSIT_CREDITED', 'ledger']);
   });
 
+  it('journals everything replay needs in each event', async () => {
+    const { watcher, journal } = setup();
+    await watcher.openSession({ id: 's1', owner: OWNER, eoa, expiry: (await now()) + 60 });
+    await send(eoa, parseEther('1'));
+    await anvil.mine({ blocks: 2 });
+    await watcher.tick();
+    await passTime(120);
+    await anvil.mine({ blocks: 2 });
+    await watcher.tick();
+
+    expect(journal.map((event) => event.t)).toEqual([
+      'DEPOSIT_SESSION_OPENED',
+      'DEPOSIT_CREDITED',
+      'DEPOSIT_SESSION_CLOSED',
+    ]);
+    expect(journal[0]).toMatchObject({ id: 's1', owner: OWNER, eoa, baseline: 0n });
+    expect(journal[1]).toMatchObject({ id: 's1', owner: OWNER, amount: parseEther('1') });
+    expect(journal[2]).toEqual({ t: 'DEPOSIT_SESSION_CLOSED', id: 's1', eoa });
+  });
+
   it('does not credit when the journal write fails, then retries', async () => {
     const { journalPort, credits, ledger, queue } = setup();
     let failing = false;
