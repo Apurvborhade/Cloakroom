@@ -15,7 +15,7 @@ Chain tests run against an Anvil fork. Set `CHAIN_ID` to whatever the fork repor
 | `recovery.test.ts` | Apurva | Kill after `EXEC_BROADCAST`, before settlement | Reboot settles once, never executes twice |
 | `watcher.test.ts` | Apurva | Deposit confirmations, repeat checks, closed sessions | Credited once, only after N blocks |
 | `executor.fork.test.ts` | Apurva | Swap, `minOut`, malicious calldata, revert | Swap runs from a non-depositor EOA; `to` other than the router is refused; revert releases funds |
-| `oracle.test.ts` | Apurva | Bad HMAC, stale and repeated `ts`, price outside tolerance | Report rejected or intent held |
+| `price-poller.test.ts` | Apurva | Failed polls, condition met or not, condition no longer met on the swap's own quote | A failed poll triggers nothing; intent stays pending when the condition no longer holds |
 | `e2e.fork.test.ts` | Apurva, with everyone | The full demo fixture with two users | Reconcile is `ok` at the end |
 
 The spec lists no suite for keys or transport. Felix should add these, because the security checklist depends on them:
@@ -39,7 +39,7 @@ The spec lists no suite for keys or transport. Felix should add these, because t
 | Kill the enclave after broadcast, before settlement | On restart the state reconciles and nothing executes twice |
 | Deposit with fewer than N confirmations | Not credited yet |
 | Deposit after session expiry | Not credited |
-| Price report outside the enclave's own quote tolerance | Intent does not execute |
+| Condition no longer met on the swap's own quote | Intent stays pending and does not execute |
 
 The plan also listed "deposit from the wrong sender: not credited". The spec's balance-based crediting replaces that behaviour: see [the spec wins over the plan](decisions/2026-11-06-0151-spec-over-plan.md).
 
@@ -49,7 +49,6 @@ The plan also listed "deposit from the wrong sender: not credited". The spec's b
 - [ ] Signing guard rejects unregistered operations, and each `opId` signs once (Felix)
 - [ ] Router address pinned, and all API-provided calldata simulated before signing (Apurva)
 - [ ] zod validation on every decrypted body, plus a body size limit (Shreyas)
-- [ ] HMAC compared in constant time (Apurva)
 - [ ] Logs contain no addresses, amounts or intent fields (Shreyas, everyone)
 - [ ] CORS locked to the frontend, no third-party scripts in the client (Shreyas, Pradnyesh)
 - [ ] Demo caps on amounts and a pause switch (Shreyas)

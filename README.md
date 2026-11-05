@@ -27,7 +27,6 @@ Start at [docs/README.md](docs/README.md). Open conflicts and decisions are in [
 | `apps/web/` | Next.js frontend | Pradnyesh |
 | `services/enclave/` | The TEE service | Felix, Shreyas, Apurva (per module) |
 | `packages/shared/` | Types, EIP-712 definitions, constants | Shreyas |
-| `workflows/price-report/` | Chainlink CRE workflow | Pradnyesh |
 | `contracts/` | Optional EnclaveRegistry (Foundry) | Apurva |
 | `scripts/` | Inventory seeding, demo fixture | Apurva |
 | `test/` | Vitest suites and fork tests | Everyone |
@@ -58,7 +57,7 @@ Users trust the operator and the TEE hardware. There is one node, with no key ha
 - Gas top-ups from one funder publicly link custody EOAs.
 - Custody EOA addresses become public once funded.
 - The enclave's own RPC reads are visible to its RPC provider. Anon-RPC covers the browser only.
-- The CRE workflow sees prices, never intent contents.
+- Uniswap's Trading API sees each swap request and price poll, and our API key identifies us. It never sees who the user is.
 - The anonymity set is small, with 4 to 6 EOAs and a few demo users.
 
 ## Licence

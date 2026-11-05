@@ -327,3 +327,45 @@ This document is the canonical, chronological record of all backend and accounti
 - **Commit:** `977821f984a7fbfa234d4bd019e1c36460889df1`
 - **Commit Message:** `feat(enclave): implement FIFO serial queue with error isolation`
 - **Pushed to Remote:** `origin/main`
+
+---
+
+## Task A3: Drop Chainlink CRE
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A3 (Apurva's workstream) — Drop Chainlink CRE
+- **Status:** Committed on branch `docs/drop-chainlink`. Not pushed by this entry.
+- **Objective:** Record the team's decision not to build the CRE workflow, and make the enclave's own price polling the trigger in the docs and task lists. No application code changed.
+
+### Files Created
+- `docs/decisions/2026-11-06-0358-drop-chainlink-cre.md`
+
+### Files Removed
+- `docs/cre-workflow.md`
+- `workflows/price-report/README.md`
+
+### Files Modified
+- `.env.example` (removed `ORACLE_HMAC_SECRET` and `PRICE_TOLERANCE_BPS`, added `PRICE_POLL_INTERVAL_SEC` and `PRICE_REFERENCE_AMOUNT_WEI`)
+- `pnpm-workspace.yaml` (removed `workflows/*`)
+- Project docs, decision index and role documents
+
+### Dependencies Added or Changed
+- None.
+
+### Exact Verification Commands & Results
+- `pnpm install --frozen-lockfile`: Exited with code 0.
+- `pnpm test`: Exited with code 0 (106 passed in 6 test files).
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- `price-poller.ts` is documented but not built.
+- There is no independent price source: see the decision file.
+- Trading API rate limits for polling are not yet checked.
+
+### Integration Handoffs
+- **Shreyas:** remove `OracleVerifier`, `PriceReportWireSchema`, `wireToPriceReport`, `ORACLE_MAX_STALENESS_SEC`, `STALE_PRICE` and `PRICE_MISMATCH` from `packages/shared` if unused. Do not build `POST /oracle/price`. Keep `PriceReport`.
+- **Pradnyesh:** CRE tasks are removed. Anon-RPC is the prize focus.
+
+### Commit Reference
+- **Commit:** `79abbb3ed7297baec54871db6070ca51465b8fda` (`docs(decisions): drop Chainlink CRE`)
+- **Pushed to Remote:** No

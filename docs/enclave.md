@@ -19,7 +19,7 @@ services/enclave/
     watcher.ts    # deposit and receipt tracking              Apurva
     inventory.ts  # per-EOA balances, EOA selection           Apurva
     executor.ts   # swap, payout, tx lifecycle                Apurva
-    oracle.ts     # price reports and cross-check             Apurva
+    price-poller.ts # price checks from Uniswap quotes        Apurva
   Dockerfile                                                  Felix
 ```
 
@@ -150,14 +150,15 @@ export interface Executor {
 
 The signer is a `TransactionSigner`: `KeyManager.sign` plus `registerOp(opId, { eoa, to, value, dataHash })`, which registers what the signing guard must see.
 
-## Oracle (Apurva)
+## Price poller (Apurva)
+
+Gets a Uniswap Trading API quote every `PRICE_POLL_INTERVAL_SEC`, and passes it to `IntentStore.due` as a `PriceReport`. A failed poll triggers nothing.
 
 ```ts
-// oracle.ts
-export type PriceReport = { pair: string; price: bigint; ts: number; source: string }; // 1e18 fixed point
-
-export interface Oracle {
-  accept(r: PriceReport, authHeader: string): Promise<PriceReport>; // auth, staleness, cross-check
+// price-poller.ts
+export interface PricePoller {
+  start(): () => void; // returns a function that stops polling
+  latest(): PriceReport | null;
 }
 ```
 

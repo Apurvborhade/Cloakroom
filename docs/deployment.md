@@ -38,11 +38,11 @@ Mirrored in [`.env.example`](../.env.example).
 | `WETH_ADDRESS` | `0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14` | Pair for the demo |
 | `TOKEN_OUT_ADDRESS` | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Circle USDC on Sepolia |
 | `UNISWAP_API_KEY` | from the developer platform | Quotes and swap calldata |
-| `PRICE_TOLERANCE_BPS` | `100` | Max gap between a report and the enclave's own quote |
 | `MAX_SLIPPAGE_BPS_CAP` | `100` | Upper limit on a user's slippage setting |
 | `FEE_BPS` | `10` | Fee: see [fee model](decisions/2026-11-06-0151-fee-model.md) |
 | `DEPOSIT_SESSION_TTL_SEC` | `900` | Lifetime of a deposit address |
-| `ORACLE_HMAC_SECRET` | random 32 bytes | Authenticates price reports |
+| `PRICE_POLL_INTERVAL_SEC` | `60` | How often the enclave checks the price |
+| `PRICE_REFERENCE_AMOUNT_WEI` | `100000000000000000` | Input amount for each price check |
 | `ADMIN_ADDRESS`, `SEEDING_ENABLED` | wallet, `true` then `false` | Operator seeding endpoint, turned off after setup |
 | `MAX_AMOUNT_NATIVE_WEI` | demo cap | Limits exposure during the demo |
 | `SIM_MODE` | `false` | Shows the TEE-simulated banner when `true` |
@@ -65,4 +65,4 @@ A signed admin call returns the inventory EOA addresses once. `scripts/seed-inve
 2. Deploy to the TEE provider and fetch `/attestation`.
 3. Verify the quote with a CLI script and check that its report data matches the public key.
 4. Seed the inventory (Apurva), then disable seeding.
-5. Point the frontend and the CRE workflow at the enclave URL (Pradnyesh).
+5. Point the frontend at the enclave URL (Pradnyesh).

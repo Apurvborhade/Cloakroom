@@ -51,8 +51,7 @@ Then build:
 
 - [ ] `POST /intents`, `/intents/status`, `/intents/cancel`
 - [ ] `IntentStore`: reserve on add, `due`, `mark`, expiry frees funds
-- [ ] Wire `POST /oracle/price` to Apurva's `Oracle.accept`
-- [ ] [Oracle body format](../decisions/2026-11-06-0151-oracle-body-format.md), with Pradnyesh
+- [ ] Provide `IntentStore.due` for Apurva's price poller
 
 ### Phase 3 (hours 22 to 29)
 
@@ -71,7 +70,7 @@ Then build:
 | From | What |
 | --- | --- |
 | Felix | `envelope.ts` |
-| Apurva | On-chain totals for `reconcile()`, `Oracle.accept` |
+| Apurva | On-chain totals for `reconcile()` |
 
 ## Others depend on you
 

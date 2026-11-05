@@ -1,12 +1,11 @@
 # Prize integrations
 
-Three prizes, each wired into the real flow so none is a bolt-on. Requirements are from the [ETHGlobal Mumbai prizes page](https://ethglobal.com/events/mumbai/prizes).
+Two prize targets, each wired into the real flow so neither is a bolt-on. We are [not entering the Chainlink prize](decisions/2026-11-06-0358-drop-chainlink-cre.md). Requirements are from the [ETHGlobal Mumbai prizes page](https://ethglobal.com/events/mumbai/prizes).
 
 | Prize | What to build | Evidence to ship | Watch out | Lead |
 | --- | --- | --- | --- | --- |
 | Uniswap Foundation, Build with Uniswap ($10,000 pool) | Swap execution through the Uniswap API and router from custody EOAs | Public open-source repo, `FEEDBACK.md`, completed [Uniswap feedback form](https://developers.uniswap.org/hackathon-feedback) with the file link, README pointing to the integration code lines | Submissions without the feedback file are audited before winners are set | Apurva builds, Pradnyesh submits |
 | Ethereum Foundation, Anon-RPC ($5,000), with CROPS ($3,500) as backup | Frontend sends its chain reads through Anon-RPC by default | Demo showing reads going through it, plus a list of any traffic left out and why | Judges score how much traffic uses it. EF places a project in at most one EF prize. CROPS needs a README section titled CROPS plus an open-source licence | Pradnyesh |
-| Chainlink, Best workflow with CRE ($1,500) | A CRE workflow reads an external price API and an on-chain source, then posts a signed price report to `/oracle/price` | Successful CRE CLI simulation shown in the demo (deployment is optional) | It must be meaningfully used. The enclave still cross-checks the price and enforces a minimum output, so a bad report cannot drain funds. On Sepolia the reported price comes from the pool and the API price is only logged, which weakens this entry ([decision](decisions/2026-11-06-0229-sepolia-reference-price.md)) | Pradnyesh |
 
 ## Ethereum Foundation strategy
 
@@ -60,7 +59,7 @@ These details come from a summary of the prizes page, not its exact text. Check 
 
 [What CROPS means](https://blog.ethereum.org/2026/03/13/ef-mandate)
 
-## Repo hygiene for all three
+## Repo hygiene for both
 
 - Public repo from the first commit
 - A licence file (MIT or Apache-2.0)
@@ -69,4 +68,4 @@ These details come from a summary of the prizes page, not its exact text. Check 
 
 ## Trade-off to state
 
-The enclave's own RPC reads and the CRE workflow both see something. Anon-RPC covers the browser only, so list the enclave's reads as a leak instead of hiding it.
+The enclave's own RPC reads and Uniswap's API both see something. Anon-RPC covers the browser only, so list the enclave's reads as a leak instead of hiding it.

@@ -10,12 +10,12 @@ There is almost no Solidity in this design: custody accounts are plain EOAs and 
 - `services/enclave/src/watcher.ts`: deposits, confirmations, receipts
 - `inventory.ts`: per-EOA balances and selection
 - `executor.ts`: Uniswap swap, payout, transaction lifecycle, recovery
-- `oracle.ts`: report auth, staleness, cross-check
+- `price-poller.ts`: price checks that trigger intents
 - `contracts/`: optional EnclaveRegistry
 - `scripts/seed-inventory.ts`, `scripts/demo-fixture.ts`
 - Fork tests
 
-Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enclave.md](../enclave.md) (Inventory, Executor, Oracle).
+Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enclave.md](../enclave.md) (Inventory, Executor, Price poller).
 
 ## Tasks
 
@@ -49,13 +49,14 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 - [ ] `runIntent`, following the 7 steps in [chain-logic.md](../chain-logic.md)
 - [ ] Treat the API's transaction as untrusted: pin `to`, run `eth_call`, require output of at least `minOut`
-- [ ] `Oracle.accept`: HMAC in constant time, `ts` within 90 seconds and newer than the last, idempotent on `(pair, floor(ts / 60))`, tolerance check
+- [ ] Price poller: quote every `PRICE_POLL_INTERVAL_SEC`, pass it to `IntentStore.due`, and trigger nothing when a poll fails
+- [ ] Recheck the intent's condition against the swap's own quote before signing
 - [ ] Keep a running list of Uniswap friction points for `FEEDBACK.md`
 
 ### Phase 3 (hours 22 to 29)
 
 - [ ] `Executor.recover`: settle, rebroadcast or fail
-- [ ] `recovery.test.ts`, `watcher.test.ts`, `executor.fork.test.ts`, `oracle.test.ts`
+- [ ] `recovery.test.ts`, `watcher.test.ts`, `executor.fork.test.ts`, `price-poller.test.ts`
 - [ ] Lead `e2e.fork.test.ts`
 
 ### Phase 4 (hours 29 to 36)
@@ -71,7 +72,6 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 | --- | --- |
 | Felix | `KeyManager`: `allocate`, `sign`, opId registration. One-time EOA list for seeding |
 | Shreyas | `Ledger`, `Journal`, `SerialQueue`, `IntentStore.due` and `mark` |
-| Pradnyesh | CRE report format and HMAC |
 
 ## Others depend on you
 

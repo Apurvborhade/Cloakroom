@@ -99,7 +99,6 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 | `POST /intents/status` | session-signed query | `{ intents: [{ id, status, amountOut? }] }` |
 | `POST /intents/cancel` | `{ intentId }` + signature | `{ status: 'cancelled' }` |
 | `POST /withdrawals` | `Withdrawal` + signature | `{ withdrawalId, status: 'locked' }` |
-| `POST /oracle/price` | `PriceReport`, plus an auth header | `{ accepted: true }` |
 | `GET /health/reconcile` | none | `{ ok, perToken: [{ token, onChain, claims }] }` |
 | `/admin/eoas` | signed admin call | Inventory EOA addresses, once. Disabled afterwards ([decision](decisions/2026-11-06-0151-admin-eoas-endpoint.md)) |
 
@@ -128,7 +127,7 @@ This reads as: swap 0.1 ETH for USDC once ETH is at or above 3,000 USDC, accept 
 
 ## Error codes
 
-`BAD_SIGNATURE`, `EXPIRED`, `NONCE_USED`, `WRONG_CHAIN`, `INSUFFICIENT_BALANCE`, `NO_INVENTORY`, `UNKNOWN_SESSION`, `STALE_PRICE`, `PRICE_MISMATCH`
+`BAD_SIGNATURE`, `EXPIRED`, `NONCE_USED`, `WRONG_CHAIN`, `INSUFFICIENT_BALANCE`, `NO_INVENTORY`, `UNKNOWN_SESSION`
 
 ## Server hardening
 

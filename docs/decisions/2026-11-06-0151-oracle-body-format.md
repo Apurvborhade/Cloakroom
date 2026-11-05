@@ -2,7 +2,7 @@
 
 | Status | Owner | Needed by |
 | --- | --- | --- |
-| Open | Shreyas, Pradnyesh | Phase 2 |
+| Superseded by [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) | Shreyas, Pradnyesh | Settled |
 
 ## Problem
 

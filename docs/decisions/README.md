@@ -15,7 +15,6 @@ One decision per file. This page is the index, so check here first.
 | [Salt hash and key lifetime](2026-11-06-0151-salt-and-key-lifetime.md) | Felix, Pradnyesh | Phase 1 |
 | [Admin EOAs endpoint](2026-11-06-0151-admin-eoas-endpoint.md) | Felix, Shreyas | Phase 1 |
 | [Non-ETH deposits](2026-11-06-0151-non-eth-deposits.md) | Shreyas, Apurva | Phase 1 |
-| [Oracle body format](2026-11-06-0151-oracle-body-format.md) | Shreyas, Pradnyesh | Phase 2 |
 | [Withdrawal status endpoint](2026-11-06-0331-withdrawal-status-endpoint.md) | Shreyas, Pradnyesh | Phase 1 |
 
 ## Proposed, waiting for confirmation
@@ -32,10 +31,17 @@ One decision per file. This page is the index, so check here first.
 | Decision | Owner | Needed by |
 | --- | --- | --- |
 | [Network: Sepolia (pending a Trading API quote test)](2026-11-06-0229-network-sepolia.md) | Apurva | Phase 0 |
-| [Sepolia reference price](2026-11-06-0229-sepolia-reference-price.md) | Apurva, Pradnyesh | Phase 0 |
+| [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) | Apurva, Pradnyesh, Shreyas | Phase 2 |
 | [Open-source licence](2026-11-06-0151-open-source-licence.md) | Team | Before hour 0 |
 | [The spec wins over the plan](2026-11-06-0151-spec-over-plan.md) | Team | Settled |
 | [Files with no owner](2026-11-06-0151-unowned-files.md) | Shreyas | Phase 0 |
+
+## Superseded
+
+| Decision | Replaced by |
+| --- | --- |
+| [Sepolia reference price](2026-11-06-0229-sepolia-reference-price.md) | [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) |
+| [Oracle body format](2026-11-06-0151-oracle-body-format.md) | [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) |
 
 ## Adding a decision
 
@@ -67,6 +73,4 @@ These are facts to check, not decisions.
 | The Trading API returns a Sepolia quote for WETH to USDC, and the router in its calldata matches `UNIVERSAL_ROUTER_ADDRESS` | Apurva |
 | A Sepolia RPC URL works through an Anon-RPC worker, and the provider accepts that traffic. Some providers refuse Tor | Pradnyesh |
 | How the Anon-RPC harness plugs into viem | Pradnyesh |
-| CRE CLI setup and access. Simulation works without approval; live DON deployment is Early Access and is not needed for the prize | Pradnyesh |
-| Whether an HTTP POST inside a workflow runs once or on several DON nodes | Pradnyesh |
-| Whether the enclave can verify a DON-signed report instead of the HMAC (stretch) | Pradnyesh, Apurva |
+| Trading API rate limits allow one quote per `PRICE_POLL_INTERVAL_SEC` | Apurva |
