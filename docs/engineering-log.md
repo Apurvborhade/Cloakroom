@@ -456,4 +456,6 @@ This document is the canonical, chronological record of all backend and accounti
 
 ### Commit Reference
 
-- Implementation commit and push status are recorded after those commands succeed.
+- **Commit:** `31d36f9` (`feat(enclave): add verifiable Nitro attestation bootstrap`).
+- **Pushed to Remote:** Yes, on `felix/nitro-attestation`.
+- **PR:** Not created; the user requested a creation link.
