@@ -468,3 +468,12 @@ This document is the canonical, chronological record of all backend and accounti
 - **Changes:** Attestation responses now encode the transport public key and build hash as `0x`-prefixed hex. Updated the verifier, contract test, and API handoff.
 - **Verification:** Attestation contract tests: 4 passed. Python verifier tests: 10 passed.
 - **Push:** Not requested; subsequent work remains local.
+
+
+## Task T2: HPKE Transport
+
+- **Date:** 2026-11-06
+- **Changes:** Added browser-safe sealing and protocol parameters in `packages/shared/src/transport.ts`, decryption in `services/enclave/src/envelope.ts`, and rejection tests. Added the patched `@hpke/core` 1.10.0 dependency and updated the API handoff.
+- **Verification:** `pnpm typecheck` passed; 9 targeted attestation/transport tests passed. Covers concurrent contexts, wrong recipient/route/chain, malformed encoding, ciphertext modification and size limits.
+- **Remaining:** Browser execution and main-server integration are tested separately.
+- **Push:** No push; local work only.

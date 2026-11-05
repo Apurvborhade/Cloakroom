@@ -26,6 +26,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@hpke/core':
+        specifier: 1.10.0
+        version: 1.10.0
       viem:
         specifier: ^2.21.0
         version: 2.57.16(typescript@5.9.3)(zod@3.25.76)
@@ -241,6 +244,14 @@ packages:
 
   '@fastify/rate-limit@10.3.0':
     resolution: {integrity: sha512-eIGkG9XKQs0nyynatApA3EVrojHOuq4l6fhB4eeCk4PIOeadvOJz9/4w3vGI44Go17uaXOWEcPkaD8kuKm7g6Q==}
+
+  '@hpke/common@1.11.0':
+    resolution: {integrity: sha512-ZV551VgT4+pjTN1xlM1Zu9CrvLcff1sV1F2iFQJgg3gVNLy/hiOgLOjK3cz5LZYMKYkt54xe7ityu0rTYVSDGw==}
+    engines: {node: '>=16.0.0'}
+
+  '@hpke/core@1.10.0':
+    resolution: {integrity: sha512-toCyUYXvU5KdDjqtWeMRRhR09R2us4OeHGo5YkdDOpo8+QJ6sIpuuOGLDu0VbNBskf5acHgsqgF53w2mU1NNYQ==}
+    engines: {node: '>=16.0.0'}
 
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
@@ -994,6 +1005,12 @@ snapshots:
       '@lukeed/ms': 2.0.2
       fastify-plugin: 5.1.0
       toad-cache: 3.7.4
+
+  '@hpke/common@1.11.0': {}
+
+  '@hpke/core@1.10.0':
+    dependencies:
+      '@hpke/common': 1.11.0
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 

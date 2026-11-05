@@ -57,6 +57,8 @@ const salt = deriveEnclaveSalt(enclavePublicKey);
 const domain = createDomain(chainId, salt);
 ```
 
+- **HPKE handoff to API/frontend:** `sealEnvelope` and `HPKE_PARAMETERS` are exported by `@cloakroom/shared`; `openEnvelope` is available in the enclave. Bind the exact request path and chain ID through the context. See [API transport](api.md#hpke-parameters).
+
 ### 2. Handoff to Apurva (On-Chain & Execution)
 
 - **Subsystem Interfaces:** `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces defined in `@cloakroom/shared`.

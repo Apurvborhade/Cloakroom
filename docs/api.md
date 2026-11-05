@@ -85,6 +85,12 @@ export type IntentStatus =
 
 TLS may terminate outside the enclave on some platforms, so request bodies are encrypted to the enclave's attested public key at the application layer. The frontend shows the attestation measurement and a link to the reproducible build. Full in-browser quote verification is a stretch goal; a CLI check is the minimum.
 
+### HPKE parameters
+
+Browser sealing is implemented by `sealEnvelope` in `@cloakroom/shared`; enclave opening lives in `envelope.ts`. Both use `@hpke/core` 1.10.0 with DHKEM-X25519/HKDF-SHA256 (`0x0020`), HKDF-SHA256 (`0x0001`), and AES-256-GCM (`0x0002`). Each request creates a fresh HPKE context with info `cloakroom/hpke/v1`.
+
+Associated data is UTF-8 JSON `[1, chainId, path, lowercaseEnclavePublicKeyHex]`. The envelope fields use canonical padded base64. Plaintext is limited to 16 KiB. Transport decryption does not replace signature validation or nonce consumption.
+
 ## Endpoints
 
 All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave public key with HPKE. Amounts are decimal strings in base units. Errors return `{ error: code }` with no detail about other users.
