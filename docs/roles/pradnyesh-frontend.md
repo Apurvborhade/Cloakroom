@@ -39,7 +39,7 @@ Read: [frontend.md](../frontend.md), [cre-workflow.md](../cre-workflow.md), [pri
 ### Phase 2 (hours 12 to 22)
 
 - [ ] `/swap`: form, readable summary before signing, intent list, cancel
-- [ ] CRE workflow: fetch the price, parse to 1e18 fixed point, post with `X-Report-Auth`
+- [ ] CRE workflow: read the Sepolia pool price, parse to 1e18 fixed point, post with `X-Report-Auth`, and log the external API price ([cre-workflow.md](../cre-workflow.md))
 - [ ] Agree the report format and HMAC with Apurva, and [gap 3.5](../decisions.md) with Shreyas
 
 ### Phase 3 (hours 22 to 29)
