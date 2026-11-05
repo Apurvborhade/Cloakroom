@@ -1,0 +1,74 @@
+# Felix: TEE and custody
+
+**Done when:** the quote verifies and a derived EOA signs a test transaction.
+
+You are the first gate. Nothing about the confidentiality claim holds until attestation works, and TEE setup is the biggest schedule risk in the project, so it is time-boxed to hours 0 to 3.
+
+## You own
+
+- TEE platform choice and deployment
+- Attestation: `GET /attestation` and the quote verification CLI
+- `services/enclave/src/keys.ts`: HD seed, EOA derivation, signing guard
+- `services/enclave/src/envelope.ts`: HPKE decryption
+- Journal encryption key, derived inside the TEE
+- `services/enclave/Dockerfile`, reproducible build, release steps
+
+Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.md), [api.md](../api.md) (Transport).
+
+## Tasks
+
+### Phase 0 (hours 0 to 3)
+
+- [ ] Compare EigenCompute, Phala dstack and Nitro Enclaves. Take whichever returns a quote first
+- [ ] Deploy a hello-world enclave that returns a quote from `GET /attestation`
+- [ ] Publish the `/attestation` response shape for the team
+- [ ] Test the Docker image early ([gap 3.8](../decisions.md))
+- [ ] **If this is failing at hour 3:** switch to the fallback, the same container labelled TEE-simulated, with no confidentiality claim
+
+### Phase 1 (hours 3 to 12)
+
+- [ ] `KeyManager`: sealed seed, HD derivation, `allocate`, `list`, `sign`
+- [ ] Signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once
+- [ ] `envelope.ts`, plus an HPKE library and parameters that also work in the browser, shared with Pradnyesh
+- [ ] Report data commits to `sha256(enclavePubKey || buildHash)`
+- [ ] Close [gap 3.6](../decisions.md) with Pradnyesh: salt hash function and HPKE key lifetime across restarts
+- [ ] Close [gap 3.7](../decisions.md) with Shreyas: the one-time `/admin/eoas` call
+
+### Phase 2 (hours 12 to 22)
+
+- [ ] Support Apurva's executor signing against the real guard
+- [ ] Journal encryption key. Only `SIM_MODE` may fall back to an environment variable
+
+### Phase 3 (hours 22 to 29)
+
+- [ ] Quote verification CLI script
+- [ ] `keys.test.ts` and `envelope.test.ts` ([testing.md](../testing.md))
+- [ ] Audit: no endpoint returns a key or seed, and no key or custody address is ever logged
+
+### Phase 4 (hours 29 to 36)
+
+- [ ] Build the final image, record its digest in the README
+- [ ] Deploy, verify the quote, hand the EOA list to Apurva for seeding, then disable seeding
+- [ ] Give Pradnyesh the final enclave URL
+
+## You depend on
+
+| From | What |
+| --- | --- |
+| Shreyas | `server.ts` to wire decryption into, journal format for the journaled-op check |
+| Apurva | How `opId` registration is called from the executor |
+
+## Others depend on you
+
+| Who | What |
+| --- | --- |
+| Everyone | Attestation shape and a reachable enclave |
+| Apurva | `KeyManager` |
+| Shreyas | `envelope.ts` |
+| Pradnyesh | HPKE parameters, final URL, digest |
+
+## Verify
+
+- TEE provider access, pricing and attestation format
+- How a quote is fetched and how secrets reach the enclave on the chosen platform
+- Sealed storage availability. If there is none, use a persistent volume with a platform-derived key
