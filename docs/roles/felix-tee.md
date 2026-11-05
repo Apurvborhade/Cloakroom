@@ -28,7 +28,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 ### Phase 1 (hours 3 to 12)
 
 - [ ] `KeyManager`: sealed seed, HD derivation, `allocate`, `list`, `sign`
-- [ ] Signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once
+- [ ] Signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
 - [ ] `envelope.ts`, plus an HPKE library and parameters that also work in the browser, shared with Pradnyesh
 - [ ] Report data commits to `sha256(enclavePubKey || buildHash)`
 - [ ] Close [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Pradnyesh

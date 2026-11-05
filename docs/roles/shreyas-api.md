@@ -41,6 +41,8 @@ Then build:
 - [ ] Queue, then journal, then ledger. Journal before state change, always
 - [ ] Auth rules: signer, expiry (at most 5 minutes ahead, 60 seconds of skew), nonce inside the queue, chain and salt
 - [ ] `POST /session`, `/deposit-session`, `/balance`, `/withdrawals`
+- [ ] In `POST /withdrawals`, reserve under the withdrawal ID and journal `WITHDRAWAL_LOCKED`, then call `Executor.runWithdrawal`
+- [ ] [Withdrawal status endpoint](../decisions/2026-11-06-0331-withdrawal-status-endpoint.md), with Pradnyesh
 - [ ] Replay the journal on boot
 - [ ] `reconcile()`, using on-chain totals from Apurva's inventory
 
