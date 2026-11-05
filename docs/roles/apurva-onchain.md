@@ -35,8 +35,10 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 ### Phase 1 (hours 3 to 12)
 
-- [ ] Watcher: baseline on session open, read at `head - CONFIRMATIONS`, journal `DEPOSIT_CREDITED`, then credit
-- [ ] Session expiry: one last check, close the session, relabel the EOA as inventory
+- [x] Watcher: baseline on session open, read at `head - CONFIRMATIONS`, journal `DEPOSIT_CREDITED`, then credit
+- [x] Session expiry: one last check, close the session
+- [ ] Relabel the EOA as inventory in `onSessionClosed`, and rebuild closed sessions into inventory on boot, because replay does not call it
+- [ ] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([gap 3.12](../decisions.md))
 - [ ] `Inventory`: `refresh`, `pick` with exclusions, `hold`, `free`
 - [ ] `runWithdrawal`: lock, pick, sign, journal, send, confirm, consume
 - [ ] On-chain totals for Shreyas's `reconcile()`
