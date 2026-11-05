@@ -28,7 +28,6 @@ Converted from the Implementation Plan and the Technical Spec (both dated 2026-1
 | [chain-logic.md](chain-logic.md) | Deposit, swap, withdrawal, gas and recovery |
 | [contracts.md](contracts.md) | Which contracts are needed, EnclaveRegistry |
 | [frontend.md](frontend.md) | Routes, request flow, Anon-RPC, UX rules |
-| [cre-workflow.md](cre-workflow.md) | Chainlink CRE price workflow |
 | [deployment.md](deployment.md) | Docker image, configuration, attestation, release |
 | [testing.md](testing.md) | Test suites, rejection tests, security checklist |
 | [demo.md](demo.md) | Three-minute demo script |
@@ -60,7 +59,7 @@ const domain = createDomain(chainId, salt);
 
 - **Subsystem Interfaces:** `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces defined in `@cloakroom/shared`.
 - **Inventory Integration:** `InventoryReader` interface (`getPhysicalBalances()`) required by `reconcile()`.
-- **Oracle Verification:** `OracleVerifier` interface (`accept()`) for processing incoming price reports.
+- **Price checks:** the enclave polls prices itself, so `OracleVerifier` is no longer needed. See [Drop Chainlink CRE](decisions/2026-11-06-0358-drop-chainlink-cre.md).
 - **Journal State Changes:**
   - Watcher credits confirmed deposits via `queue.run(() => ledger.credit(owner, NATIVE, amount, txHash))` preceded by `DEPOSIT_CREDITED`.
   - Executor settlements call `ledger.consume(opId)` preceded by `EXEC_SETTLED`.
@@ -80,7 +79,6 @@ import type { Ledger, Journal, SerialQueue, IntentStore, PriceReport } from '@cl
 - **Session Queries & Cancellation:**
   - `SessionQuery` defined with `{ owner, expiry }` (does not increment or collide with owner transaction nonces).
   - `CancelIntent` defined with `{ owner, intentId, nonce, expiry }`.
-- **Transport Note:** `POST /oracle/price` is exempt from HPKE envelope encryption and uses a plain JSON body with `X-Report-Auth` header.
 - **Unresolved decision for Pradnyesh:** Verify that Anon-RPC routing works seamlessly with viem's custom transport configuration in the Next.js frontend.
 
 ```ts
