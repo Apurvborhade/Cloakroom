@@ -10,9 +10,9 @@
   "packageManager": "pnpm@10.13.1",
   "scripts": {
     "build": "pnpm --filter '@cloakroom/*' run build",
-    "typecheck": "pnpm --filter '@cloakroom/*' run typecheck",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "typecheck": "pnpm --filter @cloakroom/shared run build && pnpm --filter '@cloakroom/*' run typecheck",
+    "test": "pnpm --filter @cloakroom/shared run build && vitest run",
+    "test:watch": "pnpm --filter @cloakroom/shared run build && vitest"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
