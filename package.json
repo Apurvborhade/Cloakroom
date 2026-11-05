@@ -12,11 +12,13 @@
     "build": "pnpm --filter '@cloakroom/*' run build",
     "typecheck": "pnpm --filter @cloakroom/shared run build && pnpm --filter '@cloakroom/*' run typecheck",
     "test": "pnpm --filter @cloakroom/shared run build && vitest run",
-    "test:watch": "pnpm --filter @cloakroom/shared run build && vitest"
+    "test:watch": "pnpm --filter @cloakroom/shared run build && vitest",
+    "smoke:sepolia": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/sepolia-smoke.ts"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
     "fast-check": "^3.23.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "viem": "^2.57.16",
     "vitest": "^3.0.0"
