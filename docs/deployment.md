@@ -26,7 +26,11 @@ CMD ["node", "dist/server.js"]
 
 ## Configuration
 
-Mirrored in [`.env.example`](../.env.example).
+Mirrored in [`.env.example`](../.env.example), and read by `loadConfig` in `services/enclave/src/config.ts`. Every variable is required, and the enclave refuses to start if one is missing or invalid. The error names the variable, never its value.
+
+Locally, pass the file to Node with `--env-file=.env`. In the TEE, inject the variables through the platform.
+
+Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price scale, stay in `packages/shared`.
 
 | Variable | Example | Purpose |
 | --- | --- | --- |
@@ -34,6 +38,9 @@ Mirrored in [`.env.example`](../.env.example).
 | `RPC_URL` | provider URL | Chain reads and broadcasts. Injected as a secret |
 | `CONFIRMATIONS` | `2` | Blocks before crediting or settling |
 | `GAS_RESERVE_WEI` | `10000000000000000` | Kept in each inventory EOA, excluded from claims |
+| `GAS_MARGIN_PERCENT` | `120` | Gas limit as a percentage of the estimate |
+| `RECEIPT_TIMEOUT_MS` | `180000` | How long to wait before a transaction's result counts as unresolved |
+| `INVENTORY_SETTLE_ATTEMPTS` | `3` | Balance refresh attempts before an EOA is freed |
 | `UNIVERSAL_ROUTER_ADDRESS` | `0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3` | Pinned swap destination (2.1.2 on Sepolia). Confirm against a Trading API response |
 | `WETH_ADDRESS` | `0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14` | Pair for the demo |
 | `TOKEN_OUT_ADDRESS` | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Circle USDC on Sepolia |
@@ -41,10 +48,14 @@ Mirrored in [`.env.example`](../.env.example).
 | `MAX_SLIPPAGE_BPS_CAP` | `100` | Upper limit on a user's slippage setting |
 | `FEE_BPS` | `10` | Fee: see [fee model](decisions/2026-11-06-0151-fee-model.md) |
 | `DEPOSIT_SESSION_TTL_SEC` | `900` | Lifetime of a deposit address |
+| `SESSION_GRANT_TTL_SEC` | `1800` | Lifetime of a browser session key |
+| `MAX_EXPIRY_FUTURE_SEC` | `300` | How far ahead a signed request's expiry may be |
+| `MAX_CLOCK_SKEW_SEC` | `60` | Clock difference allowed on a signed request |
+| `MAX_BODY_SIZE_BYTES` | `16384` | Largest request body accepted |
 | `PRICE_POLL_INTERVAL_SEC` | `60` | How often the enclave checks the price |
 | `PRICE_REFERENCE_AMOUNT_WEI` | `100000000000000000` | Input amount for each price check |
 | `ADMIN_ADDRESS`, `SEEDING_ENABLED` | wallet, `true` then `false` | Operator seeding endpoint, turned off after setup |
-| `MAX_AMOUNT_NATIVE_WEI` | demo cap | Limits exposure during the demo |
+| `MAX_AMOUNT_NATIVE_WEI` | `1000000000000000000` | Demo cap that limits exposure |
 | `SIM_MODE` | `false` | Shows the TEE-simulated banner when `true` |
 | `ALLOWED_ORIGIN` | frontend URL | CORS |
 

@@ -45,6 +45,7 @@ Then build:
 - [ ] In `POST /withdrawals`, reserve under the withdrawal ID and journal `WITHDRAWAL_LOCKED`, then call `Executor.runWithdrawal`
 - [ ] [Withdrawal status endpoint](../decisions/2026-11-06-0331-withdrawal-status-endpoint.md), with Pradnyesh
 - [ ] Replay the journal on boot
+- [ ] Read limits from `loadConfig` in `services/enclave/src/config.ts`, not the duplicates in `packages/shared/src/constants.ts`
 - [ ] `reconcile()`, using on-chain totals from Apurva's inventory
 
 ### Phase 2 (hours 12 to 22)
