@@ -41,7 +41,7 @@ The spec lists no suite for keys or transport. Felix should add these, because t
 | Deposit after session expiry | Not credited |
 | Price report outside the enclave's own quote tolerance | Intent does not execute |
 
-The plan also listed "deposit from the wrong sender: not credited". The spec's balance-based crediting replaces that behaviour: see [decisions.md](decisions.md) section 2.
+The plan also listed "deposit from the wrong sender: not credited". The spec's balance-based crediting replaces that behaviour: see [the spec wins over the plan](decisions/2026-11-06-0151-spec-over-plan.md).
 
 ## Security checklist
 

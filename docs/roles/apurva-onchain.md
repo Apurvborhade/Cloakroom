@@ -27,7 +27,7 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 ### Phase 0 (hours 0 to 3)
 
-- [x] Choose the network: Sepolia ([decisions.md](../decisions.md) section 5)
+- [x] Choose the network: Sepolia ([decision](../decisions/2026-11-06-0229-network-sepolia.md))
 - [x] Collect `UNIVERSAL_ROUTER_ADDRESS`, `WETH_ADDRESS`, `TOKEN_OUT_ADDRESS` (in `.env.example`)
 - [ ] Request a Trading API quote on Sepolia for 0.1 WETH to USDC, and confirm the router in the response matches `UNIVERSAL_ROUTER_ADDRESS`
 - [ ] Agree the pool-based reference price with Pradnyesh
@@ -38,11 +38,11 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 - [x] Watcher: baseline on session open, read at `head - CONFIRMATIONS`, journal `DEPOSIT_CREDITED`, then credit
 - [x] Session expiry: one last check, close the session
 - [ ] Relabel the EOA as inventory in `onSessionClosed`, and rebuild closed sessions into inventory on boot, because replay does not call it
-- [ ] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([gap 3.12](../decisions.md))
+- [ ] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md))
 - [ ] `Inventory`: `refresh`, `pick` with exclusions, `hold`, `free`
 - [ ] `runWithdrawal`: lock, pick, sign, journal, send, confirm, consume
 - [ ] On-chain totals for Shreyas's `reconcile()`
-- [ ] [Gap 3.1](../decisions.md) and [gap 3.9](../decisions.md) with Shreyas
+- [ ] [Fee model](../decisions/2026-11-06-0151-fee-model.md) and [non-ETH deposits](../decisions/2026-11-06-0151-non-eth-deposits.md) with Shreyas
 
 ### Phase 2 (hours 12 to 22)
 

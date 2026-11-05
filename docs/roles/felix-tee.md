@@ -22,7 +22,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [ ] Compare EigenCompute, Phala dstack and Nitro Enclaves. Take whichever returns a quote first
 - [ ] Deploy a hello-world enclave that returns a quote from `GET /attestation`
 - [ ] Publish the `/attestation` response shape for the team
-- [ ] Test the Docker image early ([gap 3.8](../decisions.md))
+- [ ] Test the Docker image early ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md))
 - [ ] **If this is failing at hour 3:** switch to the fallback, the same container labelled TEE-simulated, with no confidentiality claim
 
 ### Phase 1 (hours 3 to 12)
@@ -31,8 +31,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [ ] Signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once
 - [ ] `envelope.ts`, plus an HPKE library and parameters that also work in the browser, shared with Pradnyesh
 - [ ] Report data commits to `sha256(enclavePubKey || buildHash)`
-- [ ] Close [gap 3.6](../decisions.md) with Pradnyesh: salt hash function and HPKE key lifetime across restarts
-- [ ] Close [gap 3.7](../decisions.md) with Shreyas: the one-time `/admin/eoas` call
+- [ ] Close [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Pradnyesh
+- [ ] Close [the admin EOAs endpoint](../decisions/2026-11-06-0151-admin-eoas-endpoint.md) with Shreyas
 
 ### Phase 2 (hours 12 to 22)
 

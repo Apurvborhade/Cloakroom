@@ -2,7 +2,7 @@
 
 Converted from the Implementation Plan and the Technical Spec (both dated 2026-11-06), with the plan's persons A to D replaced by real names.
 
-**If the two sources disagree, the spec wins.** Each conflict is listed in [decisions.md](decisions.md).
+**If the two sources disagree, the spec wins.** See [that decision](decisions/2026-11-06-0151-spec-over-plan.md).
 
 ## Find your brief
 
@@ -21,7 +21,7 @@ Converted from the Implementation Plan and the Technical Spec (both dated 2026-1
 | --- | --- |
 | [overview.md](overview.md) | Scope, architecture, stack, definition of done |
 | [roadmap.md](roadmap.md) | Phases, gates and per-person tasks |
-| [decisions.md](decisions.md) | Decisions to make, source conflicts, spec gaps, things to verify |
+| [decisions/](decisions/README.md) | One file per decision, with an index of what is open, and things to verify |
 | [data-model.md](data-model.md) | Entities, accounting invariants, fees, concurrency |
 | [api.md](api.md) | EIP-712 messages, signing rules, endpoints, errors, hardening |
 | [enclave.md](enclave.md) | Enclave modules and interfaces |

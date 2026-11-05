@@ -29,11 +29,11 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 
 Close these first, because they change the types and journal:
 
-- [ ] [Gap 3.1](../decisions.md): fee model, with Apurva
-- [ ] [Gap 3.2](../decisions.md): missing EIP-712 types, with Pradnyesh
-- [ ] [Gap 3.3](../decisions.md): missing journal events
-- [ ] [Gap 3.4](../decisions.md): meaning of `pending`
-- [ ] [Gap 3.9](../decisions.md): non-ETH deposits, with Apurva
+- [ ] [Fee model](../decisions/2026-11-06-0151-fee-model.md), with Apurva
+- [ ] [Missing EIP-712 types](../decisions/2026-11-06-0151-missing-eip712-types.md), with Pradnyesh
+- [ ] [Journal replay events](../decisions/2026-11-06-0151-journal-replay-events.md) and [deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md)
+- [ ] [Meaning of `pending`](../decisions/2026-11-06-0151-pending-balance.md)
+- [ ] [Non-ETH deposits](../decisions/2026-11-06-0151-non-eth-deposits.md), with Apurva
 
 Then build:
 
@@ -48,7 +48,7 @@ Then build:
 - [ ] `POST /intents`, `/intents/status`, `/intents/cancel`
 - [ ] `IntentStore`: reserve on add, `due`, `mark`, expiry frees funds
 - [ ] Wire `POST /oracle/price` to Apurva's `Oracle.accept`
-- [ ] [Gap 3.5](../decisions.md): oracle body format, with Pradnyesh
+- [ ] [Oracle body format](../decisions/2026-11-06-0151-oracle-body-format.md), with Pradnyesh
 
 ### Phase 3 (hours 22 to 29)
 

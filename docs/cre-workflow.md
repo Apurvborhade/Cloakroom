@@ -41,7 +41,7 @@ Optional second source: read the Chainlink ETH/USD data feed on the chosen chain
 
 ## Price source on Sepolia
 
-The Sepolia WETH/USDC pool trades at about 11.6x the market price, so a market price would fail the enclave's cross-check every time. See [decisions.md](decisions.md) section 5.
+The Sepolia WETH/USDC pool trades at about 11.6x the market price, so a market price would fail the enclave's cross-check every time. See [the reference price decision](decisions/2026-11-06-0229-sepolia-reference-price.md).
 
 - Read the pool price on-chain and report that as `price`.
 - Fetch the external API price and log it, but do not use it to trigger swaps.

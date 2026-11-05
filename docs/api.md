@@ -53,7 +53,7 @@ export const types = {
 } as const;
 ```
 
-Types for session-signed reads and intent cancellation are not defined yet: see [decisions.md](decisions.md) gap 3.2.
+Types for session-signed reads and intent cancellation are not defined yet: see [missing EIP-712 types](decisions/2026-11-06-0151-missing-eip712-types.md).
 
 ```ts
 // packages/shared/src/api.ts
@@ -101,7 +101,7 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 | `POST /withdrawals` | `Withdrawal` + signature | `{ withdrawalId, status: 'locked' }` |
 | `POST /oracle/price` | `PriceReport`, plus an auth header | `{ accepted: true }` |
 | `GET /health/reconcile` | none | `{ ok, perToken: [{ token, onChain, claims }] }` |
-| `/admin/eoas` | signed admin call | Inventory EOA addresses, once. Disabled afterwards ([decisions.md](decisions.md) gap 3.7) |
+| `/admin/eoas` | signed admin call | Inventory EOA addresses, once. Disabled afterwards ([decision](decisions/2026-11-06-0151-admin-eoas-endpoint.md)) |
 
 `/health/reconcile` returns aggregates only, with no per-user data. Never return custody EOA addresses except the one assigned to a deposit session, and the one-time admin seeding call.
 

@@ -26,7 +26,7 @@ Enforce these in code and assert them in tests.
 
 ## Fees
 
-Gas spent by custody EOAs is booked against a separate fee ledger so invariant 1 still holds. The fee charge itself is unresolved: see [decisions.md](decisions.md) gap 3.1.
+Gas spent by custody EOAs is booked against a separate fee ledger so invariant 1 still holds. The fee charge itself is unresolved: see [fee model](decisions/2026-11-06-0151-fee-model.md).
 
 ## Concurrency
 

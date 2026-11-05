@@ -18,7 +18,7 @@ A TEE private intent network. Deposit ETH, hold a confidential balance, submit a
 
 ## Documentation
 
-Start at [docs/README.md](docs/README.md). Open conflicts and decisions are in [docs/decisions.md](docs/decisions.md).
+Start at [docs/README.md](docs/README.md). Open conflicts and decisions are in [docs/decisions/](docs/decisions/README.md).
 
 ## Repo layout
 

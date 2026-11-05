@@ -5,7 +5,7 @@ const NATIVE: Address = '0x0000000000000000000000000000000000000000';
 
 /**
  * The journal events the watcher reads and writes. This extends the spec's list:
- * see docs/decisions.md gaps 3.3 and 3.12.
+ * see docs/decisions/2026-11-06-0258-deposit-journal-events.md.
  */
 export type DepositEvent =
   | {

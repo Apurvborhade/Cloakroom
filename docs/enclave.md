@@ -34,7 +34,7 @@ export interface SerialQueue {
 
 ## Journal (Shreyas)
 
-Append-only. Each entry carries the hash of the previous one. This event list has known gaps: see [decisions.md](decisions.md) gap 3.3.
+Append-only. Each entry carries the hash of the previous one. This event list has known gaps: see [journal replay events](decisions/2026-11-06-0151-journal-replay-events.md) and [deposit journal events](decisions/2026-11-06-0258-deposit-journal-events.md).
 
 ```ts
 // journal.ts

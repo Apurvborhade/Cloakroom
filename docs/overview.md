@@ -74,7 +74,7 @@ TypeScript end to end, with Foundry for chain tooling. Items marked *verify* dep
 | Enclave service | TypeScript, Node 20+, Fastify, zod, viem | One process. All ledger writes go through a single serialized queue |
 | Key management | Seed generated inside the enclave, EOAs derived by HD path, seed sealed to the enclave | No key export endpoint. Never log keys or custody EOA addresses |
 | Ledger storage | In-memory state plus an append-only, hash-chained journal, encrypted before it touches disk | PostgreSQL only for non-secret metadata, if at all |
-| Chain | Sepolia. An Anvil mainnet fork is the fallback | See [decisions.md](decisions.md) section 5 |
+| Chain | Sepolia. An Anvil mainnet fork is the fallback | See [the network decision](decisions/2026-11-06-0229-network-sepolia.md) |
 | DEX | Uniswap: Trading API for quotes, Universal Router for execution | One pair: WETH to Circle USDC, which has liquidity on Sepolia |
 | Client signing | EIP-712 through wagmi and viem, signed by the user's existing wallet | No custom wallet. Auth key is separate from custody keys |
 | Frontend | Next.js, wagmi, RainbowKit, TanStack Query, Tailwind, Anon-RPC browser harness for chain reads | No third-party analytics |
