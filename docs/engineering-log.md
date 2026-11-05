@@ -487,3 +487,11 @@ This document is the canonical, chronological record of all backend and accounti
 - **Handoff:** Allocation and real signer registration are asynchronous. Updated the enclave interface and shared handoff documentation.
 - **Remaining:** Live KMS setup, swap authorization and external rollback anchoring. Local environment keys are restricted to explicit simulation mode.
 - **Push:** No push; local work only.
+
+
+## Task T4: Browser HPKE Execution
+
+- **Date:** 2026-11-06
+- **Changes:** Added `scripts/check-hpke-browser.mjs`, the browser-check command and pinned development-only Playwright/esbuild dependencies.
+- **Verification:** Chromium encrypted 16 concurrent messages without Node globals. The enclave implementation opened every message and rejected a changed route. Browser bundling succeeded.
+- **Push:** No push; local work only.

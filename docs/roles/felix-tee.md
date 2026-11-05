@@ -32,7 +32,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 - [x] `KeyManager`: sealed state, HD derivation, durable `allocate`, `list`, `sign`; live KMS configuration remains open
 - [x] Withdrawal signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
-- [ ] `envelope.ts`, plus an HPKE library and parameters that also work in the browser, shared with Pradnyesh
+- [x] `envelope.ts` and shared browser sealing; Chromium-to-enclave transport tested with concurrent contexts
 - [x] Report data commits to `sha256(enclavePubKey || buildHash)`
 - [ ] Close [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Pradnyesh
 - [ ] Close [the admin EOAs endpoint](../decisions/2026-11-06-0151-admin-eoas-endpoint.md) with Shreyas

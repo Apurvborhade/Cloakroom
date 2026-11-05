@@ -31,3 +31,13 @@ docker run --rm --entrypoint cat cloakroom-attestation /app/dist/build-hash
 Supply trusted measurements from your build, not values copied from an unverified quote. The verifier checks the pinned AWS root, X.509 chain, COSE signature, fresh nonce, timestamp, PCR0–2 and key/build binding. The included AWS root is public certificate material, not a private key; its SHA-256 fingerprint is pinned in the verifier.
 
 The build hash covers enclave sources, build configuration and the pnpm lockfile. PCRs identify the complete enclave image. Final byte-for-byte build reproducibility remains a release task.
+
+
+Browser transport verification:
+
+```sh
+pnpm exec playwright install chromium
+pnpm test:hpke:browser
+```
+
+This bundles the shared sealing function for a real browser, encrypts concurrent messages in Chromium without Node globals, opens them with the enclave implementation, and checks route binding.
