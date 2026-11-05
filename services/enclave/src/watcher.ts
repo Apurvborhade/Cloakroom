@@ -1,7 +1,5 @@
+import { NATIVE } from '@cloakroom/shared';
 import type { Address, PublicClient } from 'viem';
-
-/** Zero address, as used for the native token. Move to packages/shared once it exports NATIVE. */
-const NATIVE: Address = '0x0000000000000000000000000000000000000000';
 
 /**
  * The journal events the watcher reads and writes. This extends the spec's list:
