@@ -172,7 +172,7 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 ## Boot order
 
 1. Init keys
-2. Replay the journal into the ledger and intent store
+2. Open the journal with `KeyManager.journalCipher()`, replay it into the ledger and intent store, then call `KeyManager.restoreSigningState()`
 3. Refresh inventory
 4. Run `Executor.recover()`
 5. Open the server and start the watcher
@@ -183,6 +183,8 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 `KeyManager` in `keys.ts` implements `TransactionSigner`. Allocation is asynchronous because persistence completes before an address is returned. Registration now permits a promise; the executor awaits it while synchronous test adapters remain compatible.
 
 The current guard supports journaled native and ERC-20 withdrawals. It checks the locked payout, chain, signer, destination, value, calldata and gas/fee caps, and refuses source-linked EOAs. Swap authorization remains blocked until the swap executor supplies a corresponding authorization contract.
+
+Key initialization does not read the journal, so opening an encrypted journal cannot cause a circular dependency. Signing and registration validate replayed signing state before proceeding.
 
 The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 

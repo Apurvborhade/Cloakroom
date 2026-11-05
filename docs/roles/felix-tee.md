@@ -39,7 +39,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 2 (hours 12 to 22)
 
-- [ ] Support Apurva's executor signing against the real guard
+- [x] Executor signing against the real guard: native and ERC-20 payouts tested on Anvil from unlinked HD accounts
 - [x] Journal cipher derived from the custody seed; simulation wrapping keys require explicit `SIM_MODE`
 
 ### Phase 3 (hours 22 to 29)

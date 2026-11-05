@@ -495,3 +495,11 @@ This document is the canonical, chronological record of all backend and accounti
 - **Changes:** Added `scripts/check-hpke-browser.mjs`, the browser-check command and pinned development-only Playwright/esbuild dependencies.
 - **Verification:** Chromium encrypted 16 concurrent messages without Node globals. The enclave implementation opened every message and rejected a changed route. Browser bundling succeeded.
 - **Push:** No push; local work only.
+
+
+## Task T5: Executor and Encrypted-Journal Integration
+
+- **Date:** 2026-11-06
+- **Changes:** Split key initialization from signing-journal replay to allow encrypted journal startup. Added a late-open journal regression test and Anvil integration tests using the real key manager, inventory and executor.
+- **Verification:** 18 key-manager tests and 2 custody/executor integration tests passed. Native and ERC-20 payouts settle from an unlinked HD account. Restart preserves addresses and denies re-registration of settled operations. Typecheck passed.
+- **Push:** No push; local work only.

@@ -2,7 +2,8 @@ import { inspect } from 'node:util';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { NATIVE, sealEnvelope } from '@cloakroom/shared';
-import type { Journal, JournalEntry, JournalEvent } from '@cloakroom/shared';
+import type { JournalEvent } from '@cloakroom/shared';
+import { memoryJournal } from './helpers/memory-journal.js';
 import { encodeFunctionData, keccak256, parseAbi, parseTransaction, recoverTransactionAddress } from 'viem';
 import type { Address, TransactionSerializableEIP1559 } from 'viem';
 import { KeyManager } from '../src/keys.js';
@@ -14,23 +15,6 @@ const TOKEN = '0x3333333333333333333333333333333333333333' as Address;
 const POLICY = { chainId: 11155111, maxGas: 200_000n, maxFeePerGas: 100_000_000_000n,
   maxPriorityFeePerGas: 10_000_000_000n, maxNativeValue: 10n ** 18n };
 
-export function memoryJournal() {
-  const events: JournalEvent[] = [];
-  let refuse = false;
-  const entries = (): JournalEntry[] => events.map((event, i) => ({
-    sequence: i, timestamp: 0, prevHash: `0x${'00'.repeat(32)}`,
-    entryHash: `0x${'00'.repeat(32)}`, event,
-  }));
-  const journal: Pick<Journal, 'append' | 'replay'> = {
-    async append(event) {
-      if (refuse) throw new Error('disk full');
-      events.push(structuredClone(event));
-      return entries().at(-1)!;
-    },
-    async *replay() { yield* entries(); },
-  };
-  return { events, journal, failWrites() { refuse = true; } };
-}
 
 async function setup() {
   const log = memoryJournal();
@@ -71,6 +55,23 @@ describe('KeyManager', () => {
     const empty = new AesGcmStateVault(new MemoryCipherBlobStore(), simulationSealingKey('ab'.repeat(32), true), true);
     await expect(new KeyManager({ ...options, vault: empty, allowCreate: false }).init())
       .rejects.toThrow('KEY_MANAGER_UNAVAILABLE');
+  });
+
+  it('initializes key material before the encrypted journal is opened', async () => {
+    const { options, journal } = await setup();
+    let opened = false;
+    const gated = {
+      append: journal.append,
+      async *replay() {
+        if (!opened) throw new Error('journal not opened');
+        yield* journal.replay();
+      },
+    };
+    const restarted = new KeyManager({ ...options, journal: gated });
+    await restarted.init();
+    expect(restarted.journalCipher()).toBeDefined();
+    opened = true;
+    await restarted.restoreSigningState();
   });
 
   it('restores the same HD addresses and transport key after restart', async () => {
@@ -192,7 +193,9 @@ describe('KeyManager', () => {
     await keys.sign(eoa.address, tx, 'withdrawal-1');
     const current = (await storage.read())!;
     await storage.compareAndSwap(createHash('sha256').update(current).digest('hex'), old);
-    await expect(new KeyManager(options).init()).rejects.toThrow('KEY_MANAGER_UNAVAILABLE');
+    const restarted = new KeyManager(options);
+    await restarted.init();
+    await expect(restarted.restoreSigningState()).rejects.toThrow('KEY_MANAGER_UNAVAILABLE');
   });
 
   it('refuses completed, cancelled and already-broadcast withdrawal records', async () => {

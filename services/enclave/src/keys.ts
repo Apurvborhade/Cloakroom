@@ -98,6 +98,22 @@ export class KeyManager implements TransactionSigner {
         if (operation.index >= state.allocations.length || seen.has(operation.opId)) throw new Error();
         seen.add(operation.opId);
       }
+      this.#initialized = true;
+    } catch {
+      this.#faulted = true;
+      throw new Error('KEY_MANAGER_UNAVAILABLE');
+    }
+  }
+
+  /** Call after the journal has been opened with journalCipher(). Signing also calls it. */
+  restoreSigningState(): Promise<void> {
+    return this.#queue.run(() => this.#restoreSigningState());
+  }
+
+  async #restoreSigningState(): Promise<void> {
+    const state = this.#ready();
+    if (!this.#initialized) throw new Error('KEY_MANAGER_UNAVAILABLE');
+    try {
       for await (const { event } of this.#journal.replay()) {
         if (event.t === 'SIGNING_REGISTERED') {
           if (event.chainId !== this.#policy.chainId) throw new Error();
@@ -108,7 +124,6 @@ export class KeyManager implements TransactionSigner {
           if (!operation || keccak256(operation.raw as Hex) !== event.txHash) throw new Error('SEALED_STATE_ROLLBACK');
         }
       }
-      this.#initialized = true;
     } catch {
       this.#faulted = true;
       throw new Error('KEY_MANAGER_UNAVAILABLE');
@@ -238,6 +253,7 @@ export class KeyManager implements TransactionSigner {
   registerOp(opId: string, input: ExpectedTransaction): Promise<void> {
     const snapshot = Object.freeze({ ...input });
     return this.#queue.run(async () => {
+      await this.#restoreSigningState();
       const state = this.#ready();
       const expected = this.#normalize(snapshot);
       if (!this.list().some((eoa) => eoa.address === expected.eoa)
@@ -258,6 +274,7 @@ export class KeyManager implements TransactionSigner {
     // Callers cannot change transaction fields while durable authorization is awaited.
     const tx = Object.freeze({ ...input });
     return this.#queue.run(async () => {
+      await this.#restoreSigningState();
       const state = this.#ready();
       const expected = this.#registered.get(opId);
       if (!expected || state.signedOperations.length >= 10_000
@@ -291,6 +308,7 @@ export class KeyManager implements TransactionSigner {
 
   /** Recover the same cached bytes, never a new signature or changed transaction. */
   async recoverSigned(opId: string): Promise<Hex | undefined> {
+    await this.restoreSigningState();
     const operation = this.#ready().signedOperations.find((record) => record.opId === opId);
     if (!operation) return undefined;
     const expected = this.#registered.get(opId);
