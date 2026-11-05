@@ -263,3 +263,65 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commits:** `921b23c2a82ab9eb725bd8818b55ae5228cfc91d` (`feat(enclave): add withdrawal execution`), `d66b296c04933e495bedf90a953bfc300cd2abae` (`test(enclave): cover withdrawals against a local Anvil chain`)
 - **Pushed to Remote:** No
+
+---
+
+## Task 3: Implement FIFO SerialQueue
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task 3 — Implement FIFO SerialQueue
+- **Status:** Implemented & Tested (Ready for review on branch `feat/serial-queue`)
+- **Objective:** Implement the FIFO serialized execution queue in `services/enclave/src/queue.ts` satisfying the `@cloakroom/shared` `SerialQueue` interface, ensuring strict concurrency of 1, FIFO execution ordering, and robust error isolation.
+
+### Files Created
+- `services/enclave/src/queue.ts`
+- `test/queue.test.ts`
+
+### Files Modified
+- `services/enclave/src/index.ts`
+- `docs/enclave.md`
+- `docs/roles/shreyas-api.md`
+- `docs/engineering-log.md`
+
+### Dependencies Added or Changed
+- None (zero dependencies added).
+
+### Implementation Details
+- Implemented `FifoSerialQueue` conforming to `SerialQueue` from `@cloakroom/shared`.
+- Used an internal promise chain (`private tail: Promise<void> = Promise.resolve()`).
+- `run<T>(op: () => Promise<T>): Promise<T>` chains execution onto `this.tail`.
+- Error containment: The callback attached to `this.tail` catches both asynchronous rejections and synchronous exceptions thrown by `op()`. It forwards the error to the caller's returned Promise reject handler while completing its own async step without re-throwing. This guarantees `this.tail` always settles to a resolved Promise, preventing subsequent queued tasks from being blocked or poisoned.
+- Deadlock warning documented: recursive self-enqueuing from within an active operation on the same queue instance will deadlock.
+
+### Architectural Decisions
+- Kept the queue purely mechanical and decoupled from business logic (ledger mutations, journal entries, or watcher events).
+- Avoided third-party queue libraries (such as p-queue) in favor of a minimal, auditable native Promise chain.
+
+### Tests Added
+- `test/queue.test.ts`: 8 unit tests covering:
+  1. FIFO ordering: 3 operations execute in exact submission order.
+  2. Strict serialization: controlled execution with gates proving maximum active concurrency is exactly 1 throughout lifecycle.
+  3. Async blocking: delayed first task prevents second task from starting until gate release.
+  4. Return value delivery: distinct callers receive their individual string, number, or object return values.
+  5. Rejection isolation: a rejected operation rejects its caller while subsequent tasks execute successfully.
+  6. Synchronous throw isolation: a synchronous throw in an operation rejects its caller without halting subsequent operations.
+  7. High-concurrency volume ordering: 100 concurrent tasks execute and complete in deterministic numerical sequence.
+  8. Empty queue behavior: immediate invocation on a newly constructed queue succeeds normally.
+
+### Exact Verification Commands & Results
+- `pnpm --filter @cloakroom/enclave typecheck`: Exited with code 0 (0 errors).
+- `pnpm --filter @cloakroom/enclave build`: Exited with code 0.
+- `pnpm typecheck`: Exited with code 0 (both packages pass).
+- `pnpm test`: Exited with code 0 (51 passed in 4 test files across monorepo).
+- `pnpm build`: Exited with code 0.
+- `git diff --check`: Clean (0 whitespace errors or conflicts).
+
+### Known Limitations & Unresolved Questions
+- Operations that recursively call `queue.run` on the same queue will deadlock.
+- Journaling before state mutation remains to be wired into ledger queue operations (Task 4 and Task 5).
+
+### Integration Handoffs
+- `FifoSerialQueue` exported from `@cloakroom/enclave` for use in upcoming ledger and watcher integrations.
+
+### Commit Reference
+- Pending review (branch `feat/serial-queue`).

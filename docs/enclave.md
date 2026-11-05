@@ -25,12 +25,32 @@ services/enclave/
 
 ## Queue (Shreyas)
 
+The queue provides strictly serialized, FIFO execution of all state-mutating operations.
+
 ```ts
-// services/enclave/src/queue.ts
+// packages/shared/src/types/interfaces.ts
 export interface SerialQueue {
   run<T>(op: () => Promise<T>): Promise<T>; // one op at a time, in arrival order
 }
 ```
+
+```ts
+// services/enclave/src/queue.ts
+export class FifoSerialQueue implements SerialQueue {
+  private tail: Promise<void> = Promise.resolve();
+
+  run<T>(op: () => Promise<T>): Promise<T> { ... }
+}
+```
+
+### Guarantees
+
+1. **FIFO order:** Operations execute strictly in the order they are submitted.
+2. **Strict serialization:** Maximum concurrency is exactly one; only one operation executes at any time.
+3. **Settlement pacing:** The next operation starts only after the previous operation settles (resolves or rejects).
+4. **Caller isolation:** Each caller receives its own operation's return value or rejection.
+5. **Error containment:** Rejections and synchronous exceptions are isolated to the caller's Promise; the queue tail recovers to a resolved Promise so subsequent operations continue unaffected.
+6. **Deadlock prevention:** Operations must not recursively enqueue and await another operation on the same queue.
 
 ## Journal (Shreyas)
 
