@@ -64,6 +64,8 @@ If the receipt shows a revert, journal `EXEC_FAILED` and release the reservation
 3. Sign, journal `WITHDRAWAL_BROADCAST`, send, wait for confirmations, then `ledger.consume` and journal `WITHDRAWAL_CONFIRMED`.
 4. If `pick` returns nothing, release the lock and return `NO_INVENTORY`. There is no consolidation step in the MVP.
 
+**After a broadcast, only a confirmed revert releases the funds.** If the result is unknown, for example when the receipt times out, the transaction may still land, so the funds stay reserved and the EOA stays busy until recovery settles it.
+
 ## Gas
 
 Every inventory EOA keeps `GAS_RESERVE_WEI`, which reconcile excludes from claims. Top-ups from one funder link the EOAs publicly. List that as a known leak.
