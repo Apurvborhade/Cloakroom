@@ -24,7 +24,7 @@ Read: [frontend.md](../frontend.md), [cre-workflow.md](../cre-workflow.md), [pri
 - [ ] Next.js app with wagmi, viem, RainbowKit, TanStack Query and Tailwind
 - [ ] Wallet connect working, no analytics or third-party scripts
 - [ ] Check CRE CLI access and run a scaffold, so problems surface early
-- [ ] Read the Anon-RPC wallet and app guide, and confirm how it plugs into viem
+- [ ] Read the [Anon-RPC wallet and app guide](https://ethereum.github.io/anon-rpc/wallets/), try [`@anon-rpc/browser-harness`](https://www.npmjs.com/package/@anon-rpc/browser-harness), and confirm how it plugs into viem
 
 ### Phase 1 (hours 3 to 12)
 
@@ -45,17 +45,18 @@ Read: [frontend.md](../frontend.md), [cre-workflow.md](../cre-workflow.md), [pri
 ### Phase 3 (hours 22 to 29)
 
 - [ ] Route all frontend chain reads through Anon-RPC by default
-- [ ] List any traffic left out and why
+- [ ] Raise the share of traffic it carries, for example by showing payout status from the chain instead of the API
+- [ ] List any traffic left out and why, including the enclave's own reads
 - [ ] Capture a successful CRE CLI simulation, with the enclave log line that accepted the report
 - [ ] UX rules: human units shown but base units signed, exact trigger price displayed, no custody addresses except the open deposit address
 
 ### Phase 4 (hours 29 to 36)
 
 - [ ] README: setup, architecture, trust assumptions, known leaks, Uniswap integration line links, image digest
-- [ ] A README section titled CROPS, if entering that backup prize
+- [ ] A README section titled CROPS, with lines for C, O, P and S as listed in [prizes.md](../prizes.md)
 - [ ] `FEEDBACK.md`, using Apurva's notes
 - [ ] Complete the [Uniswap feedback form](https://developers.uniswap.org/hackathon-feedback) with the file link
-- [ ] Demo video following [demo.md](../demo.md)
+- [ ] Demo video of 3 minutes or less following [demo.md](../demo.md), showing reads going through Anon-RPC
 - [ ] Submit with a buffer
 
 ## You depend on
@@ -78,4 +79,4 @@ Read: [frontend.md](../frontend.md), [cre-workflow.md](../cre-workflow.md), [pri
 - CRE access fails: the enclave polls its own Uniswap quote, and CRE becomes optional.
 - Anon-RPC cannot cover something: list it in the README instead of hiding it.
 
-EF places a project in at most one EF prize, so Anon-RPC is the target and CROPS is the backup.
+EF places a project in at most one EF prize. Submit to both, with Anon-RPC as the target and CROPS as the backup.
