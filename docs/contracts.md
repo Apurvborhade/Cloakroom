@@ -7,7 +7,6 @@
 | Custom privacy-pool contract | No, by design | Removing it is the whole idea |
 | Uniswap Universal Router, Permit2, WETH, pool | External, already deployed | Swap execution. Take addresses from the Uniswap docs for the chosen chain |
 | Test ERC-20 (for example MockUSDC) | Only if the chosen network has no liquid pair | Not needed on a mainnet fork |
-| Chainlink ETH/USD data feed | External, optional | Second price source for the enclave's cross-check |
 | EnclaveRegistry | Optional | Publishes the enclave public key and build hash so anyone can look up which enclave is current. Holds no user data |
 | Operator staking and slashing | No, out of scope for v1 | Multi-node work |
 | Paymaster or account abstraction | No | Custody EOAs pay their own gas |

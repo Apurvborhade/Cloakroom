@@ -28,12 +28,11 @@ A judge can watch two users deposit, one swap run from an EOA that neither user 
 
 ## Architecture
 
-Everything outside the TEE node (the wallet, the frontend, the CRE workflow and the chain) only sees signed requests, price reports or ordinary transactions.
+Everything outside the TEE node (the wallet, the frontend, Uniswap's API and the chain) only sees signed requests, quote requests or ordinary transactions.
 
 ```mermaid
 flowchart TB
   wallet["User wallet<br/>signs EIP-712 messages"] --> frontend["Frontend<br/>reads via Anon-RPC"]
-  cre["CRE workflow<br/>price report, simulated"]
 
   subgraph tee["TEE node (attested): the only place state and keys live"]
     api["API<br/>decrypts requests, checks signature, nonce and expiry"]
@@ -42,6 +41,8 @@ flowchart TB
     executor["Executor<br/>pick EOA, sign"]
     keys["Key manager<br/>sealed HD seed"]
     watcher["Chain watcher<br/>watches deposits"]
+    poller["Price poller<br/>checks the price"]
+    poller --> intents
     api --> ledger
     api --> intents
     intents --> executor
@@ -50,7 +51,8 @@ flowchart TB
   end
 
   frontend -- "encrypted request" --> api
-  cre -- "price report" --> api
+  poller -- "quote requests" --> uniswap["Uniswap Trading API"]
+  executor -- "quote requests" --> uniswap
   executor -- "swap, payout" --> chain["Chain<br/>Sepolia or a fork: custody EOAs, Uniswap router"]
   chain -- "deposits, receipts" --> watcher
 ```
@@ -59,10 +61,11 @@ flowchart TB
 | --- | --- | --- |
 | API | Decrypt requests, verify signature, nonce and expiry, hand off to the ledger | Shreyas (decryption: Felix) |
 | Ledger | Balances, reservations, journal, reconcile check | Shreyas |
-| Intents | Store intents and evaluate price conditions on each report | Shreyas |
+| Intents | Store intents and evaluate price conditions on each price check | Shreyas |
 | Executor | Choose an inventory EOA, build the swap or transfer, sign, broadcast, settle | Apurva |
 | Key manager | Generate and seal the HD seed, derive EOAs, sign only for approved operations | Felix |
 | Chain watcher | Track deposits, confirmations and receipts | Apurva |
+| Price poller | Check the price and trigger intents | Apurva |
 
 ## Stack
 
@@ -78,7 +81,7 @@ TypeScript end to end, with Foundry for chain tooling. Items marked *verify* dep
 | DEX | Uniswap: Trading API for quotes, Universal Router for execution | One pair: WETH to Circle USDC, which has liquidity on Sepolia |
 | Client signing | EIP-712 through wagmi and viem, signed by the user's existing wallet | No custom wallet. Auth key is separate from custody keys |
 | Frontend | Next.js, wagmi, RainbowKit, TanStack Query, Tailwind, Anon-RPC browser harness for chain reads | No third-party analytics |
-| Trigger | Chainlink CRE workflow, run through the CRE CLI simulation | *Verify* CLI setup and access early |
+| Trigger | The enclave polls its own Uniswap quote | Checks every `PRICE_POLL_INTERVAL_SEC` |
 | Packaging | Docker image, pinned dependencies, reproducible build | Judges and attestation both want a build they can rebuild |
 | Tests | Foundry and Anvil for chain, Vitest for ledger and API, fast-check for property tests | Reconcile runs after every test |
 
