@@ -15,8 +15,8 @@ export type DepositEvent =
       baseline: bigint;
       baselineBlock: bigint;
     }
-  | { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; block: bigint }
-  | { t: 'DEPOSIT_SESSION_CLOSED'; id: string };
+  | { t: 'DEPOSIT_CREDITED'; id: string; owner: Address; amount: bigint; block: bigint }
+  | { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address };
 
 /** The parts of Shreyas's Journal, Ledger and SerialQueue that the watcher uses. */
 export interface WatcherJournal {
@@ -189,7 +189,13 @@ export class DepositWatcher {
       const amount = balance - session.baseline - session.credited;
       if (amount <= 0n) return;
 
-      await this.deps.journal.append({ t: 'DEPOSIT_CREDITED', id: session.id, amount, block });
+      await this.deps.journal.append({
+        t: 'DEPOSIT_CREDITED',
+        id: session.id,
+        owner: session.owner,
+        amount,
+        block,
+      });
       session.credited += amount;
       this.deps.ledger.credit(
         session.owner,
@@ -202,7 +208,11 @@ export class DepositWatcher {
 
   private async closeSession(session: DepositSession): Promise<void> {
     await this.deps.queue.run(async () => {
-      await this.deps.journal.append({ t: 'DEPOSIT_SESSION_CLOSED', id: session.id });
+      await this.deps.journal.append({
+        t: 'DEPOSIT_SESSION_CLOSED',
+        id: session.id,
+        eoa: session.eoa,
+      });
       session.open = false;
     });
     this.deps.onSessionClosed?.(session.eoa);
