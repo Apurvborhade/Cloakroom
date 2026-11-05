@@ -459,3 +459,38 @@ This document is the canonical, chronological record of all backend and accounti
 - **Commit:** `31d36f9` (`feat(enclave): add verifiable Nitro attestation bootstrap`).
 - **Pushed to Remote:** Yes, on `tee/nitro-attestation`.
 - **PR:** Not created; the user requested a creation link.
+
+---
+
+## Task A5: Watcher Journal Events
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A5 (Apurva's workstream) — Watcher Journal Events
+- **Status:** Committed on branch `fix/watcher-journal-events`. Not pushed by this entry.
+- **Objective:** Move the watcher's deposit events closer to `JournalEvent` in `packages/shared`, as the deposit journal events decision suggests.
+
+### Files Modified
+- `services/enclave/src/watcher.ts` (`owner` added to `DEPOSIT_CREDITED`, `eoa` added to `DEPOSIT_SESSION_CLOSED`)
+- `test/watcher.test.ts`
+- `docs/decisions/2026-11-06-0258-deposit-journal-events.md`
+- `docs/decisions/README.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Tests Added
+- `test/watcher.test.ts`: one test covering the contents of each deposit event. Two deliberate bugs were introduced to check it, and each one made it fail.
+
+### Exact Verification Commands & Results
+- `pnpm test`: Exited with code 0 (159 passed in 8 test files).
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- `watcher.ts` still cannot use the real `Journal`. `DEPOSIT_SESSION_OPENED` in `packages/shared` has no baseline, and its `DEPOSIT_CREDITED` requires a `txHash` the watcher cannot get.
+
+### Integration Handoffs
+- **Shreyas:** add `baseline` and `baselineBlock` to `DEPOSIT_SESSION_OPENED`, and replace `txHash` with `block` in `DEPOSIT_CREDITED`. Ledger replay can read the owner from `DEPOSIT_CREDITED`.
+
+### Commit Reference
+- **Commit:** `0bd017473130b179f19f1b76001555b8c0177a5b` (`fix(enclave): add owner and eoa to watcher journal events`)
+- **Pushed to Remote:** No
