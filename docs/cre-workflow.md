@@ -39,6 +39,15 @@ function onCronTrigger(runtime: Runtime<Config>) {
 
 Optional second source: read the Chainlink ETH/USD data feed on the chosen chain and take the median of the two.
 
+## Price source on Sepolia
+
+The Sepolia WETH/USDC pool trades at about 11.6x the market price, so a market price would fail the enclave's cross-check every time. See [decisions.md](decisions.md) section 5.
+
+- Read the pool price on-chain and report that as `price`.
+- Fetch the external API price and log it, but do not use it to trigger swaps.
+
+This replaces `fetchPrice` as the source of `price` in the sketch above, and the median with the data feed does not apply on Sepolia.
+
 ## Authentication
 
 Keep a shared secret in CRE secrets and send `X-Report-Auth: HMAC_SHA256(secret, body)`. The enclave checks the HMAC in constant time, requires `ts` within 90 seconds, and rejects any `ts` not newer than the last accepted one. A shared secret means CRE is trusted for freshness, not for the price itself.
