@@ -1,4 +1,4 @@
-# Felix: TEE and custody
+# TEE and custody
 
 **Done when:** the quote verifies and a derived EOA signs a test transaction.
 

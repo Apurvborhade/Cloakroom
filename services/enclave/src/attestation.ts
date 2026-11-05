@@ -45,8 +45,8 @@ export class AttestationService {
     const quote = await this.provider({ publicKey, userData, nonce });
     return {
       quote: quote.toString('base64'),
-      enclavePubKey: publicKey.toString('base64'),
-      buildHash: this.buildHash,
+      enclavePubKey: `0x${publicKey.toString('hex')}`,
+      buildHash: `0x${this.buildHash}`,
       chainId: 11155111,
     };
   }

@@ -459,3 +459,12 @@ This document is the canonical, chronological record of all backend and accounti
 - **Commit:** `31d36f9` (`feat(enclave): add verifiable Nitro attestation bootstrap`).
 - **Pushed to Remote:** Yes, on `tee/nitro-attestation`.
 - **PR:** Not created; the user requested a creation link.
+
+
+## Task T1: Align Attestation Wire Encoding
+
+- **Date:** 2026-11-06
+- **Objective:** Match the shared attestation schema and domain-salt input.
+- **Changes:** Attestation responses now encode the transport public key and build hash as `0x`-prefixed hex. Updated the verifier, contract test, and API handoff.
+- **Verification:** Attestation contract tests: 4 passed. Python verifier tests: 10 passed.
+- **Push:** Not requested; subsequent work remains local.

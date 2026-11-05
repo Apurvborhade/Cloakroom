@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import io
 import json
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -40,10 +41,14 @@ def verify(response, measurements, build_hash, nonce, root_pem,
            chain_id=11155111, now=None, root_fingerprint=ROOT_SHA256):
     require(isinstance(response, dict), "Invalid response")
     require(response.get("chainId") == chain_id, "Wrong chain ID")
-    require(isinstance(build_hash, str) and len(build_hash) == 64,
+    require(isinstance(build_hash, str) and len(build_hash) in (64, 66),
             "Expected SHA-256 build hash required")
-    require(response.get("buildHash") == build_hash, "Wrong build hash")
-    public_key = base64.b64decode(response["enclavePubKey"], validate=True)
+    build_hash = build_hash.removeprefix("0x")
+    require(re.fullmatch(r"[0-9a-f]{64}", build_hash), "Invalid expected build hash")
+    require(response.get("buildHash") == "0x" + build_hash, "Wrong build hash")
+    require(isinstance(response.get("enclavePubKey"), str)
+            and re.fullmatch(r"0x[0-9a-f]{64}", response["enclavePubKey"]), "Invalid public key")
+    public_key = bytes.fromhex(response["enclavePubKey"][2:])
     quote = base64.b64decode(response["quote"], validate=True)
     require(len(public_key) == 32 and 0 < len(quote) <= 16_384, "Invalid quote/key size")
     cose = decode_cbor(quote)
@@ -114,7 +119,7 @@ def verify(response, measurements, build_hash, nonce, root_pem,
         require(len(trusted) == 48 and trusted != bytes(48), "Invalid trusted PCR")
         require(isinstance(measured, bytes) and hmac.compare_digest(measured, trusted),
                 f"PCR{index} mismatch (wrong image or debug mode)")
-    return {"ok": True, "buildHash": build_hash, "chainId": chain_id}
+    return {"ok": True, "buildHash": "0x" + build_hash, "chainId": chain_id}
 
 
 def main():

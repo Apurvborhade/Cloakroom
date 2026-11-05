@@ -109,8 +109,8 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 `GET /attestation` returns `{ quote, enclavePubKey, buildHash, chainId }`:
 
 - `quote`: base64-encoded CBOR/COSE Sign1 Nitro attestation document.
-- `enclavePubKey`: base64-encoded raw 32-byte X25519 public key, generated inside the enclave.
-- `buildHash`: lowercase hex SHA-256 build hash.
+- `enclavePubKey`: `0x`-prefixed hex raw 32-byte X25519 public key, generated inside the enclave.
+- `buildHash`: `0x`-prefixed lowercase hex SHA-256 build hash.
 - `chainId`: `11155111` (Sepolia).
 
 For freshness, supply `?nonce=<hex>` with 32–64 random bytes encoded as lowercase hex. The document signs that nonce, the raw public key in `public_key`, and `sha256(rawPublicKey || rawBuildHash)` in `user_data`. Decode the build hash from hex before concatenation. Verify against trusted PCR0–2 from the build, not just the response's build hash. The phase-0 key changes on restart; clients must fetch attestation again. Key persistence is still tracked in gap 3.6.

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { test } from 'vitest';
+import { AttestationResponseSchema } from '@cloakroom/shared';
 import { AttestationService, type QuoteProvider } from '../src/attestation.js';
 
 const buildHash = 'ab'.repeat(32);
@@ -16,9 +17,10 @@ test('binds an enclave-generated X25519 key and the build hash into the quote', 
   const request = requests[0]!;
   assert.deepEqual(Object.keys(response).sort(), ['buildHash', 'chainId', 'enclavePubKey', 'quote']);
   assert.equal(response.chainId, 11155111);
-  assert.equal(response.buildHash, buildHash);
-  assert.equal(Buffer.from(response.enclavePubKey, 'base64').length, 32);
-  assert.deepEqual(request.publicKey, Buffer.from(response.enclavePubKey, 'base64'));
+  assert.equal(response.buildHash, `0x${buildHash}`);
+  AttestationResponseSchema.parse(response);
+  assert.equal(Buffer.from(response.enclavePubKey.slice(2), 'hex').length, 32);
+  assert.deepEqual(request.publicKey, Buffer.from(response.enclavePubKey.slice(2), 'hex'));
   assert.deepEqual(request.nonce, nonce);
   assert.deepEqual(request.userData, createHash('sha256')
     .update(request.publicKey).update(Buffer.from(buildHash, 'hex')).digest());
