@@ -1,0 +1,67 @@
+# Deployment, configuration and attestation
+
+**Owner:** Felix.
+
+The enclave ships as one Docker image built reproducibly, so a judge can rebuild it and compare hashes. How a quote is fetched and how secrets reach the enclave differs per TEE provider, so treat those steps as *verify* items for whichever platform is chosen.
+
+## Docker image
+
+Starting point from the spec. See [decisions.md](decisions.md) gap 3.8 before relying on the `node_modules` copy.
+
+```dockerfile
+FROM node:20-bookworm-slim@sha256:<pin-the-digest> AS build
+WORKDIR /app
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+COPY packages ./packages
+COPY services/enclave ./services/enclave
+RUN corepack enable && pnpm install --frozen-lockfile && pnpm --filter enclave build
+
+FROM node:20-bookworm-slim@sha256:<pin-the-digest>
+WORKDIR /app
+COPY --from=build /app/services/enclave/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+USER node
+CMD ["node", "dist/server.js"]
+```
+
+## Configuration
+
+Mirrored in [`.env.example`](../.env.example).
+
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `CHAIN_ID` | `11155111` | Execution network and EIP-712 domain |
+| `RPC_URL` | provider URL | Chain reads and broadcasts. Injected as a secret |
+| `CONFIRMATIONS` | `2` | Blocks before crediting or settling |
+| `GAS_RESERVE_WEI` | `10000000000000000` | Kept in each inventory EOA, excluded from claims |
+| `UNIVERSAL_ROUTER_ADDRESS` | from Uniswap docs | Pinned swap destination |
+| `WETH_ADDRESS`, `TOKEN_OUT_ADDRESS` | from Uniswap docs | Pair for the demo |
+| `UNISWAP_API_KEY` | from the developer platform | Quotes and swap calldata |
+| `PRICE_TOLERANCE_BPS` | `100` | Max gap between a report and the enclave's own quote |
+| `MAX_SLIPPAGE_BPS_CAP` | `100` | Upper limit on a user's slippage setting |
+| `FEE_BPS` | `10` | Fee: see [decisions.md](decisions.md) gap 3.1 |
+| `DEPOSIT_SESSION_TTL_SEC` | `900` | Lifetime of a deposit address |
+| `ORACLE_HMAC_SECRET` | random 32 bytes | Authenticates price reports |
+| `ADMIN_ADDRESS`, `SEEDING_ENABLED` | wallet, `true` then `false` | Operator seeding endpoint, turned off after setup |
+| `MAX_AMOUNT_NATIVE_WEI` | demo cap | Limits exposure during the demo |
+| `SIM_MODE` | `false` | Shows the TEE-simulated banner when `true` |
+| `ALLOWED_ORIGIN` | frontend URL | CORS |
+
+## Boot and attestation
+
+1. At boot the enclave generates its HPKE key pair and loads or creates the sealed HD seed.
+2. It requests a platform quote whose report data commits to `sha256(enclavePubKey || buildHash)`.
+3. `GET /attestation` returns the quote, the public key, the build hash and the chain ID. The frontend uses the key hash as the EIP-712 `salt`.
+4. The journal is encrypted with a key derived inside the TEE. If the platform has no sealed storage, use a persistent volume with a platform-derived key. Only `SIM_MODE` may fall back to a key from an environment variable.
+
+## Seeding
+
+A signed admin call returns the inventory EOA addresses once. `scripts/seed-inventory.ts` funds them with ETH and the output token, then set `SEEDING_ENABLED=false`. These addresses become public the moment they are funded, which is a known leak.
+
+## Release steps
+
+1. Build the image, record its digest in the README.
+2. Deploy to the TEE provider and fetch `/attestation`.
+3. Verify the quote with a CLI script and check that its report data matches the public key.
+4. Seed the inventory (Apurva), then disable seeding.
+5. Point the frontend and the CRE workflow at the enclave URL (Pradnyesh).
