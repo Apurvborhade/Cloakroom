@@ -72,7 +72,7 @@ This document is the canonical, chronological record of all backend and accounti
 
 - **Date:** 2026-11-06
 - **Task Number & Title:** Task 2 — Implement Shared Contracts, Zod Schemas, and Engineering Documentation
-- **Status:** Implemented & Tested (Pending user review before commit)
+- **Status:** Committed & Pushed (commit `ea8b807b539c381c81ef80a52df2f0269f8c679e`)
 - **Objective:** Build the `@cloakroom/shared` package, establish types, models, journal events, interfaces, Zod schemas, test suites, engineering documentation, development conventions, and team handoffs.
 
 ### Files Created
@@ -139,4 +139,6 @@ This document is the canonical, chronological record of all backend and accounti
 - **Pradnyesh:** Provided `@cloakroom/shared` import path, `EIP712_TYPES`, wire request/response schemas, decimal string wire types, and error codes.
 
 ### Commit Reference
-- Pending user review.
+- **Commit:** `ea8b807b539c381c81ef80a52df2f0269f8c679e`
+- **Commit Message:** `feat(shared): implement protocol types, schemas, and team contracts`
+- **Pushed to Remote:** `origin/main` (clean fast-forward push)
