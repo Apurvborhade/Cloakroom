@@ -23,7 +23,7 @@ One decision per file. This page is the index, so check here first.
 | [Relationship to hide](2026-11-06-0151-relationship-to-hide.md) | Team | Before hour 0 |
 | [Withdrawal credential](2026-11-06-0151-withdrawal-credential.md) | Team | Before hour 0 |
 | [Initial inventory](2026-11-06-0151-initial-inventory.md) | Apurva | Before hour 0 |
-| [Deposit journal events](2026-11-06-0258-deposit-journal-events.md) | Shreyas, Apurva | Phase 1 |
+| [Deposit journal events](2026-11-06-0258-deposit-journal-events.md) (`watcher.ts` side done) | Shreyas, Apurva | Phase 1 |
 
 ## Accepted
 
