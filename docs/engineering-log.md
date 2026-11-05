@@ -369,3 +369,52 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `79abbb3ed7297baec54871db6070ca51465b8fda` (`docs(decisions): drop Chainlink CRE`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A4: Environment Configuration
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A4 (Apurva's workstream) — Environment Configuration
+- **Status:** Committed on branch `refactor/env-config`. Not pushed by this entry.
+- **Objective:** Read the enclave's settings from environment variables, validated in one place, instead of constants in code.
+
+### Files Created
+- `services/enclave/src/config.ts`
+- `services/enclave/test/config.test.ts`
+
+### Files Modified
+- `.env.example` (added `GAS_MARGIN_PERCENT`, `RECEIPT_TIMEOUT_MS`, `INVENTORY_SETTLE_ATTEMPTS`, `SESSION_GRANT_TTL_SEC`, `MAX_EXPIRY_FUTURE_SEC`, `MAX_CLOCK_SKEW_SEC`, `MAX_BODY_SIZE_BYTES`, and an example `MAX_AMOUNT_NATIVE_WEI`)
+- `services/enclave/src/executor.ts`
+- `services/enclave/src/watcher.ts`
+- `services/enclave/test/executor-withdrawal.test.ts`
+- `docs/deployment.md`, `docs/roles/apurva-onchain.md`, `docs/roles/shreyas-api.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- Every variable is required, so no value is duplicated as a default in code.
+- Errors name the variables at fault and never their values, because some are secrets.
+- Fixed definitions stay in `packages/shared`, including `NATIVE`, `BPS_DENOMINATOR`, `PRICE_PRECISION` and error codes. That package also runs in the browser, which has no `process.env`.
+- A test keeps `.env.example` and the schema in step.
+
+### Tests Added
+- `services/enclave/test/config.test.ts`: covers every required variable, invalid values, exact wei parsing, and that values never appear in errors.
+
+### Exact Verification Commands & Results
+- `pnpm test`: Exited with code 0 (154 passed in 7 test files).
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Nothing calls `loadConfig` yet, because the enclave has no boot code.
+- Existing local `.env` files need the new variables.
+- `packages/shared/src/constants.ts` still holds duplicates of some limits, unused by any code.
+
+### Integration Handoffs
+- **Shreyas:** read limits from `loadConfig`. `MAX_BODY_SIZE_BYTES`, `MAX_EXPIRY_FUTURE_SEC`, `MAX_CLOCK_SKEW_SEC`, `SESSION_GRANT_TTL_SEC`, `DEPOSIT_SESSION_DEFAULT_TTL_SEC` and `CONFIRMATIONS_DEFAULT` in `packages/shared` can then be removed.
+- **Felix:** new settings must be injected into the TEE.
+
+### Commit Reference
+- **Commit:** `fae06c88c3250cdee348655e787aeabbd58c5d58` (`feat(enclave): add validated environment config`)
+- **Pushed to Remote:** No
