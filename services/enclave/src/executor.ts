@@ -5,9 +5,6 @@ import type { Address, Hex, PublicClient, TransactionSerializableEIP1559 } from 
 import type { Inventory } from './inventory.js';
 
 const ERC20_ABI = parseAbi(['function transfer(address to, uint256 amount) returns (bool)']);
-const GAS_MARGIN_PERCENT = 120n;
-const INVENTORY_SETTLE_ATTEMPTS = 3;
-const DEFAULT_RECEIPT_TIMEOUT_MS = 180_000;
 
 /** What the signing guard must see before it will sign an operation. */
 export interface ExpectedTransaction {
@@ -43,7 +40,11 @@ export interface ExecutorDeps {
   ledger: Pick<Ledger, 'consume' | 'release'>;
   queue: SerialQueue;
   confirmations: bigint;
-  receiptTimeoutMs?: number;
+  receiptTimeoutMs: number;
+  /** Gas limit as a percentage of the estimate. */
+  gasMarginPercent: bigint;
+  /** How many times to try refreshing balances before freeing an EOA. */
+  inventorySettleAttempts: number;
 }
 
 export type WithdrawalOutcome =
@@ -143,7 +144,7 @@ export class Executor {
         hash: txHash,
         // viem counts the block holding the transaction as the first confirmation.
         confirmations: Number(confirmations) + 1,
-        timeout: this.deps.receiptTimeoutMs ?? DEFAULT_RECEIPT_TIMEOUT_MS,
+        timeout: this.deps.receiptTimeoutMs,
       });
     } catch {
       return { status: 'unresolved', txHash };
@@ -202,7 +203,7 @@ export class Executor {
         type: 'eip1559',
         chainId,
         nonce,
-        gas: (estimatedGas * GAS_MARGIN_PERCENT) / 100n,
+        gas: (estimatedGas * this.deps.gasMarginPercent) / 100n,
         maxFeePerGas: fees.maxFeePerGas,
         maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
         ...payment,
@@ -259,7 +260,7 @@ export class Executor {
    * EOA stays busy, which only makes it unavailable, and never risks overspending.
    */
   private async releaseEoa(opId: string): Promise<void> {
-    for (let attempt = 0; attempt < INVENTORY_SETTLE_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < this.deps.inventorySettleAttempts; attempt++) {
       try {
         await this.deps.inventory.refresh();
         this.deps.inventory.free(opId);

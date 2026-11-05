@@ -145,7 +145,9 @@ function setup(eoaCount: number, options: SetupOptions = {}) {
     },
     queue: { run: (op) => op() },
     confirmations: CONFIRMATIONS,
-    receiptTimeoutMs: options.receiptTimeoutMs,
+    receiptTimeoutMs: options.receiptTimeoutMs ?? 30_000,
+    gasMarginPercent: 120n,
+    inventorySettleAttempts: 3,
   });
   return {
     executor,
