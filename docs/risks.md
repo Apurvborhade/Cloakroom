@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | TEE setup eats the schedule | Run the same container outside a TEE, label it TEE-simulated in the UI and README, and make no confidentiality claim | Felix |
 | No Uniswap liquidity on the chosen testnet | Run on an Anvil mainnet fork and call it a fork-based demonstration. Check first that this does not break the Anon-RPC integration | Apurva |
+| Sepolia pool price is far from the market, so the cross-check would block every swap | Use the pool as the reference price and say so in the demo ([decisions.md](decisions.md) section 5) | Apurva, Pradnyesh |
 | Inventory shortage during the demo | Pre-seed 4 to 6 EOAs and reject cleanly when a request cannot be filled | Apurva |
 | CRE access or setup problems | Let the enclave poll its own Uniswap quote and treat CRE as optional | Pradnyesh, Apurva |
 | Anon-RPC only covers the browser | Route frontend reads only and list the enclave's reads as a leak | Pradnyesh |

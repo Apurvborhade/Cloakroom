@@ -9,7 +9,7 @@ Decide before hour 0. The biggest schedule risk is TEE setup, so it is time-boxe
 | # | Decision | Recommendation | Owner | Status |
 | --- | --- | --- | --- | --- |
 | 1 | TEE platform | EigenCompute, Phala dstack or Nitro Enclaves: whichever returns an attestation quote first | Felix | Open |
-| 2 | Network | Sepolia, or a fork. None of Whitechain's four tracks fits as written: each needs a USDT payment settled on Whitechain Sepolia in the main flow, and they target payments, not swaps. Check Anon-RPC network support first, because a local fork may not work for the EF prize | Apurva | Open |
+| 2 | Network | **Sepolia.** Uniswap supports it and its WETH/USDC pool has real liquidity. A local fork may not work for the EF prize. None of Whitechain's four tracks fits as written: each needs a USDT payment settled on Whitechain Sepolia in the main flow, and they target payments, not swaps | Apurva | Decided, pending a Trading API quote test |
 | 3 | Relationship to hide | Deposit to withdrawal and deposit to swap. Swap to withdrawal can still leak through amounts and timing | Team | Recommended, confirm |
 | 4 | Withdrawal credential | The depositor's wallet signing EIP-712, with recovery meaning the same wallet. Custody keys are never involved | Team | Recommended, confirm |
 | 5 | Initial inventory | Operator-funded seed EOAs, disclosed in the demo | Apurva | Recommended, confirm |
@@ -40,6 +40,7 @@ Decide before hour 0. The biggest schedule risk is TEE setup, so it is time-boxe
 | 3.8 | **The Dockerfile will likely not run.** It copies only the root `node_modules` from a pnpm workspace, where package dependencies live under `services/enclave/node_modules` as symlinks | Use `pnpm deploy` to produce a self-contained output directory, and test the image early | Felix | Phase 0 |
 | 3.9 | **Non-ETH deposits.** `DepositRequest` has an `asset` field, but the watcher only tracks native balance | Reject any `asset` other than `NATIVE` in v1 | Shreyas, Apurva | Phase 1 |
 | 3.10 | **Files with no owner in the spec.** `server.ts` and `reconcile.ts` are unassigned, and `queue.ts` is missing from the repo layout | Assigned to Shreyas in [roles/README.md](roles/README.md). Reconcile needs on-chain balances from Apurva's inventory | Shreyas | Phase 0 |
+| 3.11 | **Sepolia pool price does not match the market.** See section 5 | Use the pool as the reference price | Apurva, Pradnyesh | Phase 0 |
 
 ## 4. Verify against provider docs
 
@@ -49,11 +50,49 @@ The plan and spec state these were not checked.
 | --- | --- |
 | TEE provider access, pricing, attestation format, how a quote is fetched and how secrets reach the enclave | Felix |
 | HPKE library choice (for example `@hpke/core`) works in both the browser and Node, in our build | Felix |
-| Exact swap flow: wrap step from ETH, Permit2 approval from an ERC-20, Universal Router and Permit2 addresses | Apurva |
-| Uniswap liquidity on the chosen network | Apurva |
-| Which networks Anon-RPC supports, and whether a local Anvil fork can be reached through it ([network guide](https://ethereum.github.io/anon-rpc/networks/)) | Apurva |
-| Whether Anon-RPC has any server-side option for enclave reads. The published packages are browser and browser-extension harnesses | Apurva |
+| Exact swap flow: wrap step from ETH, Permit2 approval from an ERC-20 | Apurva |
+| The Trading API returns a Sepolia quote for WETH to USDC, and the router in its calldata matches `UNIVERSAL_ROUTER_ADDRESS` | Apurva |
+| A Sepolia RPC URL works through an Anon-RPC worker, and the provider accepts that traffic. Some providers refuse Tor | Pradnyesh |
 | How the Anon-RPC harness plugs into viem | Pradnyesh |
 | CRE CLI setup and access. Simulation works without approval; live DON deployment is Early Access and is not needed for the prize | Pradnyesh |
 | Whether an HTTP POST inside a workflow runs once or on several DON nodes | Pradnyesh |
 | Whether the enclave can verify a DON-signed report instead of the HMAC (stretch) | Pradnyesh, Apurva |
+
+## 5. Sepolia network and reference price
+
+### What was checked
+
+Read on-chain and from the Uniswap and Anon-RPC docs on 2026-11-06. The Trading API itself has not been called yet: quotes below come from Uniswap's on-chain QuoterV2.
+
+| Check | Result |
+| --- | --- |
+| Trading API support | Sepolia is listed as accessible through the API |
+| Liquidity | The WETH/USDC 0.05% pool holds about 128 WETH and 3.2M USDC |
+| Quote | About 2,630 USDC for 0.1 WETH |
+| Anon-RPC | Browser-only, so enclave reads are a known leak. It takes a target URL, so a Sepolia RPC should work through any worker (not yet tested). Nox is published on Sepolia. Tor and Nym bootstrap with one non-anonymized mainnet read |
+
+### The problem
+
+| Source | ETH price |
+| --- | --- |
+| Chainlink ETH/USD feed on Sepolia | about $2,255 |
+| Uniswap WETH/USDC 0.05% pool on Sepolia | about $26,060 |
+
+The pool is about 11.6x the market price. With `PRICE_TOLERANCE_BPS=100`, a report at the market price would fail the cross-check every time, and every intent would stay pending.
+
+### The decision
+
+**Use the existing pool, and take the reference price from it.**
+
+- The CRE workflow reads the pool price on-chain and reports that as `price`.
+- The external API price is fetched and logged, but does not trigger swaps.
+- `triggerPrice` is set relative to the pool price, not the market price.
+- The demo says openly that testnet pools do not track the market.
+
+**Why:** this carries the least risk for the Uniswap prize, the largest of the three, because the Trading API is most likely to route through an established pool.
+
+**What it costs:** a weaker Chainlink entry, because the prize asks for an external price API too. The cross-check still catches a forged report, because the enclave compares it with its own quote.
+
+### Alternative
+
+Deploy MockUSDC and our own pool, priced at market. This keeps the price check exactly as specified and gives us control of the price, but the Trading API may not route to a new pool. If it does not, we build the swap ourselves, which weakens the Uniswap entry. Switch to this only if the API is shown to route to it.

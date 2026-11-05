@@ -74,8 +74,8 @@ TypeScript end to end, with Foundry for chain tooling. Items marked *verify* dep
 | Enclave service | TypeScript, Node 20+, Fastify, zod, viem | One process. All ledger writes go through a single serialized queue |
 | Key management | Seed generated inside the enclave, EOAs derived by HD path, seed sealed to the enclave | No key export endpoint. Never log keys or custody EOA addresses |
 | Ledger storage | In-memory state plus an append-only, hash-chained journal, encrypted before it touches disk | PostgreSQL only for non-secret metadata, if at all |
-| Chain | Sepolia, or an Anvil mainnet fork if Uniswap liquidity is missing there | Decide in phase 0 |
-| DEX | Uniswap: Trading API for quotes, Universal Router or SwapRouter for execution | One pair, for example WETH to a test USDC. Confirm a pool with liquidity on the chosen network |
+| Chain | Sepolia. An Anvil mainnet fork is the fallback | See [decisions.md](decisions.md) section 5 |
+| DEX | Uniswap: Trading API for quotes, Universal Router for execution | One pair: WETH to Circle USDC, which has liquidity on Sepolia |
 | Client signing | EIP-712 through wagmi and viem, signed by the user's existing wallet | No custom wallet. Auth key is separate from custody keys |
 | Frontend | Next.js, wagmi, RainbowKit, TanStack Query, Tailwind, Anon-RPC browser harness for chain reads | No third-party analytics |
 | Trigger | Chainlink CRE workflow, run through the CRE CLI simulation | *Verify* CLI setup and access early |
