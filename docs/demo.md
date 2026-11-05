@@ -1,6 +1,8 @@
 # Demo script
 
-About 3 minutes. Pradnyesh owns the video; everyone joins the rehearsal.
+3 minutes or less, which the CROPS prize requires. Pradnyesh owns the video; everyone joins the rehearsal.
+
+For the Anon-RPC prize, the video must also show chain reads going through Anon-RPC. Show this during steps 3 and 6.
 
 1. Show the attestation page and state the trust model in one sentence.
 2. Alice and Bob deposit from different wallets. The explorer shows two plain transfers to two EOAs.
