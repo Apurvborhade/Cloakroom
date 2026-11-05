@@ -477,3 +477,13 @@ This document is the canonical, chronological record of all backend and accounti
 - **Verification:** `pnpm typecheck` passed; 9 targeted attestation/transport tests passed. Covers concurrent contexts, wrong recipient/route/chain, malformed encoding, ciphertext modification and size limits.
 - **Remaining:** Browser execution and main-server integration are tested separately.
 - **Push:** No push; local work only.
+
+
+## Task T3: Sealed Custody State and Signing Guard
+
+- **Date:** 2026-11-06
+- **Changes:** Added AES-GCM sealed state with revision checks and atomic durable file writes; explicit simulation-key gating; HD custody allocation; persistent HPKE identity; journal cipher; durable withdrawal signing registration; once-only signing across restarts; exact-byte recovery. The executor now awaits registration. Added shared signing journal events.
+- **Verification:** Typecheck passed; 22 custody/vault tests passed. Coverage includes race conditions, mutable request snapshots, wrong destinations/chains/fees, failed or uncertain writes, and rollback relative to the journal.
+- **Handoff:** Allocation and real signer registration are asynchronous. Updated the enclave interface and shared handoff documentation.
+- **Remaining:** Live KMS setup, swap authorization and external rollback anchoring. Local environment keys are restricted to explicit simulation mode.
+- **Push:** No push; local work only.

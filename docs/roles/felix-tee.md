@@ -30,8 +30,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 1 (hours 3 to 12)
 
-- [ ] `KeyManager`: sealed seed, HD derivation, `allocate`, `list`, `sign`
-- [ ] Signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
+- [x] `KeyManager`: sealed state, HD derivation, durable `allocate`, `list`, `sign`; live KMS configuration remains open
+- [x] Withdrawal signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
 - [ ] `envelope.ts`, plus an HPKE library and parameters that also work in the browser, shared with Pradnyesh
 - [x] Report data commits to `sha256(enclavePubKey || buildHash)`
 - [ ] Close [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Pradnyesh
@@ -40,12 +40,12 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 ### Phase 2 (hours 12 to 22)
 
 - [ ] Support Apurva's executor signing against the real guard
-- [ ] Journal encryption key. Only `SIM_MODE` may fall back to an environment variable
+- [x] Journal cipher derived from the custody seed; simulation wrapping keys require explicit `SIM_MODE`
 
 ### Phase 3 (hours 22 to 29)
 
 - [x] Quote verification CLI script: AWS trust chain, COSE signature, nonce, timestamp, PCRs and key/build binding
-- [ ] `keys.test.ts` and `envelope.test.ts` ([testing.md](../testing.md))
+- [x] `keys.test.ts` and `envelope.test.ts` ([testing.md](../testing.md))
 - [ ] Audit: no endpoint returns a key or seed, and no key or custody address is ever logged
 
 ### Phase 4 (hours 29 to 36)

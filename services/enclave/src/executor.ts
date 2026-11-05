@@ -16,7 +16,7 @@ export interface ExpectedTransaction {
 
 /** The part of Felix's KeyManager that the executor uses. */
 export interface TransactionSigner {
-  registerOp(opId: string, expected: ExpectedTransaction): void;
+  registerOp(opId: string, expected: ExpectedTransaction): void | Promise<void>;
   /** Returns the serialized signed transaction. Refuses anything not registered. */
   sign(eoa: Address, tx: TransactionSerializableEIP1559, opId: string): Promise<Hex>;
 }
@@ -183,7 +183,7 @@ export class Executor {
     const { chain, chainId, signer } = this.deps;
     const payment = this.buildPayment(withdrawal);
 
-    signer.registerOp(withdrawal.id, {
+    await signer.registerOp(withdrawal.id, {
       eoa,
       to: payment.to,
       value: payment.value,
