@@ -2,7 +2,7 @@
 
 | Status | Owner | Needed by |
 | --- | --- | --- |
-| Accepted | Apurva, Pradnyesh | Phase 0 |
+| Superseded by [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) | Apurva, Pradnyesh | Settled |
 
 ## Context
 
