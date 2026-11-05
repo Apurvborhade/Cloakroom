@@ -34,8 +34,9 @@ Mirrored in [`.env.example`](../.env.example).
 | `RPC_URL` | provider URL | Chain reads and broadcasts. Injected as a secret |
 | `CONFIRMATIONS` | `2` | Blocks before crediting or settling |
 | `GAS_RESERVE_WEI` | `10000000000000000` | Kept in each inventory EOA, excluded from claims |
-| `UNIVERSAL_ROUTER_ADDRESS` | from Uniswap docs | Pinned swap destination |
-| `WETH_ADDRESS`, `TOKEN_OUT_ADDRESS` | from Uniswap docs | Pair for the demo |
+| `UNIVERSAL_ROUTER_ADDRESS` | `0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3` | Pinned swap destination (2.1.2 on Sepolia). Confirm against a Trading API response |
+| `WETH_ADDRESS` | `0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14` | Pair for the demo |
+| `TOKEN_OUT_ADDRESS` | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Circle USDC on Sepolia |
 | `UNISWAP_API_KEY` | from the developer platform | Quotes and swap calldata |
 | `PRICE_TOLERANCE_BPS` | `100` | Max gap between a report and the enclave's own quote |
 | `MAX_SLIPPAGE_BPS_CAP` | `100` | Upper limit on a user's slippage setting |
