@@ -494,3 +494,44 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `0bd017473130b179f19f1b76001555b8c0177a5b` (`fix(enclave): add owner and eoa to watcher journal events`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A6: Live Chain Test Script
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A6 (Apurva's workstream) — Live Chain Test Script
+- **Status:** Committed on branch `test/sepolia-smoke`. Rehearsed on local Anvil only. Not yet run on Sepolia, and not pushed by this entry.
+- **Objective:** Exercise the real watcher, inventory and executor on a live chain.
+
+### Files Created
+- `services/enclave/scripts/sepolia-smoke.ts`
+
+### Files Modified
+- `package.json` and `pnpm-lock.yaml` (added `tsx` and the `smoke:sepolia` command)
+- `scripts/README.md`
+- `docs/roles/apurva-onchain.md`
+
+### Dependencies Added or Changed
+- `tsx` as a root development dependency.
+
+### Architectural Decisions
+- Only Sepolia and local Anvil are allowed, so it cannot spend real funds on mainnet.
+- Addresses are derived from the test key, so a later run can recover funds from a failed one.
+- The RPC URL and test key are removed from any error output.
+
+### Exact Verification Commands & Results
+- Local Anvil rehearsal with `--block-time 1`: exited with code 0, all checks passed.
+- Chain ID 1: refused, exit code 1.
+- Missing `RPC_URL` and `TEST_PRIVATE_KEY`: refused, exit code 1.
+- `pnpm test`: Exited with code 0 (159 passed in 8 test files).
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Not yet run on Sepolia, which needs an RPC key and test ETH.
+- Covers native ETH only, not ERC-20 payouts or swaps.
+- The journal, ledger and signer are stand-ins.
+
+### Commit Reference
+- **Commit:** `e20bb3ff01ad2a3ad41698f0e968c5c3ccbee054` (`test(enclave): add a live chain test script`)
+- **Pushed to Remote:** No
