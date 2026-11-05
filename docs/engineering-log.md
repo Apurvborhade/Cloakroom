@@ -418,3 +418,44 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `fae06c88c3250cdee348655e787aeabbd58c5d58` (`feat(enclave): add validated environment config`)
 - **Pushed to Remote:** No
+
+
+---
+
+## Task F0: Nitro Attestation Bootstrap
+
+- **Date:** 2026-11-05
+- **Owner:** Felix
+- **Objective:** Run the attestation service in a real Nitro Enclave and verify a fresh document against trusted build measurements.
+- **Status:** Implemented and verified through an SSH tunnel. Public HTTPS ingress remains open.
+
+### Changes
+
+- Added `services/enclave/src/attestation.ts`, `attestation-server.ts`, `nitro/`, and `Dockerfile`: enclave-generated X25519 key, NSM document retrieval, key/build binding, and a bounded vsock relay. Startup fails outside Nitro.
+- Added `scripts/verify-attestation.py`, its requirements, and the public AWS root certificate. Verification pins the AWS root and checks the certificate chain, ES384 signature, nonce, timestamp, PCR0–2, and key/build binding.
+- Added `services/enclave/test/attestation.test.ts` and `test/attestation_test.py`.
+- Updated the enclave package build script, public setup instructions, API contract, Felix checklist, TEE decision, and handoff documentation.
+- Added Docker/Git exclusions for credentials and local artifacts. Only the public AWS root certificate is excepted from the PEM exclusion.
+- Integrated the bootstrap with the current workspace packages; the application entrypoint and existing team modules are retained.
+
+### Verification
+
+- `pnpm typecheck`: passed.
+- `pnpm test` with Anvil on PATH: 158 tests passed across 8 suites.
+- `python -m unittest discover -s test -p '*_test.py' -v` in the verifier environment: 10 tests passed.
+- ARM64 Docker and EIF builds: passed. Non-debug enclave boot and live verification: passed; local and deployed build hashes match.
+- Live malformed-request checks: rejected. Live verification with a wrong nonce or wrong expected PCR: rejected.
+- Ordinary Docker startup without NSM: refused.
+- `git diff --check`: passed.
+
+### Handoffs and Limitations
+
+- API/frontend: use the attestation response and challenge encoding in `docs/api.md`; the phase-0 transport key rotates on restart.
+- The standalone attestation server does not implement custody or the application routes. Public HTTPS, persistent keys, full application packaging, restart automation, and final reproducible builds remain open.
+- The private SSH key and deployment identifiers are not part of this change.
+
+### Commit Reference
+
+- **Commit:** `31d36f9` (`feat(enclave): add verifiable Nitro attestation bootstrap`).
+- **Pushed to Remote:** Yes, on `tee/nitro-attestation`.
+- **PR:** Not created; the user requested a creation link.

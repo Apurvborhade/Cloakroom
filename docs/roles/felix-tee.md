@@ -19,10 +19,13 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 0 (hours 0 to 3)
 
-- [ ] Compare EigenCompute, Phala dstack and Nitro Enclaves. Take whichever returns a quote first
-- [ ] Deploy a hello-world enclave that returns a quote from `GET /attestation`
-- [ ] Publish the `/attestation` response shape for the team
-- [ ] Test the Docker image early ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md))
+- [x] Compare TEE platforms and select AWS Nitro Enclaves
+- [x] Set up the parent instance, Docker, Nitro CLI and enclave allocator
+- [x] Build and run the AWS hello-world enclave without debug mode
+- [x] Deploy an enclave returning a real quote from `GET /attestation`; verified through an SSH tunnel
+- [x] Document the `/attestation` response shape in [api.md](../api.md)
+- [x] Test the phase-0 Docker image in Nitro ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md)); full application packaging remains open
+- [ ] Configure public HTTPS ingress for the team
 - [ ] **If this is failing at hour 3:** switch to the fallback, the same container labelled TEE-simulated, with no confidentiality claim
 
 ### Phase 1 (hours 3 to 12)
@@ -30,7 +33,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [ ] `KeyManager`: sealed seed, HD derivation, `allocate`, `list`, `sign`
 - [ ] Signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
 - [ ] `envelope.ts`, plus an HPKE library and parameters that also work in the browser, shared with Pradnyesh
-- [ ] Report data commits to `sha256(enclavePubKey || buildHash)`
+- [x] Report data commits to `sha256(enclavePubKey || buildHash)`
 - [ ] Close [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Pradnyesh
 - [ ] Close [the admin EOAs endpoint](../decisions/2026-11-06-0151-admin-eoas-endpoint.md) with Shreyas
 
@@ -41,7 +44,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 3 (hours 22 to 29)
 
-- [ ] Quote verification CLI script
+- [x] Quote verification CLI script: AWS trust chain, COSE signature, nonce, timestamp, PCRs and key/build binding
 - [ ] `keys.test.ts` and `envelope.test.ts` ([testing.md](../testing.md))
 - [ ] Audit: no endpoint returns a key or seed, and no key or custody address is ever logged
 
@@ -69,6 +72,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ## Verify
 
-- TEE provider access, pricing and attestation format
-- How a quote is fetched and how secrets reach the enclave on the chosen platform
-- Sealed storage availability. If there is none, use a persistent volume with a platform-derived key
+- [x] TEE provider access and non-debug enclave startup
+- [x] Provider pricing checked
+- [x] Attestation format, retrieval through NSM, and independent verification
+- [ ] How secrets reach the enclave; KMS permissions and attestation policy if using AWS KMS
+- [ ] Seed and journal persistence across restarts. Nitro Enclaves have no persistent storage; design encrypted external storage and key recovery before custody is enabled

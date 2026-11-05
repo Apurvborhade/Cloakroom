@@ -1,0 +1,2 @@
+cbor2==6.2.0.post2
+cryptography==50.0.2

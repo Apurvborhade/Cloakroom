@@ -5,7 +5,7 @@ A TEE private intent network. Deposit ETH, hold a confidential balance, submit a
 > **Claim:** private ownership coordination and intent execution with no mandatory privacy-contract call.
 > We never claim that usage is undetectable.
 
-**Status:** pre-build. Documentation and repo skeleton only. No application code yet.
+**Status:** phase 0. Nitro attestation bootstrap implemented; custody and the application flow are not implemented yet.
 
 ## Team
 

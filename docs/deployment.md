@@ -6,23 +6,13 @@ The enclave ships as one Docker image built reproducibly, so a judge can rebuild
 
 ## Docker image
 
-Starting point from the spec. See [Dockerfile and pnpm](decisions/2026-11-06-0151-dockerfile-pnpm.md) before relying on the `node_modules` copy.
+The phase-0 [Dockerfile](../services/enclave/Dockerfile) builds the standalone attestation service with a digest-pinned Node 22 base image. That entrypoint uses only Node built-ins; the application package dependencies are not part of this bootstrap runtime. Use self-contained packaging when adding the application entrypoint; see [Dockerfile and pnpm](decisions/2026-11-06-0151-dockerfile-pnpm.md).
 
-```dockerfile
-FROM node:20-bookworm-slim@sha256:<pin-the-digest> AS build
-WORKDIR /app
-COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
-COPY packages ./packages
-COPY services/enclave ./services/enclave
-RUN corepack enable && pnpm install --frozen-lockfile && pnpm --filter enclave build
-
-FROM node:20-bookworm-slim@sha256:<pin-the-digest>
-WORKDIR /app
-COPY --from=build /app/services/enclave/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
-USER node
-CMD ["node", "dist/server.js"]
+```sh
+docker build -f services/enclave/Dockerfile -t cloakroom-attestation .
 ```
+
+See the [enclave README](../services/enclave/README.md) for Nitro image creation, vsock forwarding and verification. Production ingress, persistent secrets and final reproducible builds remain open.
 
 ## Configuration
 

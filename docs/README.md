@@ -42,6 +42,8 @@ The `@cloakroom/shared` package is the single source of truth for protocol const
 
 ### 1. Handoff to Felix (TEE & Custody)
 
+- **Attestation handoff to API/frontend:** the phase-0 response and nonce encoding are documented in [api.md](api.md#attestation-response-nitro-phase-0). `AttestationService` is separate from the application server; public HTTPS ingress is pending. Decode its base64 X25519 key to bytes before deriving the EIP-712 salt. The phase-0 key rotates on restart.
+
 - **Envelope Contract:** `Envelope` type and `EnvelopeSchema` for HPKE-encrypted request bodies (`{ enc: string, ct: string }`).
 - **Domain Salt:** Derived via `deriveEnclaveSalt(enclavePubKey: Hex): Hex` which computes `keccak256(enclavePubKey)`.
 - **EIP-712 Domain:** Created via `createDomain(chainId: number, enclaveKeyHash: Hex)`.
