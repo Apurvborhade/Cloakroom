@@ -23,11 +23,10 @@
 | Deposit watcher | `services/enclave/src/watcher.ts` | Apurva | Shreyas |
 | Inventory, EOA selection | `services/enclave/src/inventory.ts` | Apurva | Felix |
 | Swap, payout, recovery | `services/enclave/src/executor.ts` | Apurva | Felix, Shreyas |
-| Oracle cross-check | `services/enclave/src/oracle.ts` | Apurva | Pradnyesh |
+| Price poller | `services/enclave/src/price-poller.ts` | Apurva | Shreyas |
 | Contracts | `contracts/` | Apurva | |
 | Seeding, demo fixture | `scripts/` | Apurva | Felix |
 | Next.js app, Anon-RPC | `apps/web/` | Pradnyesh | Shreyas |
-| CRE workflow | `workflows/price-report/` | Pradnyesh | Apurva |
 | README, FEEDBACK.md, demo video | root | Pradnyesh | Everyone |
 
 `server.ts`, `queue.ts` and `reconcile.ts` had no owner in the spec and were assigned here. The review column is a suggestion. Change anything that does not fit.
@@ -47,7 +46,6 @@ These are where one person's work blocks another's. Agree the interface first, t
 | Apurva | Shreyas | On-chain totals from `Inventory` for `reconcile()` | Phase 1 |
 | Shreyas | Pradnyesh | Live or stubbed endpoints, error codes | Phase 1 |
 | Shreyas | Apurva | `IntentStore.due`, `mark` | Phase 2 |
-| Pradnyesh | Apurva | CRE report format and HMAC, for `oracle.ts` | Phase 2 |
 | Apurva | Pradnyesh | Uniswap integration line links and notes for `FEEDBACK.md` and the README | Phase 4 |
 | Felix | Apurva | One-time admin EOA list for seeding | Phase 4 |
 | Felix | Pradnyesh | Final enclave URL and image digest | Phase 4 |
