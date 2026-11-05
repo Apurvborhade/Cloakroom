@@ -21,19 +21,20 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 
 ### Phase 0 (hours 0 to 3)
 
-- [ ] Fastify skeleton that Felix can deploy
-- [ ] `packages/shared` with the types from [api.md](../api.md). This unblocks Pradnyesh and Apurva
-- [ ] Publish `Ledger`, `Journal` and `SerialQueue` interfaces so Apurva can code against them
+- [x] Monorepo workspace package setup (`@cloakroom/shared`, `@cloakroom/enclave`)
+- [x] `packages/shared` with types, constants, schemas, and EIP-712 definitions. Unblocks Pradnyesh and Apurva (Task 2)
+- [x] Publish `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces so Apurva can code against them (Task 2)
+- [ ] Fastify server implementation with route handlers and envelope decryption
 
 ### Phase 1 (hours 3 to 12)
 
-Close these first, because they change the types and journal:
+Closed in shared contracts (Task 2):
 
-- [ ] [Gap 3.1](../decisions.md): fee model, with Apurva
-- [ ] [Gap 3.2](../decisions.md): missing EIP-712 types, with Pradnyesh
-- [ ] [Gap 3.3](../decisions.md): missing journal events
-- [ ] [Gap 3.4](../decisions.md): meaning of `pending`
-- [ ] [Gap 3.9](../decisions.md): non-ETH deposits, with Apurva
+- [ ] [Gap 3.1](../decisions.md): fee model, with Apurva (proposal: FEE_BPS deducted from amountOut upon settlement)
+- [x] [Gap 3.2](../decisions.md): missing EIP-712 types (implemented SessionQuery and CancelIntent)
+- [x] [Gap 3.3](../decisions.md): missing journal events (added INTENT_CANCELLED, INTENT_EXPIRED, DEPOSIT_SESSION_CLOSED, FEE_BOOKED)
+- [x] [Gap 3.4](../decisions.md): meaning of `pending` (unconfirmed deposits, display only)
+- [x] [Gap 3.9](../decisions.md): non-ETH deposits (rejected in DepositRequest schema)
 
 Then build:
 
