@@ -19,7 +19,9 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 0 (hours 0 to 3)
 
-- [ ] Compare EigenCompute, Phala dstack and Nitro Enclaves. Take whichever returns a quote first
+- [x] Compare TEE platforms and select AWS Nitro Enclaves
+- [x] Set up the parent instance, Docker, Nitro CLI and enclave allocator
+- [x] Build and run the AWS hello-world enclave without debug mode
 - [ ] Deploy a hello-world enclave that returns a quote from `GET /attestation`
 - [ ] Publish the `/attestation` response shape for the team
 - [ ] Test the Docker image early ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md))
@@ -69,6 +71,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ## Verify
 
-- TEE provider access, pricing and attestation format
-- How a quote is fetched and how secrets reach the enclave on the chosen platform
-- Sealed storage availability. If there is none, use a persistent volume with a platform-derived key
+- [x] TEE provider access and non-debug enclave startup
+- [x] Provider pricing checked
+- [ ] Attestation format, retrieval through NSM, and independent verification
+- [ ] How secrets reach the enclave; KMS permissions and attestation policy if using AWS KMS
+- [ ] Seed and journal persistence across restarts. Nitro Enclaves have no persistent storage; design encrypted external storage and key recovery before custody is enabled
