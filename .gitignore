@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Enclave local state: the journal must never be committed
+*.journal
+journal/
+sealed/
+
+# Test output
+coverage/
+
+# OS and editor
+.DS_Store
+.idea/
+.vscode/
+*.log
