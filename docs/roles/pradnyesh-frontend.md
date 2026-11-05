@@ -32,7 +32,7 @@ Read: [frontend.md](../frontend.md), [cre-workflow.md](../cre-workflow.md), [pri
 - [ ] `/` with the attestation badge and the TEE-simulated banner
 - [ ] `/deposit` with the assigned address and countdown
 - [ ] Balance panel on every page
-- [ ] `/withdraw` with status and the payout transaction link
+- [ ] `/withdraw` with status and the payout transaction link, which needs the [withdrawal status endpoint](../decisions/2026-11-06-0331-withdrawal-status-endpoint.md)
 - [ ] Session key flow, optional but it saves wallet popups
 - [ ] [Missing EIP-712 types](../decisions/2026-11-06-0151-missing-eip712-types.md) with Shreyas and [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Felix
 

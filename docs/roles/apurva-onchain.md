@@ -37,11 +37,12 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 - [x] Watcher: baseline on session open, read at `head - CONFIRMATIONS`, journal `DEPOSIT_CREDITED`, then credit
 - [x] Session expiry: one last check, close the session
-- [ ] Relabel the EOA as inventory in `onSessionClosed`, and rebuild closed sessions into inventory on boot, because replay does not call it
+- [x] Relabel the EOA as inventory in `onSessionClosed`, and rebuild closed sessions into inventory on boot, because replay does not call it
 - [ ] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md))
-- [ ] `Inventory`: `refresh`, `pick` with exclusions, `hold`, `free`
-- [ ] `runWithdrawal`: lock, pick, sign, journal, send, confirm, consume
-- [ ] On-chain totals for Shreyas's `reconcile()`
+- [x] `Inventory`: `refresh`, `pick` with exclusions, `hold`, `free`
+- [ ] Connect `Inventory` to Felix's `KeyManager` and the watcher at boot
+- [x] `runWithdrawal`: pick, sign, journal, send, confirm, consume. The API takes the lock first
+- [x] On-chain totals for Shreyas's `reconcile()`, through `Inventory.getPhysicalBalances`
 - [ ] [Fee model](../decisions/2026-11-06-0151-fee-model.md) and [non-ETH deposits](../decisions/2026-11-06-0151-non-eth-deposits.md) with Shreyas
 
 ### Phase 2 (hours 12 to 22)
@@ -76,7 +77,7 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 | Who | What |
 | --- | --- |
-| Shreyas | On-chain totals for reconcile |
+| Shreyas | On-chain totals for reconcile: `Inventory` implements `InventoryReader` |
 | Pradnyesh | Deposit addresses working end to end, Uniswap notes for `FEEDBACK.md` |
 
 ## Known gaps to state, not fix

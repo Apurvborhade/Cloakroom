@@ -105,8 +105,15 @@ export interface Inventory {
   pick(token: Address, amt: bigint, exclude: Set<Address>): CustodyEOA | null;
   hold(eoa: Address, token: Address, amt: bigint, opId: string): void;
   free(opId: string): void;
+  markInventory(eoa: Address): void; // connect to the watcher's onSessionClosed
+  linkOwner(owner: Address, eoa: Address): void; // after a deposit session opens or a swap runs
+  eoasLinkedTo(owner: Address): ReadonlySet<Address>; // pass to pick as exclude
+  replay(event: JournalEvent): void; // on boot: rebuild roles and owner links
+  getPhysicalBalances(): Promise<Map<Address, bigint>>; // InventoryReader, for reconcile
 }
 ```
+
+An EOA runs one operation at a time. `pick` also requires the gas reserve when sending an ERC-20, because the EOA still pays gas. After an operation confirms, call `refresh` and then `free`, in that order: freeing first would make spent funds look available until the next refresh.
 
 ## Executor (Apurva)
 
@@ -114,10 +121,14 @@ export interface Inventory {
 // executor.ts
 export interface Executor {
   runIntent(i: StoredIntent): Promise<void>;        // quote, sign, broadcast, settle
-  runWithdrawal(w: LockedWithdrawal): Promise<void>; // transfer, confirm, finalize
+  runWithdrawal(w: LockedWithdrawal): Promise<{ finished: Promise<WithdrawalOutcome> }>; // transfer, confirm, finalize
   recover(): Promise<void>;                          // on boot: settle or fail unfinished ops
 }
 ```
+
+`runWithdrawal` expects the funds to be reserved under the withdrawal ID and journaled as `WITHDRAWAL_LOCKED` already. It resolves once an EOA is assigned, so the API can answer without waiting for confirmations, and rejects with `NO_INVENTORY` after releasing the lock if no EOA can pay.
+
+The signer is a `TransactionSigner`: `KeyManager.sign` plus `registerOp(opId, { eoa, to, value, dataHash })`, which registers what the signing guard must see.
 
 ## Oracle (Apurva)
 

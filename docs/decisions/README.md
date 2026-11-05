@@ -16,6 +16,7 @@ One decision per file. This page is the index, so check here first.
 | [Admin EOAs endpoint](2026-11-06-0151-admin-eoas-endpoint.md) | Felix, Shreyas | Phase 1 |
 | [Non-ETH deposits](2026-11-06-0151-non-eth-deposits.md) | Shreyas, Apurva | Phase 1 |
 | [Oracle body format](2026-11-06-0151-oracle-body-format.md) | Shreyas, Pradnyesh | Phase 2 |
+| [Withdrawal status endpoint](2026-11-06-0331-withdrawal-status-endpoint.md) | Shreyas, Pradnyesh | Phase 1 |
 
 ## Proposed, waiting for confirmation
 
