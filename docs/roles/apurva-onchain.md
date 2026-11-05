@@ -27,7 +27,9 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 ### Phase 0 (hours 0 to 3)
 
-- [ ] Decide the network: Sepolia if a pool has liquidity, otherwise an Anvil mainnet fork
+- [ ] Check the [Anon-RPC network guide](https://ethereum.github.io/anon-rpc/networks/) for supported networks, because the EF prize depends on it
+- [ ] Decide the network: Sepolia if a pool has liquidity, otherwise an Anvil mainnet fork, if that still works with Anon-RPC
+- [ ] Check whether Anon-RPC has any server-side option. If not, enclave reads stay on a normal RPC and are listed as a known leak
 - [ ] Collect `UNIVERSAL_ROUTER_ADDRESS`, `WETH_ADDRESS`, `TOKEN_OUT_ADDRESS`
 - [ ] Confirm the exact swap flow in the Uniswap docs: wrap step from ETH, Permit2 approval from an ERC-20
 

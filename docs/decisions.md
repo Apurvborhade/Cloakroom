@@ -9,7 +9,7 @@ Decide before hour 0. The biggest schedule risk is TEE setup, so it is time-boxe
 | # | Decision | Recommendation | Owner | Status |
 | --- | --- | --- | --- | --- |
 | 1 | TEE platform | EigenCompute, Phala dstack or Nitro Enclaves: whichever returns an attestation quote first | Felix | Open |
-| 2 | Network | Sepolia, or a fork. None of Whitechain's four tracks fits as written: each needs a USDT payment settled on Whitechain Sepolia in the main flow, and they target payments, not swaps | Apurva | Open |
+| 2 | Network | Sepolia, or a fork. None of Whitechain's four tracks fits as written: each needs a USDT payment settled on Whitechain Sepolia in the main flow, and they target payments, not swaps. Check Anon-RPC network support first, because a local fork may not work for the EF prize | Apurva | Open |
 | 3 | Relationship to hide | Deposit to withdrawal and deposit to swap. Swap to withdrawal can still leak through amounts and timing | Team | Recommended, confirm |
 | 4 | Withdrawal credential | The depositor's wallet signing EIP-712, with recovery meaning the same wallet. Custody keys are never involved | Team | Recommended, confirm |
 | 5 | Initial inventory | Operator-funded seed EOAs, disclosed in the demo | Apurva | Recommended, confirm |
@@ -51,6 +51,8 @@ The plan and spec state these were not checked.
 | HPKE library choice (for example `@hpke/core`) works in both the browser and Node, in our build | Felix |
 | Exact swap flow: wrap step from ETH, Permit2 approval from an ERC-20, Universal Router and Permit2 addresses | Apurva |
 | Uniswap liquidity on the chosen network | Apurva |
+| Which networks Anon-RPC supports, and whether a local Anvil fork can be reached through it ([network guide](https://ethereum.github.io/anon-rpc/networks/)) | Apurva |
+| Whether Anon-RPC has any server-side option for enclave reads. The published packages are browser and browser-extension harnesses | Apurva |
 | How the Anon-RPC harness plugs into viem | Pradnyesh |
 | CRE CLI setup and access. Simulation works without approval; live DON deployment is Early Access and is not needed for the prize | Pradnyesh |
 | Whether an HTTP POST inside a workflow runs once or on several DON nodes | Pradnyesh |
