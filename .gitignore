@@ -18,6 +18,11 @@ contracts/broadcast/
 .env
 .env.*
 !.env.example
+*.pem
+!scripts/nitro-root.pem
+*.key
+*.eif
+__pycache__/
 
 # Enclave local state: the journal must never be committed
 *.journal
