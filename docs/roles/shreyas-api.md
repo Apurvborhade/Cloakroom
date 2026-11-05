@@ -21,13 +21,14 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 
 ### Phase 0 (hours 0 to 3)
 
-- [ ] Fastify skeleton that Felix can deploy
-- [ ] `packages/shared` with the types from [api.md](../api.md). This unblocks Pradnyesh and Apurva
-- [ ] Publish `Ledger`, `Journal` and `SerialQueue` interfaces so Apurva can code against them
+- [x] Monorepo workspace package setup (`@cloakroom/shared`, `@cloakroom/enclave`)
+- [x] `packages/shared` with types, constants, schemas, and EIP-712 definitions. Unblocks Pradnyesh and Apurva (Task 2)
+- [x] Publish `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces so Apurva can code against them (Task 2)
+- [ ] Fastify server implementation with route handlers and envelope decryption
 
 ### Phase 1 (hours 3 to 12)
 
-Close these first, because they change the types and journal:
+Closed in shared contracts (Task 2):
 
 - [ ] [Fee model](../decisions/2026-11-06-0151-fee-model.md), with Apurva
 - [ ] [Missing EIP-712 types](../decisions/2026-11-06-0151-missing-eip712-types.md), with Pradnyesh
