@@ -41,6 +41,13 @@ Decide before hour 0. The biggest schedule risk is TEE setup, so it is time-boxe
 | 3.9 | **Non-ETH deposits.** `DepositRequest` has an `asset` field, but the watcher only tracks native balance | Reject any `asset` other than `NATIVE` in v1 | Shreyas, Apurva | Phase 1 |
 | 3.10 | **Files with no owner in the spec.** `server.ts` and `reconcile.ts` are unassigned, and `queue.ts` is missing from the repo layout | Assigned to Shreyas in [roles/README.md](roles/README.md). Reconcile needs on-chain balances from Apurva's inventory | Shreyas | Phase 0 |
 | 3.11 | **Sepolia pool price does not match the market.** See section 5 | Use the pool as the reference price | Apurva, Pradnyesh | Phase 0 |
+| 3.12 | **Deposit events do not match balance-based crediting.** `DEPOSIT_CREDITED` needs a `txHash`, but reading a balance does not reveal one. `DEPOSIT_SESSION_OPENED` has no baseline, so a restart would lose it | `watcher.ts` uses the event shapes below, including `DEPOSIT_SESSION_CLOSED` from gap 3.3. Shreyas to adopt them in `journal.ts`, and the ledger's replay must look up the owner through the session `id` | Shreyas, Apurva | Phase 1 |
+
+```ts
+| { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number; baseline: bigint; baselineBlock: bigint }
+| { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; block: bigint }
+| { t: 'DEPOSIT_SESSION_CLOSED'; id: string }
+```
 
 ## 4. Verify against provider docs
 
