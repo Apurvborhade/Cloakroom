@@ -22,16 +22,16 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 ### Before hour 0
 
 - [ ] RPC provider key and testnet ETH for 4 to 6 custody EOAs
-- [ ] Uniswap developer platform key
+- [x] Uniswap developer platform key
 - [ ] Test token liquidity, or a funded fork
 
 ### Phase 0 (hours 0 to 3)
 
 - [x] Choose the network: Sepolia ([decision](../decisions/2026-11-06-0229-network-sepolia.md))
 - [x] Collect `UNIVERSAL_ROUTER_ADDRESS`, `WETH_ADDRESS`, `TOKEN_OUT_ADDRESS` (in `.env.example`)
-- [ ] Request a Trading API quote on Sepolia for 0.1 WETH to USDC, and confirm the router in the response matches `UNIVERSAL_ROUTER_ADDRESS`
+- [x] Request a Trading API quote on Sepolia, and confirm the router in the response matches `UNIVERSAL_ROUTER_ADDRESS`
 - [ ] Agree the pool-based reference price with Pradnyesh
-- [ ] Confirm the exact swap flow in the Uniswap docs: wrap step from ETH, Permit2 approval from an ERC-20
+- [x] Confirm the swap flow: from native ETH, the router wraps it, with no Permit2 or approval
 
 ### Phase 1 (hours 3 to 12)
 
@@ -48,12 +48,13 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 ### Phase 2 (hours 12 to 22)
 
-- [ ] `runIntent`, following the 7 steps in [chain-logic.md](../chain-logic.md)
-- [ ] Treat the API's transaction as untrusted: pin `to`, run `eth_call`, require output of at least `minOut`
+- [x] `runIntent`, following the steps in [chain-logic.md](../chain-logic.md)
+- [x] Run `pnpm smoke:swap` on real Sepolia
+- [x] Treat the API's transaction as untrusted: pin `to`, decode the calldata, run `eth_call`
 - [x] Price poller: quote every `PRICE_POLL_INTERVAL_SEC`, and trigger nothing when a poll fails
-- [ ] Run `pnpm smoke:quote` against the live Trading API
+- [x] Run `pnpm smoke:quote` against the live Trading API
 - [ ] Connect the price poller to `IntentStore.due` at boot
-- [ ] Recheck the intent's condition against the swap's own quote before signing
+- [x] Recheck the intent's condition against the swap's own quote before signing
 - [ ] Keep a running list of Uniswap friction points for `FEEDBACK.md`
 
 ### Phase 3 (hours 22 to 29)

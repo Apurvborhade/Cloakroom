@@ -19,6 +19,8 @@ services/enclave/
     watcher.ts    # deposit and receipt tracking              Apurva
     inventory.ts  # per-EOA balances, EOA selection           Apurva
     executor.ts   # swap, payout, tx lifecycle                Apurva
+    swap-calldata.ts # checks router calldata before signing  Apurva
+    uniswap.ts    # Trading API client                        Apurva
     price-poller.ts # price checks from Uniswap quotes        Apurva
   Dockerfile                                                  Felix
 ```
@@ -217,13 +219,15 @@ An EOA runs one operation at a time. `pick` also requires the gas reserve when s
 ```ts
 // executor.ts
 export interface Executor {
-  runIntent(i: StoredIntent): Promise<void>;        // quote, sign, broadcast, settle
+  runIntent(i: StoredIntent): Promise<SwapOutcome>; // quote, check, sign, broadcast, settle
   runWithdrawal(w: LockedWithdrawal): Promise<{ finished: Promise<WithdrawalOutcome> }>; // transfer, confirm, finalize
   recover(): Promise<void>;                          // on boot: settle or fail unfinished ops
 }
 ```
 
 `runWithdrawal` expects the funds to be reserved under the withdrawal ID and journaled as `WITHDRAWAL_LOCKED` already. It resolves once an EOA is assigned, so the API can answer without waiting for confirmations, and rejects with `NO_INVENTORY` after releasing the lock if no EOA can pay.
+
+Call `runIntent` from the price poller's `onReport` without waiting for it. Its dependencies go in the optional `swaps` setting. It settles through `InMemoryLedger.apply`, so live balances match a replay exactly.
 
 The signer is a `TransactionSigner`: `KeyManager.sign` plus `await registerOp(opId, { eoa, to, value, dataHash })`, which durably registers what the signing guard must see.
 

@@ -37,3 +37,15 @@ Add these to `.env`, using the values in `.env.example`: `UNISWAP_API_KEY`, `UNI
 ```bash
 pnpm smoke:quote
 ```
+
+## Sepolia swap test
+
+`services/enclave/scripts/swap-smoke.ts` runs one real swap of 0.001 ETH through the live Trading API and Universal Router, with a stand-in journal and signer. It refuses to run anywhere except Sepolia, and spends test ETH only.
+
+Add these to `.env`, on top of those above: `RPC_URL`, `TEST_PRIVATE_KEY`, `UNIVERSAL_ROUTER_ADDRESS`, `FEE_BPS` and `MAX_SLIPPAGE_BPS_CAP`. The test wallet needs at least 0.02 Sepolia ETH.
+
+```bash
+pnpm smoke:swap
+```
+
+Unspent ETH goes back to the test wallet at the end. The swapped tokens stay at the swap address.
