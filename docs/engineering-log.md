@@ -623,124 +623,41 @@ This document is the canonical, chronological record of all backend and accounti
 - **Shreyas (Auth & Server):** Use `InMemoryLedger` in Fastify route handlers and `auth.ts` inside `FifoSerialQueue` transaction boundaries.
 - **Apurva (Executor):** Confirmed existing calls (`ledger.consume(withdrawal.id)` and `ledger.release(withdrawal.id)`) align with reservation reference semantics.
 
----
-
-## Task 6A: EIP-712 Authentication, Session Authorization, and Replay-Safe Nonce Protection
+## Task A6: Live Chain Test Script
 
 - **Date:** 2026-11-06
-- **Task Number & Title:** Task 6A — EIP-712 Authentication, Session Authorization, and Replay-Safe Nonce Protection (Shreyas)
-- **Status:** Completed
-- **Objective:** Implement `AuthService` in `services/enclave/src/auth.ts` providing EIP-712 typed-data signature verification, session key authorization for read-only queries, timestamp expiry and clock-skew enforcement, and queue-enclosed atomic nonce consumption with journal durability before ledger mutation.
+- **Task Number & Title:** Task A6 (Apurva's workstream) — Live Chain Test Script
+- **Status:** Committed on branch `test/sepolia-smoke`. Run on Sepolia with all checks passing. Not pushed by this entry.
+- **Objective:** Exercise the real watcher, inventory and executor on a live chain.
 
 ### Files Created
-- `services/enclave/src/auth.ts` (`AuthService`, `AuthError`, EIP-712 verification, ephemeral session grant registry, clock skew and expiry validation, atomic nonce consumption)
-- `services/enclave/test/auth.test.ts` (31 comprehensive unit tests covering signatures, expiry horizons, session key authorization, and serialized nonce durability)
+- `services/enclave/scripts/sepolia-smoke.ts`
 
 ### Files Modified
-- `services/enclave/src/index.ts` (Exported `AuthService`, `AuthError`, and types)
-- `docs/roles/shreyas-api.md` (Marked Task 6A complete)
-- `docs/enclave.md` (Documented `AuthService` architecture, session grants, and nonce ordering)
-- `docs/api.md` (Clarified expiry policy distinction between requests and session grants, and documented first-nonce ledger semantics)
-- `docs/testing.md` (Recorded `auth.test.ts` suite)
-- `docs/engineering-log.md` (Appended Task 6A engineering log)
+- `package.json` and `pnpm-lock.yaml` (added `tsx` and the `smoke:sepolia` command)
+- `scripts/README.md`
+- `docs/roles/apurva-onchain.md`
 
 ### Dependencies Added or Changed
-- None (utilized existing `viem`, `@cloakroom/shared`, and `vitest`).
+- `tsx` as a root development dependency.
 
-### Implementation Details
-- **Domain Binding & Recovery:** Domain constructed dynamically using configured `chainId` and `salt = keccak256(enclavePubKey)`. Signatures evaluated via viem's `recoverTypedDataAddress` using shared `EIP712_TYPES`. Any signer mismatch, invalid signature format, wrong chain, or mismatched salt throws `BAD_SIGNATURE`.
-- **Expiry Horizon Policy Distinction:**
-  - Ordinary requests (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`) and queries (`SessionQuery`): Expiry must satisfy `now - MAX_CLOCK_SKEW_SEC <= expiry <= now + MAX_EXPIRY_FUTURE_SEC` (up to 5 minutes ahead, with 60 seconds of clock skew).
-  - Session grants (`SessionGrant`): Expiry defines session lifetime and must satisfy `now - MAX_CLOCK_SKEW_SEC <= expiry <= now + SESSION_GRANT_TTL_SEC` (up to 30 minutes ahead).
-- **Session Grant Registry:** Ephemeral in-memory registry mapping normalized owner address to `{ owner, sessionKey, expiry }`. Authorizes `SessionQuery` operations without consuming owner nonces. Session keys cannot authorize state mutations. Expired grants are purged on detection. Grants do not persist across enclave restarts.
-- **Atomic Nonce Protection:** Mutating operations verify signatures and expiry outside the queue, then execute nonce checks inside `FifoSerialQueue`:
-  1. Read `ledger.getLastNonce(owner)`.
-  2. Require `nonce > lastNonce` (throws `NONCE_USED` if lower or duplicate).
-  3. Durably append `{ t: 'NONCE_USED', owner, nonce }` to `Journal`.
-  4. Only after journal sync succeeds, update `ledger.setNonce(owner, nonce)`.
-- **First-Nonce Semantics:** In accordance with core ledger contract (`getLastNonce` defaults to `0n` and requires `nonce > lastNonce`), the first accepted nonce for any owner is strictly greater than `0n` (e.g. `1n`). Calling `consumeNonce` with `0n` throws `NONCE_USED`.
-
-### Tests Added
-- `services/enclave/test/auth.test.ts` (31 unit tests):
-  - Signature verification: valid signature accepted, invalid rejected, altered message rejected, wrong signer rejected, wrong chain rejected, wrong salt rejected.
-  - Expiry and clock skew: already expired rejected, allowed skew accepted, beyond skew rejected, far future rejected, valid grant accepted, grant exceeding TTL rejected, expired grant rejected.
-  - Session authorization: session key signs `SessionQuery`, unknown session rejected, wrong session key rejected, foreign grant rejected, expired grant cannot authorize, session key cannot authorize mutation, `SessionQuery` does not consume nonce, replacement grant invalidates previous key.
-  - Nonce protection: nonce accepted and journaled, duplicate nonce rejected, lower nonce rejected, first nonce `0n` rejected, journal append failure leaves ledger unchanged, journal failure does not poison queue, concurrent duplicate nonce yields exactly one success and one `NONCE_USED`, different owners independently accepted, journal event normalizes owner and nonce.
-  - Full pipeline: `verifyAndAuthorizeMutation` performs signature check, expiry check, and queue-enclosed nonce consumption in sequence.
+### Architectural Decisions
+- Only Sepolia and local Anvil are allowed, so it cannot spend real funds on mainnet.
+- Addresses are derived from the test key, so a later run can recover funds from a failed one.
+- The RPC URL and test key are removed from any error output.
 
 ### Exact Verification Commands & Results
-- `pnpm test`: Exited with code 0 (251 passed across 12 test files).
+- Local Anvil rehearsal with `--block-time 1`: exited with code 0, all checks passed.
+- `pnpm smoke:sepolia` on Sepolia: all 10 printed checks passed, with a payout from the address the owner did not fund (transaction `0xcb7f4ee185ea9f360b4fc905865ae99dc366795cbd7bae77d3fe28999d2895ef`). Run by Apurva, before `main` was merged into this branch. The closing lines of its output were not captured.
+- Chain ID 1: refused, exit code 1.
+- Missing `RPC_URL` and `TEST_PRIVATE_KEY`: refused, exit code 1.
+- `pnpm test` after merging `main`, on macOS: 272 passed and 3 failed in `kms-sealing.test.ts` and `sealed-state.test.ts`. The same 3 fail on a clean `origin/main` on this machine, so this branch did not cause them.
 - `pnpm typecheck`: Exited with code 0.
-- `pnpm build`: Exited with code 0.
-- `git diff --check`: Clean (0 whitespace errors or conflicts).
 
-### Integration Handoffs
-- **Shreyas (Task 6B — Fastify Server & Routes):** Route handlers in `server.ts` will call `authService.createSessionGrant`, `authService.verifySessionQuery`, and `authService.verifyAndAuthorizeMutation`.
-- **Felix (KeyManager / Attestation):** Enclave bootstrap passes `enclavePubKey` into `AuthService` dependencies upon initialization.
-- **Frontend / Pradnyesh:** Mutating request nonces must start at `1n` (`0n` is rejected); `SessionGrant` expiry can be up to 30 minutes; restarting the enclave clears in-memory session grants.
+### Known Limitations & Unresolved Questions
+- Covers native ETH only, not ERC-20 payouts or swaps.
+- The journal, ledger and signer are stand-ins.
 
----
-
-## Task 6A: Security Review Corrections (Session Expiry & Auth Typing)
-
-- **Date:** 2026-11-06
-- **Owner:** Shreyas (API & Backend)
-- **Branch:** `feat/auth-session-nonce`
-- **Status:** Completed
-- **Objective:** Address security review findings: eliminate unsafe `any` casts in `services/enclave/src/auth.ts`, enforce strict future expiry for session grants without clock skew relaxation, and add regression tests ensuring rejected grants do not corrupt the active session registry.
-
-### Changes
-- `services/enclave/src/auth.ts`:
-  - Enforced strict future expiry for session grants (`message.expiry > BigInt(clock())`). Expired grants are rejected even if within `MAX_CLOCK_SKEW_SEC`. Ordinary requests and queries retain standard clock skew tolerance.
-  - Ensured failed grant validations occur before mutation, preventing rejected replacement grants from overwriting active grants.
-  - Eliminated all unsafe `any` casts: introduced typed function overloads and an exhaustive switch block mapping each EIP-712 primary type to its corresponding message schema without weakening types.
-- `services/enclave/test/auth.test.ts`:
-  - Added test: grant expiry exactly equal to now is rejected.
-  - Added test: grant expiry one second in the past is rejected.
-  - Added test: grant expiry 30 seconds in the past is rejected, even though ordinary requests allow 60 seconds of skew.
-  - Added test: a valid future grant still succeeds.
-  - Added test: a rejected replacement grant does not invalidate or overwrite the existing valid grant.
-
-### Verification
-- `pnpm test`: 256 passed across 12 test suites.
-- `pnpm typecheck`: Clean (0 errors).
-- `pnpm build`: Clean (0 errors).
-- `git diff --check`: Clean.
-- Zero `any` casts in `services/enclave/src/auth.ts`.
-
----
-
-## Task 6A: Integration with Felix TEE PR #8 (Custody, HPKE Transport, and Nitro Deployment)
-
-- **Date:** 2026-11-06
-- **Owner:** Shreyas (API & Backend)
-- **Branch:** `feat/auth-session-nonce`
-- **Base Commit:** `deb3383b9004997bc85b2395a4b3c34094201de2` (PR #8 merge)
-- **Status:** Integrated and Verified
-- **Objective:** Rebase `feat/auth-session-nonce` onto `origin/main` (including Felix's merged PR #8), resolve documentation conflicts in `docs/enclave.md`, preserve strict session grant expiry and auth regression tests, eliminate unnecessary type assertions in `auth.ts`, verify compatibility with Felix's TEE custody/HPKE contracts, and confirm monorepo test suites pass.
-
-### Integration Details
-- **Rebase & Conflict Resolution:**
-  - Rebased `feat/auth-session-nonce` on top of `deb3383` (PR #8).
-  - Resolved conflict in `docs/enclave.md`: positioned `## Authentication and Session Authorization (Shreyas)` cleanly before Felix's renamed `## Key manager (TEE)` section. Preserved all TEE custody, HPKE transport, and signing guard specifications without reversion.
-- **Auth Implementation (`services/enclave/src/auth.ts`):**
-  - Preserved strict session grant expiry semantics: `message.expiry > BigInt(clock())` is strictly required; grants already expired or within past clock skew are rejected.
-  - Preserved all 5 security regression tests in `services/enclave/test/auth.test.ts` (expiry equal to now, 1s past, 30s past, valid future grant, and rejected replacement grant protection).
-  - Streamlined `verifyAndAuthorizeMutation`: removed 40 lines of redundant switch cases by leveraging generic overloads to call `verifyOwnerSignature` directly without type assertions.
-  - Modeled `OwnerPayload` discriminated union in `verifyOwnerSignature` to achieve clean compile-time narrowing across all EIP-712 primary types without `any`.
-- **Felix TEE Compatibility:**
-  - Confirmed integration contracts: `KeyManager.transportPublicKey()`, `KeyManager.decryptWithResponse()`, `sealResponse()`, `openEnvelopeWithResponse()`, `KeyManager.journalCipher()`, and `KeyManager.restoreSigningState()`.
-  - Confirmed `NONCE_USED` event is supported by shared `JournalEvent` definitions and replayed deterministically by `InMemoryLedger.apply()`.
-  - Confirmed `FifoSerialQueue` serializes nonce consumption and ledger mutations with durable journal writes preceding state changes.
-  - Zero modifications to Felix's custody, KMS, or Nitro modules.
-
-### Verification Results
-- `pnpm install --frozen-lockfile`: Succeeded cleanly.
-- `pnpm typecheck`: Clean (0 errors across `@cloakroom/shared` and `@cloakroom/enclave`).
-- `pnpm test`: 311 passed across 21 test suites.
-- `pnpm build`: Clean (0 errors).
-- `pnpm test:hpke:browser`: Passed with Playwright Chromium (`{"ok":true,"browser":"Chromium","concurrentMessages":16,"wrongRouteRejected":true,"authenticatedResponse":true}`).
-- `python -m unittest discover -s test -p '*_test.py' -v`: 10 passed in 1.028s.
-- `pnpm audit --prod`: No known vulnerabilities found.
-- `git diff --check`: Clean (0 whitespace errors).
-- Emojis check: Zero emojis present.
+### Commit Reference
+- **Commit:** `e20bb3ff01ad2a3ad41698f0e968c5c3ccbee054` (`test(enclave): add a live chain test script`)
+- **Pushed to Remote:** No
