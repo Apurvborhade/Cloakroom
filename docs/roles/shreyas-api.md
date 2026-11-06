@@ -54,8 +54,8 @@ Then build:
 ### Phase 2 (hours 12 to 22)
 
 - [ ] `POST /intents`, `/intents/status`, `/intents/cancel`
-- [ ] `IntentStore`: reserve on add, `due`, `mark`, expiry frees funds
-- [ ] Provide `IntentStore.due` for Apurva's price poller
+- [x] `IntentStore`: in-memory implementation (`add`, `cancel`, `expire`, `mark`, `get`, `listByOwner`, `due`) and deterministic journal recovery (`replayIntents`)
+- [x] Provide `IntentStore.due` for price poller / executor integration
 
 ### Phase 3 (hours 22 to 29)
 

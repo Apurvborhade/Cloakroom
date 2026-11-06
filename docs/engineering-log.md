@@ -1001,6 +1001,8 @@ This document is the canonical, chronological record of all backend and accounti
 - `git diff --check`: Clean (0 whitespace errors).
 - Emojis check: Zero emojis present.
 
+---
+
 ## Task A13: Two-User Demo
 
 - **Date:** 2026-11-06
@@ -1072,3 +1074,72 @@ This document is the canonical, chronological record of all backend and accounti
 ### Known Limitations & Unresolved Questions
 - The API may return more shapes at other sizes. Anything unrecognized is refused, so it stays safe but stops the swap.
 - `pnpm demo:sepolia` still needs a full run.
+
+---
+
+## Task: IntentStore Implementation and Recovery
+
+- **Date:** 2026-11-06
+- **Owner:** Shreyas (API & Backend)
+- **Branch:** `feat/intent-store`
+- **Status:** Completed and Verified
+- **Objective:** Implement `IntentStore` and deterministic journal recovery (`replayIntents`) in `@cloakroom/enclave`, matching all architectural contracts, lifecycle state machine constraints, comparator and pricing semantics, and executor integration compatibility.
+
+### Files Created
+- `services/enclave/src/intents.ts`: `InMemoryIntentStore` class and `replayIntents` recovery function.
+- `services/enclave/test/intents.test.ts`: Comprehensive test suite (43 unit and integration tests).
+
+### Files Modified
+- `services/enclave/src/index.ts`: Exported `InMemoryIntentStore`, `replayIntents`, `IntentStoreOptions`, and `JournalStream`.
+- `docs/roles/shreyas-api.md`: Checked off Phase 2 IntentStore tasks.
+
+### Architectural Decisions & Guarantees
+1. **Lifecycle & State Machine:**
+   - Intents are created in `pending` status.
+   - Non-empty ID validation and rejection of duplicate intent IDs.
+   - Address normalization (`viem.getAddress`) for owner and token pairs.
+   - `cancel()` allows only the verified owner to cancel pending intents; rejects cancellation of executing or terminal intents.
+   - `expire()` transitions pending intents to expired; rejects expiration of executing or terminal intents.
+   - `mark()` enforces valid state transitions:
+     - `pending -> executing`, `executing -> pending` (stayPending), `executing -> done` (recording net settled amount), `executing -> failed` (recording failure reason).
+     - Direct forward transitions `pending -> done` and `pending -> failed` supported for replay and direct execution.
+     - Terminal statuses (`done`, `failed`, `cancelled`, `expired`) cannot transition to any other status.
+     - Idempotent marking when the status matches existing state.
+2. **Pricing & Due Evaluation (`due`):**
+   - Pure read query: zero mutations to internal store state, journal, or ledger.
+   - Token pair matching handles any casing (checksummed, lowercase, uppercase, whitespace-padded).
+   - Price condition evaluated with 18-decimal fixed-point precision:
+     - Comparator `0`: `report.price >= intent.triggerPrice`
+     - Comparator `1`: `report.price <= intent.triggerPrice`
+     - Rejects unsupported comparator values.
+   - Expiration exclusion: excludes intents where `intent.expiry <= report.ts` or `intent.expiry <= nowSec`.
+   - Filters only `pending` intents; excludes executing or terminal intents.
+3. **Immutability:**
+   - `get()`, `listByOwner()`, `all()`, and `due()` return cloned copies (`cloneStoredIntent`) to prevent external callers from mutating stored state.
+4. **Deterministic Journal Recovery (`replayIntents`):**
+   - Reconstructs `InMemoryIntentStore` state from `JournalEvent` stream (`INTENT_CREATED`, `INTENT_CANCELLED`, `INTENT_EXPIRED`, `EXEC_SETTLED`, `EXEC_FAILED`, `EXEC_BROADCAST`).
+   - Preserves historical timestamps as `createdAt` from `JournalEntry.timestamp`.
+   - Does NOT touch the ledger or reserve balances, preventing double-reservation bugs.
+   - Compatible with `Journal.replay()`, async iterables, and synchronous entry iterables.
+5. **Executor Integration:**
+   - Fully satisfies `ExecutorDeps.swaps.intents` (`Pick<IntentStore, 'mark'>`).
+
+### Tests Added
+- `services/enclave/test/intents.test.ts`: 43 tests covering:
+  - Intent creation, parameter validation, and immutability.
+  - Owner-based listing and casing insensitivity.
+  - Ownership-checked cancellation and terminal status protection.
+  - Expiration transitions and protection against cancelling/expiring executing intents.
+  - Execution lifecycle and state transition rules.
+  - Comparator 0/1 price triggers, token pair casing, expiration boundaries, and pure query guarantees in `due()`.
+  - Deterministic journal replay from creation, cancellation, expiration, settlement, failure, and broadcast.
+  - Invariant check verifying that replay does not double-reserve or mutate ledger balances.
+  - Compatibility with `ExecutorDeps.swaps.intents.mark`.
+
+### Exact Verification Commands & Results
+- `pnpm typecheck`: Clean (0 errors across workspace packages).
+- `pnpm test`: Exited with code 0 (all test suites passing).
+- `pnpm build`: Clean (0 errors across workspace packages).
+- `pnpm test:hpke:browser`: Clean (Chromium HPKE verification passed).
+- `python -m unittest discover -s test -p '*_test.py' -v`: Clean (10 tests passed).
+- `git diff --check`: Clean (0 whitespace errors).
