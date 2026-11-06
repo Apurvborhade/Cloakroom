@@ -1143,3 +1143,64 @@ This document is the canonical, chronological record of all backend and accounti
 - `pnpm test:hpke:browser`: Clean (Chromium HPKE verification passed).
 - `python -m unittest discover -s test -p '*_test.py' -v`: Clean (10 tests passed).
 - `git diff --check`: Clean (0 whitespace errors).
+
+---
+
+## Task: End-to-End Conditional Intent Execution Pipeline
+
+- **Date:** 2026-11-06
+- **Owner:** Shreyas (API & Backend)
+- **Branch:** `feat/intent-execution-pipeline`
+- **Status:** Completed and Verified
+- **Objective:** Connect the price polling lifecycle to conditional intent execution via `IntentExecutionPipeline`, enforcing concurrent execution guards, error isolation, journal-first accounting preservation, and recovery compatibility.
+
+### Files Created
+- `services/enclave/src/pipeline.ts`: `IntentExecutionPipeline` class orchestrating price report events to `IntentStore.due` and `Executor.runIntent`.
+- `services/enclave/test/pipeline.test.ts`: Integration test suite (14 tests) covering triggered execution, non-triggered intents, concurrent price reports, retry transitions, execution failures, expiry/cancellation, error isolation, recovery replay, and end-to-end accounting conservation.
+
+### Files Modified
+- `services/enclave/src/index.ts`: Exported `IntentExecutionPipeline` and `IntentExecutionPipelineDeps`.
+- `docs/roles/shreyas-api.md`: Checked off intent execution pipeline task.
+
+### Architectural Decisions & Guarantees
+1. **Triggered Execution & Dispatch:**
+   - On each valid price report, queries `IntentStore.due(report)`.
+   - Re-verifies intent status from store and checks expiration against current clock.
+   - Dispatches eligible intents to `Executor.runIntent`.
+2. **Concurrency & Mutual Exclusion:**
+   - Synchronously tracks active intent IDs in an internal `inFlight` set prior to async dispatch.
+   - Combined with `Executor`'s `runningIntents` set and intent status checks, guarantees that an intent cannot be executed concurrently more than once, even across overlapping price updates.
+3. **Journal-First Accounting Preservation:**
+   - The pipeline operates purely as an orchestrator and does NOT perform ledger balance mutations or append journal events directly.
+   - All reservations, custody holds, and on-chain settlements remain strictly guarded by `Executor.runIntent` within the serialized queue.
+4. **Retry Transitions (`stayPending`):**
+   - When `runIntent` returns `{ status: 'pending', reason }` (e.g. temporary inventory unavailability, quote shift, simulation failure), the intent remains in `pending` status and is automatically retried on subsequent price checks.
+5. **Terminal State & Cancellation Safety:**
+   - Cancelled, expired, executing, and terminal (`done`, `failed`) intents are excluded by `due(report)` and checked again before invocation.
+6. **Error Isolation:**
+   - Each intent execution task is individually wrapped in a `try...catch` block.
+   - Exceptions in individual intent runs trigger `onIntentError` without terminating sibling tasks or aborting the price polling loop.
+7. **Recovery Compatibility:**
+   - Boot replay reconstructs settled and failed intents into terminal states, while in-flight broadcasts are held and finalized by `Executor.recover`. The pipeline only executes genuinely pending intents.
+
+### Tests Added
+- `services/enclave/test/pipeline.test.ts`: 14 tests verifying:
+  - Triggered execution on price condition satisfaction.
+  - Non-triggered intents on price sub-threshold and mismatched token pairs.
+  - Mutual exclusion preventing concurrent execution across overlapping price reports.
+  - Concurrent execution of multiple distinct eligible intents.
+  - Retry persistence for `stayPending` outcomes.
+  - Terminal status enforcement on execution failures (`failed`).
+  - Preclusion of expired and cancelled intents.
+  - Resilient error handling and fault isolation across concurrent intent executions.
+  - Recovery compatibility ensuring recovered intents are not re-executed while pending intents execute normally.
+  - Integration with `PricePoller` onReport callback and clean teardown.
+  - Full end-to-end accounting conservation and deterministic replay using real `EncryptedJournal` and `InMemoryLedger`.
+
+### Exact Verification Commands & Results
+- `pnpm typecheck`: Clean (0 errors across workspace packages).
+- `pnpm test`: Exited with code 0 (all 30 test files and 614 tests passing).
+- `pnpm build`: Clean (0 errors across workspace packages).
+- `pnpm test:hpke:browser`: Clean (Chromium HPKE verification passed).
+- `python -m unittest discover -s test -p '*_test.py' -v`: Clean (10 tests passed).
+- `git diff --check`: Clean (0 whitespace errors).

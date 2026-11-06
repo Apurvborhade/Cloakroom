@@ -34,3 +34,7 @@ export {
   type IntentStoreOptions,
   type JournalStream,
 } from './intents.js';
+export {
+  IntentExecutionPipeline,
+  type IntentExecutionPipelineDeps,
+} from './pipeline.js';

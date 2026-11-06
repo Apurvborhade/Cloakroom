@@ -56,6 +56,7 @@ Then build:
 - [ ] `POST /intents`, `/intents/status`, `/intents/cancel`
 - [x] `IntentStore`: in-memory implementation (`add`, `cancel`, `expire`, `mark`, `get`, `listByOwner`, `due`) and deterministic journal recovery (`replayIntents`)
 - [x] Provide `IntentStore.due` for price poller / executor integration
+- [x] `IntentExecutionPipeline`: connects price poller lifecycle to conditional intent execution with concurrency guards, error isolation, and recovery compatibility
 
 ### Phase 3 (hours 22 to 29)
 
