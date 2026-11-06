@@ -1044,3 +1044,31 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `d4cbb785d00cf5069b847c51d0a0558d621e6969` (`feat(enclave): add the two-user demo run`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A14: Direct Split Swaps
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A14 (Apurva's workstream) — Direct Split Swaps
+- **Status:** Committed on branch `fix/split-direct-swaps`. Not pushed by this entry.
+- **Objective:** Accept a third calldata shape found by `pnpm demo:sepolia`, whose run stopped at `UNSAFE_SWAP_CALLDATA:SWAP_MINIMUM` before sending anything.
+
+### Files Modified
+- `services/enclave/src/swap-calldata.ts`, `services/enclave/test/swap-calldata.test.ts`, `services/enclave/test/fixtures/sepolia-quote.ts`
+- `docs/decisions/` swap safety rules, `FEEDBACK.md`, `README.md`
+
+### Architectural Decisions
+- Direct swaps must each end in the output token, and their minimums must total at least `minOut`, less at most one unit for each extra swap. A real response came to 1 unit under its stated minimum.
+
+### Tests Added
+- Real Sepolia response of this shape as a fixture, plus cases for shortfalls, rounding limits and mixed shapes.
+- Eight deliberate bugs were introduced to check the new rule, and each one made a test fail.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 554 passed (557). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- The API may return more shapes at other sizes. Anything unrecognized is refused, so it stays safe but stops the swap.
+- `pnpm demo:sepolia` still needs a full run.
