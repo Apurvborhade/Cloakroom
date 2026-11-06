@@ -42,12 +42,12 @@ Closed in shared contracts (Task 2):
 Then build:
 
 - [x] FifoSerialQueue with strict FIFO ordering and error isolation (Task 3)
-- [x] Journal, then ledger. Journal before state change, always (Task 4)
+- [x] Journal, then ledger. Journal before state change, always (Task 4 & Task 5)
 - [ ] Auth rules: signer, expiry (at most 5 minutes ahead, 60 seconds of skew), nonce inside the queue, chain and salt
 - [ ] `POST /session`, `/deposit-session`, `/balance`, `/withdrawals`
 - [ ] In `POST /withdrawals`, reserve under the withdrawal ID and journal `WITHDRAWAL_LOCKED`, then call `Executor.runWithdrawal`
 - [ ] [Withdrawal status endpoint](../decisions/2026-11-06-0331-withdrawal-status-endpoint.md), with Pradnyesh
-- [ ] Replay the journal on boot
+- [x] Replay the journal on boot (deterministic replay implemented via `replayLedger`)
 - [ ] Read limits from `loadConfig` in `services/enclave/src/config.ts`, not the duplicates in `packages/shared/src/constants.ts`
 - [ ] `reconcile()`, using on-chain totals from Apurva's inventory
 

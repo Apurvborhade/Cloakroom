@@ -56,6 +56,20 @@ Enforce these in code and assert them in tests:
 - **Protocol fee:** Deducted in basis points (`FEE_BPS`) from the output token (`tokenOut`) upon confirmed swap execution. Credited to the protocol revenue balance.
 - **Gas expenditure:** Native ETH spent on-chain (`gasUsed * effectiveGasPrice`) is booked via `FEE_BOOKED` to a dedicated operational fee ledger. It is not charged to users.
 
+## Reservation Lifecycle and Reference Semantics
+
+Reservations represent locked claims (`reserved`) moved out of an owner's spendable balance (`available`):
+- **Lifecycle states:**
+  - `active`: Funds are locked under a unique reference (e.g., intent ID or withdrawal ID).
+  - `released`: The reservation was aborted or cancelled; funds are restored to the owner's `available` balance.
+  - `consumed`: The reservation was fulfilled (e.g., confirmed swap or confirmed payout); funds permanently leave the user's claim without restoring `available`.
+- **Reference rules:**
+  - Reservation references must be unique and cannot be overwritten.
+  - Consumed reservations cannot be released.
+  - Released reservations cannot be consumed.
+  - Repeated release or consume operations on completed reservations are idempotent and do not alter balances.
+  - Credit references (e.g., `deposit:<sessionId>:<blockNumber>`) are tracked to prevent double-crediting.
+
 ## Concurrency
 
 All state-mutating operations and journal appends are serialized through `FifoSerialQueue`. External network RPCs and encryption operations occur outside the queue.

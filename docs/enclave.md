@@ -127,16 +127,30 @@ Each journal entry on disk is framed as:
 ## Ledger (Shreyas)
 
 ```ts
-// ledger.ts: per owner and token, all amounts bigint
+// packages/shared/src/types/interfaces.ts
 export interface Ledger {
   credit(owner: Address, token: Address, amt: bigint, ref: string): void;
-  reserve(owner: Address, token: Address, amt: bigint, ref: string): void; // throws InsufficientBalance
-  release(ref: string): void; // reserved back to available
-  consume(ref: string): void; // reserved leaves the system
-  balances(owner: Address): Balance[];
-  totals(): Map<Address, { available: bigint; reserved: bigint }>; // for reconcile
+  reserve(owner: Address, token: Address, amt: bigint, ref: string): void;
+  release(ref: string): void;
+  consume(ref: string): void;
+  balances(owner: Address): OwnerBalances[];
+  totals(): Map<Address, BalanceRecord>;
+  getLastNonce(owner: Address): bigint;
+  setNonce(owner: Address, nonce: bigint): void;
 }
 ```
+
+### InMemoryLedger Implementation
+
+The in-memory ledger resides in `services/enclave/src/ledger.ts` (`InMemoryLedger`) and provides synchronous accounting and deterministic replay from `JournalEvent` streams via `replayLedger`.
+
+#### Accounting Semantics
+- **Balance tracking:** Tracks `{ available: bigint, reserved: bigint }` per owner and token. Advisory `pending` balances are returned as `0n` by the core ledger.
+- **Reservation lifecycle:** Funds locked for active intents or pending withdrawals are tracked under unique references (`status: 'active' | 'released' | 'consumed'`). Consumed funds leave user claims without restoring available balances; released funds return to available balances.
+- **Nonce management:** Per-owner monotonic nonces starting at `0n`. Lower or duplicate nonces are rejected with `NONCE_USED`.
+- **Revenue and gas segregation:** Protocol fee revenue (`EXEC_SETTLED.fee`) and operational gas expenditures (`FEE_BOOKED.feeAmount`) are segregated into dedicated ledgers and excluded from user claims.
+- **Replay projection:** `apply(event: JournalEvent)` projects all 15 canonical events in chronological sequence, reconstructing identical ledger snapshots on enclave restart.
+- **Invariant verification:** `assertInvariants()` verifies non-negativity, exact reservation conservation, and aggregate totals consistency.
 
 ## Key manager (Felix)
 

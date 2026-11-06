@@ -614,3 +614,51 @@ This document is the canonical, chronological record of all backend and accounti
 ### Integration Handoffs
 - **Shreyas (Ledger & Auth):** `Ledger` will consume `Journal.append()` inside `FifoSerialQueue` before applying balance mutations, and invoke `Journal.replay()` during boot.
 - **Felix (Key Management):** Integrate journal sealing key derivation (`KeyManager`) to provide the 32-byte AES key to `EncryptedJournal`.
+
+---
+
+## Task 5: Accounting Ledger and Deterministic Replay Implementation
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task 5 — Accounting Ledger and Deterministic Replay Implementation (Shreyas)
+- **Status:** Completed
+- **Objective:** Implement the in-memory accounting ledger in `services/enclave/src/ledger.ts` (`InMemoryLedger`) implementing `Ledger` from `@cloakroom/shared`, enforcing strict non-negativity and reservation conservation invariants, managing monotonic user nonces, segregating protocol fee revenue from operational gas expenditure, and enabling deterministic state replay from `JournalEvent` streams via `replayLedger`.
+
+### Files Created
+- `services/enclave/src/ledger.ts` (`InMemoryLedger`, `replayLedger`, reservation lifecycle, double-credit prevention, fee segregation, invariant verification)
+- `services/enclave/test/ledger.test.ts` (36 unit and queue/journal integration tests covering all requirements)
+- `services/enclave/test/ledger.property.test.ts` (Fast-check property-based tests verifying invariant conservation across arbitrary operations and 256-bit BigInt precision)
+
+### Files Modified
+- `services/enclave/src/index.ts` (Exported `InMemoryLedger`, `replayLedger`, types)
+- `docs/enclave.md` (Documented `InMemoryLedger` accounting semantics, reservation lifecycle, and replay)
+- `docs/data-model.md` (Documented reservation lifecycle, reference semantics, and fee segregation)
+- `docs/testing.md` (Added `ledger.test.ts` and `ledger.property.test.ts` suites)
+- `docs/roles/shreyas-api.md` (Marked Task 5 and boot replay complete)
+- `docs/engineering-log.md` (Appended Task 5 engineering log)
+
+### Dependencies Added or Changed
+- None (utilized existing `viem`, `@cloakroom/shared`, `fast-check`, and `vitest`).
+
+### Implementation Details
+- **Balance & Reservation Management:** Per-owner, per-token mapping tracking `available` and `reserved` balances. Advisory `pending` balance is returned as `0n` by the core ledger. Reservations transition through `active -> released` or `active -> consumed`. Consumed reservations reduce `reserved` without restoring `available`; released reservations restore `available`.
+- **Double-Credit Prevention:** Credit references (e.g., `deposit:<sessionId>:<blockNumber>`) are tracked; identical credits are idempotent, while conflicting parameters with the same reference throw.
+- **Reservation Uniqueness:** Reservations require unique references and cannot be overwritten. Consumed reservations cannot be released; released reservations cannot be consumed.
+- **Monotonic Nonce Accounting:** Nonces start at `0n` per owner and must be strictly increasing (`nonce > lastNonce`). Lower or already-used nonces are rejected with `NONCE_USED`.
+- **Fee Segregation:** Protocol revenue (`EXEC_SETTLED.fee`) is credited to a dedicated protocol fee ledger and excluded from user claims. Operational gas expenses (`FEE_BOOKED.feeAmount`) are recorded in an operational gas ledger and never charged to users or deducted from reservations.
+- **Deterministic Replay:** `apply(event: JournalEvent)` handles all 15 canonical journal event variants with validation (requiring `event.owner` on `DEPOSIT_CREDITED`, verifying owner matching on intent/withdrawal settlement and failure). `replayLedger` processes journal entries sequentially and verifies ledger invariants on completion.
+- **Transaction Boundary:** Synchronous ledger methods contain no asynchronous network calls or global queues; callers own the queue transaction boundary (`queue.run(async () => { await journal.append(e); ledger.apply(e); })`).
+
+### Tests Added
+- `services/enclave/test/ledger.test.ts`: 36 tests (30 unit tests + 6 integration tests)
+- `services/enclave/test/ledger.property.test.ts`: 3 property test suites running 150+ randomized iterations
+
+### Exact Verification Commands & Results
+- `pnpm test`: Exited with code 0 (220 passed across 11 test files).
+- `pnpm typecheck`: Exited with code 0.
+- `pnpm build`: Exited with code 0.
+- `git diff --check`: Clean (0 whitespace errors or conflicts).
+
+### Integration Handoffs
+- **Shreyas (Auth & Server):** Use `InMemoryLedger` in Fastify route handlers and `auth.ts` inside `FifoSerialQueue` transaction boundaries.
+- **Apurva (Executor):** Confirmed existing calls (`ledger.consume(withdrawal.id)` and `ledger.release(withdrawal.id)`) align with reservation reference semantics.
