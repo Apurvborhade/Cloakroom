@@ -322,12 +322,12 @@ We deploy no contracts of our own.
 | --- | --- |
 | Calling the Trading API | [`uniswap.ts:73`](services/enclave/src/uniswap.ts#L73) |
 | Checking prices from quotes | [`price-poller.ts:86`](services/enclave/src/price-poller.ts#L86) |
-| Running a swap | [`executor.ts:371`](services/enclave/src/executor.ts#L371) |
-| Requesting a quote for a swap | [`executor.ts:422`](services/enclave/src/executor.ts#L422) |
-| Checking the router calldata before signing | [`executor.ts:452`](services/enclave/src/executor.ts#L452), [`swap-calldata.ts:56`](services/enclave/src/swap-calldata.ts#L56) |
-| Simulating the swap | [`executor.ts:469`](services/enclave/src/executor.ts#L469) |
-| Sending the swap | [`executor.ts:531`](services/enclave/src/executor.ts#L531) |
-| Reading the output from the receipt | [`executor.ts:568`](services/enclave/src/executor.ts#L568) |
+| Running a swap | [`executor.ts:370`](services/enclave/src/executor.ts#L370) |
+| Requesting a quote for a swap | [`executor.ts:425`](services/enclave/src/executor.ts#L425) |
+| Checking the router calldata before signing | [`executor.ts:465`](services/enclave/src/executor.ts#L465), [`swap-calldata.ts:71`](services/enclave/src/swap-calldata.ts#L71) |
+| Simulating the swap | [`executor.ts:483`](services/enclave/src/executor.ts#L483) |
+| Sending the swap | [`executor.ts:545`](services/enclave/src/executor.ts#L545) |
+| Reading the output from the receipt | [`executor.ts:582`](services/enclave/src/executor.ts#L582) |
 | Tests, including real Sepolia responses | [`executor-intent.test.ts`](services/enclave/test/executor-intent.test.ts), [`swap-calldata.test.ts`](services/enclave/test/swap-calldata.test.ts) |
 
 ### Check it yourself
