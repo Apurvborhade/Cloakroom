@@ -952,3 +952,49 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `5f8a9c6ac843fa7cae24cf46087cfce729cafb2a` (`feat(enclave): add inventory claiming and funding logic`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A13: Two-User Demo
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A13 (Apurva's workstream) — Two-User Demo
+- **Status:** Committed on branch `feat/demo-fixture`. Passes on a local chain. Not yet run on Sepolia, and not pushed by this entry.
+- **Objective:** Run the demo script end to end with as many real components as exist today.
+
+### Files Created
+- `services/enclave/scripts/demo.ts`, `demo-local.ts`, `demo-fixture.ts`
+- `services/enclave/test/demo-fixture.test.ts`
+
+### Files Modified
+- `package.json` (added `demo:local` and `demo:sepolia`)
+- `scripts/README.md`, `docs/demo.md`, `docs/roles/apurva-onchain.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Implementation Details
+- Real: `AuthService`, `EncryptedJournal`, `InMemoryLedger`, `FifoSerialQueue`, `DepositWatcher`, `Inventory`, `PricePoller`, `Executor` and the seeding tool.
+- Stand-ins: a signer with the guard's rules, because `KeyManager` refuses swaps, and an intent store, because `IntentStore` does not exist.
+- The output states this, and that the run is TEE-simulated.
+
+### Tests Added
+- `services/enclave/test/demo-fixture.test.ts`: the full run passes, funds return, and an unsafe swap stops it with nothing paid to the attacker.
+- Three deliberate bugs were introduced to check the main test, and each one made it fail.
+
+### Exact Verification Commands & Results
+- `pnpm demo:local` equivalent: 16 of 16 checks passed.
+- `pnpm test` on macOS: 3 failed | 524 passed (527). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- This is a rehearsal, not the final demo: it has no UI or API, and no TEE.
+- Requests are not sealed with HPKE here, because they call the components directly.
+- The stand-in `due` only handles comparator 0.
+
+### Integration Handoffs
+- **Shreyas and Felix:** when `IntentStore`, the API routes and swap signing land, this script is ready to move onto them.
+
+### Commit Reference
+- **Commit:** `d4cbb785d00cf5069b847c51d0a0558d621e6969` (`feat(enclave): add the two-user demo run`)
+- **Pushed to Remote:** No
