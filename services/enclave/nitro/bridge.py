@@ -32,7 +32,11 @@ def main():
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
     child = None
+    kms = None
+    storage = None
     if args.mode == "enclave":
+        kms = subprocess.Popen(["python3", "/app/nitro/kms-relay.py", "enclave"])
+        storage = subprocess.Popen(["python3", "/app/nitro/storage-relay.py"])
         child = subprocess.Popen(["node", "/app/dist/attestation-server.js"])
         listener = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
         listener.bind((socket.VMADDR_CID_ANY, 5000))
@@ -66,7 +70,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
-        while child is None or child.poll() is None:
+        while child is None or (child.poll() is None and kms.poll() is None and storage.poll() is None):
             try:
                 connection, peer = listener.accept()
             except socket.timeout:
@@ -81,6 +85,12 @@ def main():
         if child is not None:
             child.terminate()
             child.wait(timeout=10)
+        if kms is not None:
+            kms.terminate()
+            kms.wait(timeout=10)
+        if storage is not None:
+            storage.terminate()
+            storage.wait(timeout=10)
 
 
 if __name__ == "__main__":

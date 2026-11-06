@@ -7,14 +7,6 @@ One decision per file. This page is the index, so check here first.
 | Decision | Owner | Needed by |
 | --- | --- | --- |
 | [Dockerfile and pnpm](2026-11-06-0151-dockerfile-pnpm.md) | Felix | Phase 0 |
-| [Fee model](2026-11-06-0151-fee-model.md) | Shreyas, Apurva | Phase 1 |
-| [Missing EIP-712 types](2026-11-06-0151-missing-eip712-types.md) | Shreyas, Pradnyesh | Phase 1 |
-| [Journal cannot replay every state](2026-11-06-0151-journal-replay-events.md) | Shreyas | Phase 1 |
-| [Meaning of pending](2026-11-06-0151-pending-balance.md) | Shreyas | Phase 1 |
-| [Salt hash and key lifetime](2026-11-06-0151-salt-and-key-lifetime.md) | Felix, Pradnyesh | Phase 1 |
-| [Admin EOAs endpoint](2026-11-06-0151-admin-eoas-endpoint.md) | Felix, Shreyas | Phase 1 |
-| [Non-ETH deposits](2026-11-06-0151-non-eth-deposits.md) | Shreyas, Apurva | Phase 1 |
-| [Withdrawal status endpoint](2026-11-06-0331-withdrawal-status-endpoint.md) | Shreyas, Pradnyesh | Phase 1 |
 
 ## Proposed, waiting for confirmation
 
@@ -23,7 +15,6 @@ One decision per file. This page is the index, so check here first.
 | [Relationship to hide](2026-11-06-0151-relationship-to-hide.md) | Team | Before hour 0 |
 | [Withdrawal credential](2026-11-06-0151-withdrawal-credential.md) | Team | Before hour 0 |
 | [Initial inventory](2026-11-06-0151-initial-inventory.md) | Apurva | Before hour 0 |
-| [Deposit journal events](2026-11-06-0258-deposit-journal-events.md) (`watcher.ts` side done) | Shreyas, Apurva | Phase 1 |
 
 ## Accepted
 
@@ -35,6 +26,17 @@ One decision per file. This page is the index, so check here first.
 | [Open-source licence](2026-11-06-0151-open-source-licence.md) | Team | Before hour 0 |
 | [The spec wins over the plan](2026-11-06-0151-spec-over-plan.md) | Team | Settled |
 | [Files with no owner](2026-11-06-0151-unowned-files.md) | Shreyas | Phase 0 |
+| [Fee model](2026-11-06-0151-fee-model.md) | Shreyas, Apurva | Phase 1 |
+| [Meaning of pending](2026-11-06-0151-pending-balance.md) | Shreyas | Phase 1 |
+| [Missing EIP-712 types](2026-11-06-0151-missing-eip712-types.md) | Shreyas, Pradnyesh | Phase 1 |
+| [Journal replay events](2026-11-06-0151-journal-replay-events.md) | Shreyas | Phase 1 |
+| [Deposit journal events](2026-11-06-0258-deposit-journal-events.md) | Shreyas, Apurva | Phase 1 |
+| [Non-ETH deposits](2026-11-06-0151-non-eth-deposits.md) | Shreyas, Apurva | Phase 1 |
+| [Withdrawal status endpoint](2026-11-06-0331-withdrawal-status-endpoint.md) | Shreyas, Pradnyesh | Phase 1 |
+| [Salt hash and key lifetime](2026-11-06-0151-salt-and-key-lifetime.md) | Felix, Pradnyesh | Phase 1 |
+| [Admin EOAs endpoint](2026-11-06-0151-admin-eoas-endpoint.md) | Felix, Shreyas | Phase 1 |
+| [Journal durability, encryption, and replay](2026-11-06-0745-journal-durability-and-replay.md) | Shreyas | Phase 1 (Task 4) |
+| [Concurrency and serialized queue boundaries](2026-11-06-0745-concurrency-and-queue-boundaries.md) | Shreyas | Phase 1 |
 
 ## Superseded
 

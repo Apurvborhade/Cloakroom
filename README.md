@@ -5,7 +5,7 @@ A TEE private intent network. Deposit ETH, hold a confidential balance, submit a
 > **Claim:** private ownership coordination and intent execution with no mandatory privacy-contract call.
 > We never claim that usage is undetectable.
 
-**Status:** phase 0. Nitro attestation bootstrap implemented; custody and the application flow are not implemented yet.
+**Status:** custody, HPKE and withdrawal integration are implemented and tested. The deployed Nitro service serves attestation and runs an unfunded custody self-test. Full API mounting, live KMS provisioning and public HTTPS remain open.
 
 ## Team
 
@@ -48,7 +48,7 @@ Variables are described in [docs/deployment.md](docs/deployment.md).
 
 ## Trust assumptions
 
-Users trust the operator and the TEE hardware. There is one node, with no key handover, threshold custody or slashing. If the journal is lost, state is lost: there is no backup in the MVP.
+The operator, KMS policy administrator and TEE hardware are trusted. There is one node, with no key handover, threshold custody or slashing. External encrypted state is implemented; live KMS recovery remains unverified. Complete rollback of custody and journal storage requires an external trusted checkpoint. Journal loss still loses accounting state.
 
 ## Known leaks
 

@@ -68,8 +68,8 @@ class VerificationTests(unittest.TestCase):
         r, s = decode_dss_signature(self.signing_key.sign(signed, ec.ECDSA(hashes.SHA384())))
         signature = r.to_bytes(48, "big") + s.to_bytes(48, "big")
         quote = cbor2.dumps([protected, {}, payload, signature])
-        return {"quote": base64.b64encode(quote).decode(), "buildHash": self.build_hash,
-                "enclavePubKey": base64.b64encode(self.public_key).decode(), "chainId": 11155111}
+        return {"quote": base64.b64encode(quote).decode(), "buildHash": "0x" + self.build_hash,
+                "enclavePubKey": "0x" + self.public_key.hex(), "chainId": 11155111}
 
     def verify(self, response=None, **overrides):
         args = dict(response=response or self.response(), measurements=self.measurements,
@@ -98,7 +98,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_wrong_build_or_chain_or_key(self):
         for key, value in [("buildHash", "00" * 32), ("chainId", 1),
-                           ("enclavePubKey", base64.b64encode(b"x" * 32).decode())]:
+                           ("enclavePubKey", "0x" + (b"x" * 32).hex())]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 response = self.response()
                 response[key] = value

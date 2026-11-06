@@ -8,8 +8,9 @@ async function files(directory) {
     ? files(`${directory}/${entry.name}`) : `${directory}/${entry.name}`))).flat();
 }
 
-const paths = [...await files('src'), ...await files('nitro'), 'Dockerfile',
-  'package.json', 'tsconfig.json', '../../tsconfig.base.json', '../../pnpm-lock.yaml'].sort();
+const paths = [...await files('src'), ...await files('nitro'), ...await files('../../packages/shared/src'), 'Dockerfile',
+  'package.json', 'tsconfig.json', '../../packages/shared/package.json',
+  '../../packages/shared/tsconfig.json', '../../tsconfig.base.json', '../../pnpm-lock.yaml'].sort();
 const hash = createHash('sha256');
 for (const path of paths) {
   const bytes = await readFile(path);

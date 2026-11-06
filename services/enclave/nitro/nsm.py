@@ -9,7 +9,8 @@ import cbor2
 
 
 def attest(public_key, user_data, nonce=None):
-    if len(public_key) != 32 or len(user_data) != 32:
+    # X25519 transport keys or RSA SubjectPublicKeyInfo for KMS recipient attestation.
+    if not 1 <= len(public_key) <= 1024 or len(user_data) != 32:
         raise ValueError("Invalid binding")
     if nonce is not None and not 32 <= len(nonce) <= 64:
         raise ValueError("Invalid nonce")

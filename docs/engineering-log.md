@@ -419,47 +419,6 @@ This document is the canonical, chronological record of all backend and accounti
 - **Commit:** `fae06c88c3250cdee348655e787aeabbd58c5d58` (`feat(enclave): add validated environment config`)
 - **Pushed to Remote:** No
 
-
----
-
-## Task F0: Nitro Attestation Bootstrap
-
-- **Date:** 2026-11-05
-- **Owner:** Felix
-- **Objective:** Run the attestation service in a real Nitro Enclave and verify a fresh document against trusted build measurements.
-- **Status:** Implemented and verified through an SSH tunnel. Public HTTPS ingress remains open.
-
-### Changes
-
-- Added `services/enclave/src/attestation.ts`, `attestation-server.ts`, `nitro/`, and `Dockerfile`: enclave-generated X25519 key, NSM document retrieval, key/build binding, and a bounded vsock relay. Startup fails outside Nitro.
-- Added `scripts/verify-attestation.py`, its requirements, and the public AWS root certificate. Verification pins the AWS root and checks the certificate chain, ES384 signature, nonce, timestamp, PCR0–2, and key/build binding.
-- Added `services/enclave/test/attestation.test.ts` and `test/attestation_test.py`.
-- Updated the enclave package build script, public setup instructions, API contract, Felix checklist, TEE decision, and handoff documentation.
-- Added Docker/Git exclusions for credentials and local artifacts. Only the public AWS root certificate is excepted from the PEM exclusion.
-- Integrated the bootstrap with the current workspace packages; the application entrypoint and existing team modules are retained.
-
-### Verification
-
-- `pnpm typecheck`: passed.
-- `pnpm test` with Anvil on PATH: 158 tests passed across 8 suites.
-- `python -m unittest discover -s test -p '*_test.py' -v` in the verifier environment: 10 tests passed.
-- ARM64 Docker and EIF builds: passed. Non-debug enclave boot and live verification: passed; local and deployed build hashes match.
-- Live malformed-request checks: rejected. Live verification with a wrong nonce or wrong expected PCR: rejected.
-- Ordinary Docker startup without NSM: refused.
-- `git diff --check`: passed.
-
-### Handoffs and Limitations
-
-- API/frontend: use the attestation response and challenge encoding in `docs/api.md`; the phase-0 transport key rotates on restart.
-- The standalone attestation server does not implement custody or the application routes. Public HTTPS, persistent keys, full application packaging, restart automation, and final reproducible builds remain open.
-- The private SSH key and deployment identifiers are not part of this change.
-
-### Commit Reference
-
-- **Commit:** `31d36f9` (`feat(enclave): add verifiable Nitro attestation bootstrap`).
-- **Pushed to Remote:** Yes, on `tee/nitro-attestation`.
-- **PR:** Not created; the user requested a creation link.
-
 ---
 
 ## Task A5: Watcher Journal Events
@@ -497,11 +456,178 @@ This document is the canonical, chronological record of all backend and accounti
 
 ---
 
+## Domain Alignment and Decision Resolution Audit
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Domain Alignment and Backend Readiness Audit (Shreyas)
+- **Status:** Completed
+- **Objective:** Perform a deep architectural audit of the Cloakroom domain model, solve all open domain decisions owned by Shreyas, harmonize `JournalEvent` definitions between shared contracts and enclave subsystems, specify the accounting invariant and state transitions, define concurrency and queue boundaries, formalize the withdrawal status endpoint, and prepare the implementation plan for Task 4 (Append-only encrypted Journal).
+
+### Files Created
+- `docs/decisions/2026-11-06-0745-journal-durability-and-replay.md`
+- `docs/decisions/2026-11-06-0745-concurrency-and-queue-boundaries.md`
+
+### Files Modified
+- `packages/shared/src/types/journal.ts` (canonical 15-event union harmonized with watcher, inventory, and executor)
+- `packages/shared/src/schemas/api.ts` (added `WithdrawalStatusItemSchema` and `WithdrawalStatusResponseSchema`)
+- `docs/decisions/2026-11-06-0151-fee-model.md` (accepted output-token basis point fee model)
+- `docs/decisions/2026-11-06-0151-pending-balance.md` (accepted display-only watcher pending balance semantics)
+- `docs/decisions/2026-11-06-0151-missing-eip712-types.md` (accepted `SessionQuery` and `CancelIntent`)
+- `docs/decisions/2026-11-06-0151-journal-replay-events.md` (accepted canonical 15-event union)
+- `docs/decisions/2026-11-06-0151-non-eth-deposits.md` (accepted native ETH only in v1)
+- `docs/decisions/2026-11-06-0258-deposit-journal-events.md` (accepted canonical deposit event shapes)
+- `docs/decisions/2026-11-06-0331-withdrawal-status-endpoint.md` (accepted `POST /withdrawals/status`)
+- `docs/decisions/2026-11-06-0151-salt-and-key-lifetime.md` (accepted `salt = keccak256(enclavePubKey)`)
+- `docs/decisions/2026-11-06-0151-admin-eoas-endpoint.md` (accepted `POST /admin/eoas` with admin auth)
+- `docs/decisions/README.md` (updated decision index)
+- `docs/data-model.md` (formalized solvency invariant, balance semantics, fee structure, state transition table)
+- `docs/api.md` (added `/withdrawals/status`, updated typed data rules, error codes)
+- `docs/enclave.md` (updated canonical `JournalEvent` and references)
+- `docs/roles/shreyas-api.md` (checked off resolved decisions)
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- Solvency invariant mathematically formalized: physical custody balances minus inventory gas reserves must equal or exceed total user claims (`available + reserved`) plus protocol fees per token.
+- `pending` balance is display-only from `DepositWatcher`; core `Ledger` only tracks `available` and `reserved`.
+- Protocol fee calculated as `(amountOut * FEE_BPS) / 10000n` from `tokenOut` upon swap settlement. Zero protocol fee on failed swaps or withdrawals.
+- Gas spent on-chain (`gasUsed * effectiveGasPrice`) recorded via `FEE_BOOKED` to an operational fee ledger, not charged to users.
+- In-memory `FifoSerialQueue` bounds strictly defined: only nonce checks, journal appends, and state mutations execute inside the queue; network I/O, encryption, and RPC calls run outside the queue.
+- Journal durability specified: AES-256-GCM encryption at rest, atomic framing, `fsync()` on every append, partial write rollback at EOF.
+
+### Exact Verification Commands & Results
+- `pnpm typecheck`: Exited with code 0 (all workspace packages pass).
+- `pnpm test`: Exited with code 0 (159 passed in 8 test files across monorepo).
+- `pnpm build`: Exited with code 0.
+- `git diff --check`: Clean (0 whitespace errors or conflicts).
+
+### Integration Handoffs
+- **Apurva:** In `services/enclave/src/watcher.ts`, replace local `DepositEvent` with `JournalEvent` from `@cloakroom/shared`, add `session.owner` to `DEPOSIT_CREDITED`, and pass `session.eoa` to `DEPOSIT_SESSION_CLOSED`.
+- **Pradnyesh:** Use `WithdrawalStatusResponse` for `/withdraw` page status tracking via `POST /withdrawals/status`.
+- **Felix:** Implement journal sealing key derivation for AES-256-GCM in `KeyManager`.
+
+---
+
+## Task 4: Encrypted Append-Only Journal Implementation
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task 4 — Encrypted Append-Only Journal Implementation (Shreyas)
+- **Status:** Completed
+- **Objective:** Implement the production-grade encrypted, hash-chained, append-only journal in `services/enclave/src/journal.ts` conforming to the `Journal` interface from `@cloakroom/shared`, ensuring strict persistence durability via fsync, atomic framing, deterministic replay, hash-chain integrity verification, and recovery from partial writes at EOF.
+
+### Files Created
+- `services/enclave/src/journal.ts` (EncryptedJournal class, canonicalJson, parseCanonicalJson, computeEntryHash, framing, AES-256-GCM encryption/decryption)
+- `services/enclave/test/journal.test.ts` (Comprehensive 22-test unit test suite)
+
+### Files Modified
+- `services/enclave/src/index.ts` (Exported EncryptedJournal, computeEntryHash, canonicalJson, parseCanonicalJson, GENESIS_HASH, DEFAULT_MAX_RECORD_BYTES, JournalOptions)
+- `docs/roles/shreyas-api.md` (Updated Task 4 status)
+- `docs/enclave.md` (Documented EncryptedJournal framing format, cryptographic hashing, durability, and replay/recovery semantics)
+- `docs/engineering-log.md` (Appended Task 4 engineering log)
+
+### Dependencies Added or Changed
+- None (uses Node.js built-in `node:crypto`, `node:fs/promises`, and existing workspace dependencies `viem` and `@cloakroom/shared`).
+
+### Implementation Details
+- **Binary Frame Layout:** `[payloadLength: 4 bytes BE uint32][iv: 12 bytes][ciphertext: N bytes][authTag: 16 bytes]`.
+- **Encryption Scheme:** AES-256-GCM with fresh 12-byte cryptographic random IV per entry. Supports 32-byte `Buffer` or `0x`-prefixed 64-char hex key.
+- **Deterministic Serialization:** Implemented `canonicalJson` and `parseCanonicalJson` sorting object keys lexicographically and serializing BigInt values as `"123n"` string tokens.
+- **Cryptographic Hash Chain:** `keccak256(concat([encodePacked(['uint64', 'uint64'], [seq, ts]), prevHash, stringToHex(canonicalJson(event))]))`. Genesis hash is `0x0000000000000000000000000000000000000000000000000000000000000000`.
+- **Durability & Concurrency:** Concurrent appends are serialized using Promise chaining. Writes call `handle.write()` followed by `handle.sync()` (`fsync`) before resolving. In-memory sequence and hash advance only upon successful durable sync. On write failure, file pointer is rolled back.
+- **Replay & Integrity:** `replay()` validates frame boundaries, decrypts ciphertext, validates AES-GCM authentication tags, verifies sequential monotonic sequence numbering (`seq === lastSeq + 1`), verifies backward hash chaining (`prevHash === lastHash`), and recomputes the entry hash.
+- **Crash Recovery at EOF:** If a trailing incomplete frame or truncated payload is found at EOF (due to power cut or crash mid-write), `replay()` truncates the partial bytes back to the last valid frame, resets state, and allows subsequent append operations.
+- **Fatal Rejection:** Throws fatal errors for mid-file corruption, sequence gaps, wrong previous hashes, oversized frames, or invalid authentication tags.
+- **Lifecycle Management:** Idempotent `close()` method that shuts down file handles and rejects subsequent append or replay calls.
+
+### Tests Added
+- `services/enclave/test/journal.test.ts` (22 tests covering all required cases):
+  1. appends sequential entries with incrementing seq and timestamps
+  2. enforces monotonic sequence numbering starting from 1
+  3. links hashes correctly across entries (genesis to entry 1 to entry 2)
+  4. matches expected hash computation format using viem keccak256
+  5. produces ciphertext that does not contain plaintext event content
+  6. uses unique IVs for every entry (no IV reuse)
+  7. replays appended events in exact order
+  8. replaying an empty journal yields zero events
+  9. handles multiple appends sequentially and recovers full state
+  10. fails replay on truncated frame (fewer bytes than header says)
+  11. fails replay on corrupted ciphertext (AES-GCM authentication tag mismatch)
+  12. fails replay on modified previousHash (hash chain broken)
+  13. fails replay on sequence gap (e.g., seq 1 followed by seq 3)
+  14. fails replay on wrong genesis hash for first entry
+  15. ignores / truncates partial writes at EOF and allows new appends (crash simulation)
+  16. throws fatal error on corruption in the middle of the file (not at EOF)
+  17. handles events with bigints without precision loss
+  18. handles all 15 JournalEvent variants without error
+  19. concurrent appends do not interleave or produce duplicate sequence numbers
+  20. fsync is called on every append when enabled
+  21. rejects records exceeding maxRecordBytes
+  22. closing the journal prevents further appends and closes file descriptors
+
+### Exact Verification Commands & Results
+- `pnpm test`: Exited with code 0 (181 passed across 9 test files).
+- `pnpm typecheck`: Exited with code 0.
+- `pnpm build`: Exited with code 0.
+- `git diff --check`: Clean (0 whitespace errors or conflicts).
+
+### Integration Handoffs
+- **Shreyas (Ledger & Auth):** `Ledger` will consume `Journal.append()` inside `FifoSerialQueue` before applying balance mutations, and invoke `Journal.replay()` during boot.
+- **Felix (Key Management):** Integrate journal sealing key derivation (`KeyManager`) to provide the 32-byte AES key to `EncryptedJournal`.
+
+---
+
+## Task 5: Accounting Ledger and Deterministic Replay Implementation
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task 5 — Accounting Ledger and Deterministic Replay Implementation (Shreyas)
+- **Status:** Completed
+- **Objective:** Implement the in-memory accounting ledger in `services/enclave/src/ledger.ts` (`InMemoryLedger`) implementing `Ledger` from `@cloakroom/shared`, enforcing strict non-negativity and reservation conservation invariants, managing monotonic user nonces, segregating protocol fee revenue from operational gas expenditure, and enabling deterministic state replay from `JournalEvent` streams via `replayLedger`.
+
+### Files Created
+- `services/enclave/src/ledger.ts` (`InMemoryLedger`, `replayLedger`, reservation lifecycle, double-credit prevention, fee segregation, invariant verification)
+- `services/enclave/test/ledger.test.ts` (36 unit and queue/journal integration tests covering all requirements)
+- `services/enclave/test/ledger.property.test.ts` (Fast-check property-based tests verifying invariant conservation across arbitrary operations and 256-bit BigInt precision)
+
+### Files Modified
+- `services/enclave/src/index.ts` (Exported `InMemoryLedger`, `replayLedger`, types)
+- `docs/enclave.md` (Documented `InMemoryLedger` accounting semantics, reservation lifecycle, and replay)
+- `docs/data-model.md` (Documented reservation lifecycle, reference semantics, and fee segregation)
+- `docs/testing.md` (Added `ledger.test.ts` and `ledger.property.test.ts` suites)
+- `docs/roles/shreyas-api.md` (Marked Task 5 and boot replay complete)
+- `docs/engineering-log.md` (Appended Task 5 engineering log)
+
+### Dependencies Added or Changed
+- None (utilized existing `viem`, `@cloakroom/shared`, `fast-check`, and `vitest`).
+
+### Implementation Details
+- **Balance & Reservation Management:** Per-owner, per-token mapping tracking `available` and `reserved` balances. Advisory `pending` balance is returned as `0n` by the core ledger. Reservations transition through `active -> released` or `active -> consumed`. Consumed reservations reduce `reserved` without restoring `available`; released reservations restore `available`.
+- **Double-Credit Prevention:** Credit references (e.g., `deposit:<sessionId>:<blockNumber>`) are tracked; identical credits are idempotent, while conflicting parameters with the same reference throw.
+- **Reservation Uniqueness:** Reservations require unique references and cannot be overwritten. Consumed reservations cannot be released; released reservations cannot be consumed.
+- **Monotonic Nonce Accounting:** Nonces start at `0n` per owner and must be strictly increasing (`nonce > lastNonce`). Lower or already-used nonces are rejected with `NONCE_USED`.
+- **Fee Segregation:** Protocol revenue (`EXEC_SETTLED.fee`) is credited to a dedicated protocol fee ledger and excluded from user claims. Operational gas expenses (`FEE_BOOKED.feeAmount`) are recorded in an operational gas ledger and never charged to users or deducted from reservations.
+- **Deterministic Replay:** `apply(event: JournalEvent)` handles all 15 canonical journal event variants with validation (requiring `event.owner` on `DEPOSIT_CREDITED`, verifying owner matching on intent/withdrawal settlement and failure). `replayLedger` processes journal entries sequentially and verifies ledger invariants on completion.
+- **Transaction Boundary:** Synchronous ledger methods contain no asynchronous network calls or global queues; callers own the queue transaction boundary (`queue.run(async () => { await journal.append(e); ledger.apply(e); })`).
+
+### Tests Added
+- `services/enclave/test/ledger.test.ts`: 36 tests (30 unit tests + 6 integration tests)
+- `services/enclave/test/ledger.property.test.ts`: 3 property test suites running 150+ randomized iterations
+
+### Exact Verification Commands & Results
+- `pnpm test`: Exited with code 0 (220 passed across 11 test files).
+- `pnpm typecheck`: Exited with code 0.
+- `pnpm build`: Exited with code 0.
+- `git diff --check`: Clean (0 whitespace errors or conflicts).
+
+### Integration Handoffs
+- **Shreyas (Auth & Server):** Use `InMemoryLedger` in Fastify route handlers and `auth.ts` inside `FifoSerialQueue` transaction boundaries.
+- **Apurva (Executor):** Confirmed existing calls (`ledger.consume(withdrawal.id)` and `ledger.release(withdrawal.id)`) align with reservation reference semantics.
+
 ## Task A6: Live Chain Test Script
 
 - **Date:** 2026-11-06
 - **Task Number & Title:** Task A6 (Apurva's workstream) — Live Chain Test Script
-- **Status:** Committed on branch `test/sepolia-smoke`. Rehearsed on local Anvil only. Not yet run on Sepolia, and not pushed by this entry.
+- **Status:** Committed on branch `test/sepolia-smoke`. Run on Sepolia with all checks passing. Not pushed by this entry.
 - **Objective:** Exercise the real watcher, inventory and executor on a live chain.
 
 ### Files Created
@@ -522,13 +648,13 @@ This document is the canonical, chronological record of all backend and accounti
 
 ### Exact Verification Commands & Results
 - Local Anvil rehearsal with `--block-time 1`: exited with code 0, all checks passed.
+- `pnpm smoke:sepolia` on Sepolia: all 10 printed checks passed, with a payout from the address the owner did not fund (transaction `0xcb7f4ee185ea9f360b4fc905865ae99dc366795cbd7bae77d3fe28999d2895ef`). Run by Apurva, before `main` was merged into this branch. The closing lines of its output were not captured.
 - Chain ID 1: refused, exit code 1.
 - Missing `RPC_URL` and `TEST_PRIVATE_KEY`: refused, exit code 1.
-- `pnpm test`: Exited with code 0 (159 passed in 8 test files).
+- `pnpm test` after merging `main`, on macOS: 272 passed and 3 failed in `kms-sealing.test.ts` and `sealed-state.test.ts`. The same 3 fail on a clean `origin/main` on this machine, so this branch did not cause them.
 - `pnpm typecheck`: Exited with code 0.
 
 ### Known Limitations & Unresolved Questions
-- Not yet run on Sepolia, which needs an RPC key and test ETH.
 - Covers native ETH only, not ERC-20 payouts or swaps.
 - The journal, ledger and signer are stand-ins.
 

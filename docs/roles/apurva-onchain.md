@@ -41,7 +41,7 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 - [ ] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md))
 - [x] `Inventory`: `refresh`, `pick` with exclusions, `hold`, `free`
 - [ ] Connect `Inventory` to Felix's `KeyManager` and the watcher at boot, with settings from `loadConfig`
-- [ ] Run `pnpm smoke:sepolia` on real Sepolia ([scripts/README.md](../../scripts/README.md))
+- [x] Run `pnpm smoke:sepolia` on real Sepolia ([scripts/README.md](../../scripts/README.md))
 - [x] `runWithdrawal`: pick, sign, journal, send, confirm, consume. The API takes the lock first
 - [x] On-chain totals for Shreyas's `reconcile()`, through `Inventory.getPhysicalBalances`
 - [ ] [Fee model](../decisions/2026-11-06-0151-fee-model.md) and [non-ETH deposits](../decisions/2026-11-06-0151-non-eth-deposits.md) with Shreyas

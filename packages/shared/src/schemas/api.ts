@@ -104,6 +104,12 @@ export const SignedDepositRequestSchema = createSignedRequestSchema(DepositReque
 export const SignedIntentSchema = createSignedRequestSchema(IntentWireSchema);
 export const SignedCancelIntentSchema = createSignedRequestSchema(CancelIntentWireSchema);
 export const SignedWithdrawalSchema = createSignedRequestSchema(WithdrawalWireSchema);
+export const AdminEoasWireSchema = z.object({
+  admin: addressSchema, nonce: uint64StringSchema, expiry: uint64StringSchema,
+}).strict();
+export const SignedAdminEoasSchema = z.object({
+  message: AdminEoasWireSchema, signature: signatureSchema,
+}).strict();
 
 // --- Response Schemas ---
 
@@ -143,6 +149,19 @@ export const WithdrawalResponseSchema = z.object({
   status: z.literal('locked'),
 });
 export type WithdrawalResponse = z.infer<typeof WithdrawalResponseSchema>;
+
+export const WithdrawalStatusItemSchema = z.object({
+  id: z.string(),
+  status: z.enum(['locked', 'sent', 'confirmed', 'failed']),
+  txHash: hexSchema.optional(),
+  reason: z.string().optional(),
+});
+export type WithdrawalStatusItem = z.infer<typeof WithdrawalStatusItemSchema>;
+
+export const WithdrawalStatusResponseSchema = z.object({
+  withdrawals: z.array(WithdrawalStatusItemSchema),
+});
+export type WithdrawalStatusResponse = z.infer<typeof WithdrawalStatusResponseSchema>;
 
 export const StandardErrorResponseSchema = z.object({
   error: z.string(),
