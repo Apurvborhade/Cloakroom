@@ -17,6 +17,11 @@ export function createDomain(chainId: number, enclaveKeyHash: Hex) {
 }
 
 export const EIP712_TYPES = {
+  AdminEoas: [
+    { name: 'admin', type: 'address' },
+    { name: 'nonce', type: 'uint64' },
+    { name: 'expiry', type: 'uint64' },
+  ],
   SessionGrant: [
     { name: 'owner', type: 'address' },
     { name: 'sessionKey', type: 'address' },

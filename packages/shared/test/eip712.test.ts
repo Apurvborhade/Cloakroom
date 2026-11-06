@@ -10,7 +10,7 @@ import {
 } from '../src/index.js';
 
 describe('EIP-712 Domain and Types', () => {
-  const dummyPubKey: Hex = ('0x' + '04' + 'aa'.repeat(64)) as Hex;
+  const dummyPubKey: Hex = ('0x' + 'aa'.repeat(32)) as Hex;
   const chainId = 11155111; // Sepolia
   const enclaveSalt = deriveEnclaveSalt(dummyPubKey);
   const domain = createDomain(chainId, enclaveSalt);

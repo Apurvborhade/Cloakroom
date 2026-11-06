@@ -1,0 +1,7 @@
+{$ENCLAVE_DOMAIN} {
+	header {
+		Cache-Control "no-store"
+		X-Content-Type-Options "nosniff"
+	}
+	reverse_proxy 127.0.0.1:8080
+}

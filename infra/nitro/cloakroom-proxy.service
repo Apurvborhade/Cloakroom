@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloakroom parent ingress relay
+Requires=cloakroom-enclave.service
+After=cloakroom-enclave.service
+
+[Service]
+Environment=ENCLAVE_CID=16
+EnvironmentFile=-/etc/cloakroom/parent.env
+ExecStart=/usr/bin/python3 /opt/cloakroom/nitro/bridge.py parent --cid ${ENCLAVE_CID} --bind 127.0.0.1 --port 8080
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

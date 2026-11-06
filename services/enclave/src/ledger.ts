@@ -300,6 +300,8 @@ export class InMemoryLedger implements Ledger {
         this.setNonce(event.owner, event.nonce);
         break;
       }
+      case 'SIGNING_REGISTERED':
+      case 'SIGNING_COMPLETED':
       case 'DEPOSIT_SESSION_OPENED': {
         // Advisory metadata; no direct balance mutation
         break;

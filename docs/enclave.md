@@ -152,13 +152,13 @@ The in-memory ledger resides in `services/enclave/src/ledger.ts` (`InMemoryLedge
 - **Replay projection:** `apply(event: JournalEvent)` projects all 15 canonical events in chronological sequence, reconstructing identical ledger snapshots on enclave restart.
 - **Invariant verification:** `assertInvariants()` verifies non-negativity, exact reservation conservation, and aggregate totals consistency.
 
-## Key manager (Felix)
+## Key manager (TEE)
 
 ```ts
 // keys.ts: the only code that touches private keys
 export interface KeyManager {
   init(): Promise<void>; // load sealed seed, or generate inside the enclave
-  allocate(role: 'deposit' | 'inventory'): CustodyEOA;
+  allocate(role: 'deposit' | 'inventory'): Promise<CustodyEOA>; // persisted before returning
   list(): CustodyEOA[];
   sign(eoa: Address, tx: TxRequest, opId: string): Promise<Hex>;
 }
@@ -209,7 +209,7 @@ export interface Executor {
 
 `runWithdrawal` expects the funds to be reserved under the withdrawal ID and journaled as `WITHDRAWAL_LOCKED` already. It resolves once an EOA is assigned, so the API can answer without waiting for confirmations, and rejects with `NO_INVENTORY` after releasing the lock if no EOA can pay.
 
-The signer is a `TransactionSigner`: `KeyManager.sign` plus `registerOp(opId, { eoa, to, value, dataHash })`, which registers what the signing guard must see.
+The signer is a `TransactionSigner`: `KeyManager.sign` plus `await registerOp(opId, { eoa, to, value, dataHash })`, which durably registers what the signing guard must see.
 
 ## Price poller (Apurva)
 
@@ -233,7 +233,20 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 ## Boot order
 
 1. Init keys
-2. Replay the journal into the ledger and intent store
+2. Open the journal with `KeyManager.journalCipher()`, replay it into the ledger and intent store, then call `KeyManager.restoreSigningState()`
 3. Refresh inventory
 4. Run `Executor.recover()`
 5. Open the server and start the watcher
+
+
+## Custody implementation handoff
+
+`KeyManager` in `keys.ts` implements `TransactionSigner`. Allocation is asynchronous because persistence completes before an address is returned. Registration now permits a promise; the executor awaits it while synchronous test adapters remain compatible.
+
+The current guard supports journaled native and ERC-20 withdrawals. It checks the locked payout, chain, signer, destination, value, calldata and gas/fee caps, and refuses source-linked EOAs. Swap authorization remains blocked until the swap executor supplies a corresponding authorization contract.
+
+Key initialization does not read the journal, so opening an encrypted journal cannot cause a circular dependency. Signing and registration validate replayed signing state before proceeding.
+
+The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; ledger replay ignores this signing metadata. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
+
+`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` currently accepts raw key bytes; connecting the two still requires a cipher adapter. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.

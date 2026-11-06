@@ -11,11 +11,17 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "3.1163.0",
     "@cloakroom/shared": "workspace:*",
     "@fastify/cors": "^10.0.0",
     "@fastify/rate-limit": "^10.2.0",
+    "@smithy/node-http-handler": "4.14.2",
     "fastify": "^5.2.0",
     "viem": "^2.21.0",
-    "zod": "^3.24.0"
-  }
+    "zod": "^4.6.7"
+  },
+  "files": [
+    "dist",
+    "nitro"
+  ]
 }
