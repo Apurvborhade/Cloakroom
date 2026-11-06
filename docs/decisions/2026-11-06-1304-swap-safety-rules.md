@@ -10,7 +10,9 @@ The spec says to run the Trading API's transaction through `eth_call` and requir
 
 ## Decision
 
-1. **Read the calldata.** `assertSafeSwapCalldata` decodes the router commands before signing, and allows only `WRAP_ETH`, `V3_SWAP_EXACT_IN`, `V2_SWAP_EXACT_IN` and `SWEEP`. Swaps must leave their output in the router. Exactly one `SWEEP` must then pay the output token to the custody EOA with a minimum of at least `minOut`, which the router enforces on-chain.
+1. **Read the calldata.** `assertSafeSwapCalldata` decodes the router commands before signing, and allows only `WRAP_ETH`, `V3_SWAP_EXACT_IN`, `V2_SWAP_EXACT_IN` and `SWEEP`. The router enforces each minimum on-chain. The live API returns two shapes, and only these pass:
+   - **Split route:** every swap leaves its output in the router, and exactly one `SWEEP` pays the output token to the custody EOA with a minimum of at least `minOut`.
+   - **Single route:** exactly one swap pays the custody EOA directly, ends in the output token, and has a minimum of at least `minOut`.
 2. **Request only V2 and V3 routes.** The API defaults to V4 for some swaps, and V4 commands cannot be checked this way, so quotes for swaps set `protocols` to `["V2", "V3"]`. On Sepolia this returned nearly the same price.
 3. **ETH to the configured output token only in v1.** An ERC-20 input needs a Permit2 signature, which custody EOAs cannot produce.
 4. **Simulate as well.** `eth_call` still catches swaps that would revert.
