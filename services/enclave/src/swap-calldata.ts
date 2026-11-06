@@ -26,7 +26,22 @@ export interface SwapCalldataRules {
   eoa: Address;
   tokenOut: Address;
   minOut: bigint;
+  /** The order's limit. Unlike minOut, no rounding tolerance ever applies to it. */
+  floor: bigint;
   nowSec: bigint;
+}
+
+/** Wei per ETH multiplied by the 18-decimal scale of a trigger price. */
+const PRICE_AND_NATIVE_SCALE = 10n ** 36n;
+
+/**
+ * The least output an order may accept: amount times limit price, with no slippage taken off.
+ * It rounds up, because rounding down would allow a fill just under the limit.
+ * 0.1 ETH at 3,000 USDC per ETH gives 300 USDC.
+ */
+export function limitFloor(amountIn: bigint, triggerPrice: bigint, tokenOutDecimals: number): bigint {
+  const numerator = amountIn * triggerPrice * 10n ** BigInt(tokenOutDecimals);
+  return (numerator + PRICE_AND_NATIVE_SCALE - 1n) / PRICE_AND_NATIVE_SCALE;
 }
 
 function unsafe(reason: string): Error {
@@ -49,7 +64,7 @@ function finalToken(path: Hex | readonly Address[]): Address {
  *   to the EOA with a minimum of at least minOut.
  * - Direct: one or more swaps pay the EOA directly, each ending in the output token, and their
  *   minimums add up to at least minOut. Splitting rounds each part down, so the total may fall
- *   short by at most one unit for each extra swap.
+ *   short of minOut by at most one unit for each extra swap, but never short of the floor.
  *
  * Any command not listed here is refused, including ones that could send funds elsewhere.
  */
@@ -111,6 +126,7 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
           const swept = getAddress(token);
           if (swept === tokenOut) {
             if (minimum < rules.minOut) throw unsafe('SWEEP_MINIMUM');
+            if (minimum < rules.floor) throw unsafe('LIMIT_FLOOR');
             outputSweeps += 1;
           } else if (swept !== NATIVE_SWEEP) {
             throw unsafe('SWEEP_TOKEN');
@@ -130,4 +146,5 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
   const direct = swapsToEoa > 0 && swapsToRouter === 0 && outputSweeps === 0;
   if (!throughRouter && !direct) throw unsafe('OUTPUT_PATTERN');
   if (direct && directMinimums + BigInt(swapsToEoa - 1) < rules.minOut) throw unsafe('SWAP_MINIMUM');
+  if (direct && directMinimums < rules.floor) throw unsafe('LIMIT_FLOOR');
 }

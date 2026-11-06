@@ -300,6 +300,7 @@ async function prepareSwap(
     eoa: wallet.address,
     tokenOut,
     minOut: tokensNeeded,
+    floor: 0n,
     nowSec: swap.nowSec?.() ?? BigInt(Math.floor(Date.now() / 1000)),
   });
   return { to: transaction.to, data: transaction.data, amountIn };
