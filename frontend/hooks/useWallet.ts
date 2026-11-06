@@ -166,9 +166,21 @@ export function useWallet() {
     }
   }, [updateBalance]);
 
+  const disconnect = useCallback(() => {
+    setWallet({
+      account: null,
+      chainId: null,
+      networkName: "Not Connected",
+      balance: null,
+      isConnecting: false,
+      error: null,
+    });
+  }, []);
+
   return {
     ...wallet,
     connect,
+    disconnect,
     refreshBalance: () => {
       if (wallet.account) updateBalance(wallet.account);
     },

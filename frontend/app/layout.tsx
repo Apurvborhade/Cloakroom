@@ -12,15 +12,15 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#0C0C0C",
+  themeColor: "#0F1318",
 };
 
 export const metadata: Metadata = {
-  title: "Cloakroom — Private Financial Infrastructure",
+  title: "NONY — Private Financial Infrastructure",
   description:
     "Move assets, manage private financial positions and execute conditional swaps without exposing your entire financial activity. Attested TEE private intent network.",
   keywords: [
-    "Cloakroom",
+    "NONY",
     "Privacy DeFi",
     "TEE Enclave",
     "AWS Nitro Enclave",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     "HPKE",
     "Ethereum",
   ],
-  authors: [{ name: "Cloakroom Team" }],
+  authors: [{ name: "NONY Team" }],
   icons: {
     icon: "/icon.svg",
   },
@@ -41,8 +41,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`dark ${inter.variable}`}>
-      <body className="bg-[#0C0C0C] text-[#F5F5F7] antialiased selection:bg-[#A6DCF8]/20 selection:text-[#F5F5F7]">
+    <html lang="en" className={inter.variable}>
+      <body className="bg-[#0F1318] text-[#F0F4F8] antialiased selection:bg-[#3B82F6]/30 selection:text-white">
         {children}
       </body>
     </html>

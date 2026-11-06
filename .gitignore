@@ -38,3 +38,13 @@ coverage/
 .idea/
 .vscode/
 *.log
+
+# Local AI tooling
+.agents/
+skills-lock.json
+
+# UI audit artifacts
+frontend/audit-screenshots/
+
+# Use pnpm as the package manager
+frontend/package-lock.json

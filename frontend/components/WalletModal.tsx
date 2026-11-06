@@ -1,147 +1,109 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X, Wallet, ShieldAlert, CheckCircle2 } from "lucide-react";
+import React from "react";
+import { X, Wallet, ShieldCheck, AlertCircle } from "lucide-react";
+import { useWallet } from "@/hooks/useWallet";
 
 interface WalletModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConnect?: (address: string) => void;
+  onConnect?: () => void;
 }
 
 export function WalletModal({ isOpen, onClose, onConnect }: WalletModalProps) {
-  const [connecting, setConnecting] = useState<string | null>(null);
-  const [hasInjected, setHasInjected] = useState(false);
-  const [activeAccount, setActiveAccount] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && (window as any).ethereum) {
-      setHasInjected(true);
-      (window as any).ethereum
-        .request({ method: "eth_accounts" })
-        .then((accounts: string[]) => {
-          if (accounts && accounts.length > 0 && accounts[0]) {
-            setActiveAccount(accounts[0]);
-          }
-        })
-        .catch(() => {});
-    }
-  }, []);
+  const { account, chainId, networkName, connect, disconnect, isConnecting, error } =
+    useWallet();
 
   if (!isOpen) return null;
 
-  async function connectInjected() {
-    setConnecting("injected");
-    setError(null);
-    try {
-      if (typeof window !== "undefined" && (window as any).ethereum) {
-        const accounts = await (window as any).ethereum.request({
-          method: "eth_requestAccounts",
-        });
-        if (accounts && accounts.length > 0) {
-          setActiveAccount(accounts[0]);
-          onConnect?.(accounts[0]);
-          setTimeout(() => onClose(), 600);
-        }
-      } else {
-        setError("No Ethereum browser wallet detected. Install Rabby, MetaMask, or Rainbow.");
-      }
-    } catch (err: any) {
-      setError(err?.message || "User rejected connection request.");
-    } finally {
-      setConnecting(null);
-    }
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-md p-6 rounded-2xl bg-[#141418] border border-[#292930] shadow-2xl relative"
+        className="relative w-full max-w-sm rounded-2xl bg-[#161B22] border border-[#232B36] p-6 space-y-5 text-left shadow-2xl font-mono text-xs"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between pb-4 border-b border-[#292930]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#1A1A22] border border-[#292930] flex items-center justify-center">
-              <Wallet size={16} className="text-[#A6DCF8]" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-[#F5F5F7]">Connect Wallet</h3>
-              <p className="text-xs text-[#92929B]">EIP-712 Intent Signing Only</p>
-            </div>
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-[#232B36]">
+          <div className="flex items-center gap-2">
+            <Wallet size={16} className="text-[#3B82F6]" />
+            <span className="font-bold text-sm text-[#F0F4F8] font-sans">
+              Web3 Connection
+            </span>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-[#92929B] hover:text-[#F5F5F7] hover:bg-[#1E1E26] transition-colors"
+            className="p-1 rounded-lg text-[#94A3B8] hover:text-[#F0F4F8] hover:bg-[#1C222B] transition-colors focus:outline-none"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {error && (
-          <div className="mt-4 p-3 rounded-xl bg-red-950/30 border border-red-900/50 flex items-start gap-2.5 text-xs text-red-200">
-            <ShieldAlert size={16} className="shrink-0 text-red-400 mt-0.5" />
-            <span>{error}</span>
+        {/* Status display */}
+        {account ? (
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-[#12161D] border border-[#232B36] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[#94A3B8]">Connected Network:</span>
+                <span className="text-[#F0F4F8] font-semibold">{networkName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#94A3B8]">Account EOA:</span>
+                <span className="text-[#3B82F6] font-bold">
+                  {account.slice(0, 6)}...{account.slice(-4)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-[#10B981] pt-1">
+                <ShieldCheck size={12} />
+                <span>EIP-1193 Provider Active</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                disconnect();
+                onClose();
+              }}
+              className="w-full py-2.5 rounded-xl bg-[#2D1618] border border-[#EF4444]/30 hover:bg-[#3D1D20] text-[#EF4444] font-semibold transition-colors"
+            >
+              Disconnect Wallet
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-[#94A3B8] leading-relaxed">
+              Connect your browser wallet (MetaMask, Coinbase Wallet, or Rabby) to sign cryptographic intents for NONY.
+            </p>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 flex items-start gap-2">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await connect();
+                if (ok) {
+                  onConnect?.();
+                  onClose();
+                }
+              }}
+              disabled={isConnecting}
+              className="w-full py-3 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-50 text-white font-bold tracking-wide transition-colors shadow-sm flex items-center justify-center gap-2"
+            >
+              <Wallet size={15} />
+              <span>{isConnecting ? "Connecting to Provider..." : "Connect Browser Wallet"}</span>
+            </button>
           </div>
         )}
-
-        <div className="mt-5 space-y-2.5">
-          <button
-            onClick={connectInjected}
-            disabled={connecting !== null}
-            className="w-full flex items-center justify-between p-3.5 rounded-xl bg-[#0C0C0C] border border-[#292930] hover:border-[#3E3E48] hover:bg-[#111116] transition-all group text-left"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#181820] border border-[#252530] flex items-center justify-center font-mono text-xs text-[#A6DCF8]">
-                Ξ
-              </div>
-              <div>
-                <div className="text-sm font-medium text-[#F5F5F7] group-hover:text-[#A6DCF8] transition-colors">
-                  Browser Wallet
-                </div>
-                <div className="text-xs text-[#666672]">
-                  {hasInjected ? "MetaMask, Rabby, Rainbow detected" : "Standard injected provider"}
-                </div>
-              </div>
-            </div>
-            {activeAccount ? (
-              <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-400">
-                <CheckCircle2 size={14} /> Connected
-              </span>
-            ) : connecting === "injected" ? (
-              <span className="text-xs text-[#A6DCF8] font-mono animate-pulse">Requesting...</span>
-            ) : (
-              <span className="text-xs text-[#92929B] group-hover:text-[#F5F5F7]">Connect →</span>
-            )}
-          </button>
-
-          <button
-            onClick={() => {
-              setError("WalletConnect relay requires a project ID configured in production .env");
-            }}
-            className="w-full flex items-center justify-between p-3.5 rounded-xl bg-[#0C0C0C]/50 border border-[#202026] hover:border-[#292930] transition-all group text-left opacity-80 hover:opacity-100"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#181820] border border-[#252530] flex items-center justify-center font-mono text-xs text-[#92929B]">
-                WC
-              </div>
-              <div>
-                <div className="text-sm font-medium text-[#F5F5F7]">WalletConnect</div>
-                <div className="text-xs text-[#666672]">Mobile Wallets & Hardware Keyrings</div>
-              </div>
-            </div>
-            <span className="text-xs text-[#666672]">Configure</span>
-          </button>
-        </div>
-
-        <div className="mt-5 pt-4 border-t border-[#202026] text-center">
-          <p className="text-[11px] text-[#666672] leading-relaxed">
-            Cloakroom never requests your private key. You sign structured EIP-712 deposit and intent
-            envelopes sealed with HPKE directly to the attested AWS Nitro enclave.
-          </p>
-        </div>
       </div>
     </div>
   );
 }
-

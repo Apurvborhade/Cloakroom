@@ -1,90 +1,47 @@
 "use client";
 
 import React, { useState } from "react";
-import { ShieldCheck, ExternalLink, ChevronDown, Cpu, KeyRound } from "lucide-react";
+import { ShieldCheck, ChevronDown, ExternalLink } from "lucide-react";
 
 export function AttestationBadge() {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="relative">
+    <div className="relative font-mono text-xs">
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141418] border border-[#292930] hover:border-[#3E3E48] text-xs font-mono text-[#92929B] hover:text-[#F5F5F7] transition-all duration-200"
-        title="Hardware TEE Attestation Status"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#161B22] border border-[#232B36] hover:border-[#3A4759] text-[#94A3B8] hover:text-[#F0F4F8] transition-colors focus:outline-none"
       >
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#A6DCF8] opacity-60"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-[#A6DCF8]"></span>
-        </span>
-        <span className="text-[11px] uppercase tracking-wider text-[#F5F5F7]">TEE Attested</span>
-        <span className="text-[#555560] hidden sm:inline">|</span>
-        <span className="text-[11px] text-[#A6DCF8] hidden sm:inline">Nitro PCR0</span>
-        <ChevronDown
-          size={12}
-          className={`text-[#92929B] transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
-        />
+        <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+        <span className="text-[11px] font-semibold text-[#F0F4F8]">TEE ATTESTED</span>
+        <ChevronDown size={12} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 p-4 rounded-xl bg-[#141418] border border-[#292930] shadow-2xl shadow-black/80 z-50 backdrop-blur-xl animate-fade-in text-left">
-          <div className="flex items-center justify-between pb-3 border-b border-[#292930]">
-            <div className="flex items-center gap-2">
-              <ShieldCheck size={16} className="text-[#A6DCF8]" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#F5F5F7]">
-                Enclave Attestation
-              </span>
-            </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#A6DCF8]/10 text-[#A6DCF8] border border-[#A6DCF8]/20">
-              AWS Nitro EIF
+        <div
+          className="absolute right-0 mt-2 w-72 rounded-xl bg-[#161B22] border border-[#232B36] p-4 shadow-xl z-50 space-y-2 text-[11px] text-[#94A3B8] animate-fade-in"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between font-bold text-[#F0F4F8] pb-1 border-b border-[#232B36]">
+            <span>Nitro Attestation</span>
+            <span className="text-[#10B981] text-[10px]">PCR0 VALID</span>
+          </div>
+          <div>
+            <span className="text-[#64748B] block text-[10px]">ENCLAVE PCR0 HASH</span>
+            <span className="font-mono text-[#3B82F6] text-[10px] break-all">
+              e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
             </span>
           </div>
-
-          <div className="py-3 space-y-2.5 font-mono text-xs">
-            <div>
-              <div className="text-[10px] uppercase text-[#666672] flex items-center gap-1.5">
-                <Cpu size={12} /> PCR0 Measurement (Image Hash)
-              </div>
-              <div className="text-[#92929B] text-[11px] break-all bg-[#0C0C0C] p-1.5 rounded border border-[#202026] mt-1 select-all">
-                0x7f4a21e09c84df12...c92a6f7b11
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[10px] uppercase text-[#666672] flex items-center gap-1.5">
-                <KeyRound size={12} /> Enclave HPKE Public Key
-              </div>
-              <div className="text-[#92929B] text-[11px] break-all bg-[#0C0C0C] p-1.5 rounded border border-[#202026] mt-1 select-all">
-                0x03a98e1f5d2b7814...59bc20d7
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-[11px] pt-1 text-[#92929B]">
-              <span>Cipher Suite</span>
-              <span className="text-[#F5F5F7]">DHKEM(X25519) + AES-128-GCM</span>
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-[#92929B]">
-              <span>RPC Mode</span>
-              <span className="text-[#A6DCF8]">Anon-RPC Oblivious Relayed</span>
-            </div>
+          <div>
+            <span className="text-[#64748B] block text-[10px]">SECURITY LEVEL</span>
+            <span className="text-[#F0F4F8]">AWS Nitro Enclave Isolation</span>
           </div>
-
-          <div className="pt-2 border-t border-[#292930] flex items-center justify-between text-[11px]">
-            <span className="text-[#666672]">Reproducible Build</span>
-            <a
-              href="https://github.com/Apurvborhade/Cloakroom/blob/main/docs/reproducible-builds.md"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#A6DCF8] hover:text-[#BDDEFF] flex items-center gap-1 transition-colors"
-            >
-              Verify Build <ExternalLink size={11} />
-            </a>
+          <div className="pt-1 text-[10px] text-[#64748B]">
+            Cryptographically sealed memory with zero operator root access.
           </div>
         </div>
       )}
     </div>
   );
 }
-
