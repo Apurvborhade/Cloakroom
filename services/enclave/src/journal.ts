@@ -113,6 +113,7 @@ function parseEntry(plaintext: Buffer): unknown {
 export class EncryptedJournal implements Journal {
   private readonly filePath: string;
   private readonly cipher: JournalCipher;
+  private readonly associatedData: Uint8Array;
   private readonly maxRecordBytes: number;
   private fileHandle: FileHandle | null = null;
   private currentSequence = 0;
@@ -130,9 +131,10 @@ export class EncryptedJournal implements Journal {
     if (!Number.isSafeInteger(this.maxRecordBytes) || this.maxRecordBytes <= 0
         || this.maxRecordBytes > 0xffffffff) throw new Error('JOURNAL_RECORD_LIMIT_INVALID');
     if ((options.key === undefined) === (options.cipher === undefined)) {
-      throw new Error('JOURNAL_CIPHER_REQUIRED: provide exactly one key or cipher');
+      throw new Error('JOURNAL_KEY_INVALID: provide exactly one key or cipher');
     }
     this.cipher = options.cipher ?? keyCipher(options.key!);
+    this.associatedData = options.cipher ? Buffer.from('cloakroom/journal/v1') : new Uint8Array(0);
   }
 
   static async open(options: JournalOptions): Promise<EncryptedJournal> {
@@ -159,7 +161,7 @@ export class EncryptedJournal implements Journal {
       };
       const plaintext = Buffer.from(canonicalJson(entry), 'utf8');
       if (plaintext.length > this.maxRecordBytes) throw new Error('JOURNAL_RECORD_TOO_LARGE');
-      const sealed = Buffer.from(this.cipher.encrypt(plaintext, new Uint8Array(0)));
+      const sealed = Buffer.from(this.cipher.encrypt(plaintext, this.associatedData));
       if (sealed.length !== plaintext.length + 28) throw new Error('JOURNAL_CIPHER_INVALID');
       const frame = Buffer.alloc(4 + sealed.length);
       frame.writeUInt32BE(plaintext.length, 0);
@@ -292,7 +294,13 @@ export class EncryptedJournal implements Journal {
       let plaintext: Buffer;
       try {
         const sealed = Buffer.concat([frame.subarray(0, 12), frame.subarray(12 + length), frame.subarray(12, 12 + length)]);
-        plaintext = Buffer.from(this.cipher.decrypt(sealed, new Uint8Array(0)));
+        try {
+          plaintext = Buffer.from(this.cipher.decrypt(sealed, this.associatedData));
+        } catch (error) {
+          if (this.associatedData.length === 0) throw error;
+          // Earlier cipher-backed journals authenticated with empty associated data.
+          plaintext = Buffer.from(this.cipher.decrypt(sealed, new Uint8Array(0)));
+        }
       } catch {
         throw new Error('JOURNAL_CORRUPT: authentication tag verification failed');
       }

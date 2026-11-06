@@ -254,11 +254,18 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 
 ## Boot order
 
-1. Call `openNitroRuntime({ keyArn, region, vaultId, buildHash })` to load signing limits from the enclave environment, restore keys, verify the journal, rebuild the ledger, restore signing state and obtain an NSM quote. An explicit `policy` remains supported for isolated tests.
-2. Replay other application state, including the intent store, from the returned `journal`.
-3. Refresh inventory
-4. Run `Executor.recover()`
-5. Open the server and start the watcher
+`bootEnclave` in `server.ts` runs these in order, and `main.ts` is the entrypoint. If a step fails, it stops what already started and exits with `BOOT_FAILED:<step>`, and never prints the cause, which can contain the RPC URL.
+
+1. Check the RPC is on `CHAIN_ID`
+2. Init keys, and allocate up to `INVENTORY_EOA_COUNT` inventory addresses
+3. Open the journal with `KeyManager.journalCipher()`, replay it into the ledger, intent store, inventory and watcher, then call `KeyManager.restoreSigningState()`
+4. Refresh inventory
+5. Run `Executor.recover()`. Operations it can't settle stay locked, and the boot continues
+6. Start the watcher and price poller, then open the server
+
+Shutdown stops the watcher and poller, closes the server, waits briefly for running swaps, then closes the journal. A swap still running at that point finishes on-chain, and recovery settles it at the next boot.
+
+Nitro persistent storage uses `openNitroRuntime({ keyArn, region, vaultId, buildHash })`; wiring its snapshot journal into this server bootstrap remains pending.
 
 
 ## Custody implementation handoff
@@ -273,7 +280,7 @@ Key initialization does not read the journal, so opening an encrypted journal ca
 
 The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; ledger replay ignores this signing metadata. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 
-`journalCipher()` exposes encryption/decryption operations, never the derived key. Custody, HPKE and journal material are domain-separated. `openNitroRuntime` returns `{ keys, journal, ledger, attestation, close }` only after recovery and attestation succeed. `openCustodyRuntime` provides the same sequence with injected storage and quote providers for local integration tests; simulation wrapping keys require explicit simulation mode.
+`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` accepts it through its `cipher` option. Custody, HPKE and journal material are domain-separated. `openNitroRuntime` returns `{ keys, journal, ledger, attestation, close }` only after recovery and attestation succeed. `openCustodyRuntime` provides the same sequence with injected storage and quote providers for local integration tests; simulation wrapping keys require explicit simulation mode.
 
 `SnapshotJournal` stores the entire encrypted journal in the parent's `journal.blob`, capped at 4 MiB including encryption overhead. Each append atomically replaces it through ciphertext CAS; the parent syncs the file and directory before acknowledging. Apply events to memory only after `append` resolves. `JOURNAL_FULL` rejects before writing. A conflicting or uncertain write disables both signing and journal writes until a fresh runtime reloads storage. The snapshot format is separate from `EncryptedJournal` frames; there is no automatic migration.
 
