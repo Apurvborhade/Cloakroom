@@ -19,6 +19,7 @@
     "smoke:swap": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/swap-smoke.ts",
     "seed:claim": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/seed-inventory.ts claim",
     "seed:fund": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/seed-inventory.ts fund",
+    "start:enclave": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/src/main.ts",
     "demo:local": "pnpm --filter @cloakroom/shared run build && tsx services/enclave/scripts/demo-fixture.ts local",
     "demo:sepolia": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/demo-fixture.ts sepolia"
   },
