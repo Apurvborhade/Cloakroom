@@ -18,6 +18,7 @@ contracts/broadcast/
 .env
 .env.*
 !.env.example
+.seed-addresses.json
 *.pem
 !scripts/nitro-root.pem
 *.key

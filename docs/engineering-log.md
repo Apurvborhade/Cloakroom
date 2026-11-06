@@ -906,6 +906,55 @@ This document is the canonical, chronological record of all backend and accounti
 
 ---
 
+## Task A12: Inventory Seeding
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A12 (Apurva's workstream) — Inventory Seeding
+- **Status:** Committed on branch `feat/seed-inventory`. Not yet run for real, and not pushed by this entry.
+- **Objective:** Claim the custody addresses once from the enclave, and fund them with ETH and the output token.
+
+### Files Created
+- `services/enclave/scripts/seeding.ts`, `services/enclave/scripts/seed-inventory.ts`
+- `services/enclave/test/seed-inventory.test.ts`
+
+### Files Modified
+- `package.json` (added `seed:claim` and `seed:fund`), `.gitignore`
+- `services/enclave/test/fixtures/test-swap-router.sol` and `.ts` (the test token gained `transfer`)
+- `scripts/README.md`, `docs/deployment.md`, `docs/roles/apurva-onchain.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- The disclosure is one-time, so addresses are saved at once with owner-only access, and an existing file stops a new claim before any request.
+- Funding previews unless given `--execute`, and only tops up what is missing, so reruns cannot double-fund.
+- The wallet's balance, the swap and its simulation are all checked before anything is sent.
+- The funding swap uses the same calldata check and V2 and V3 routes as `runIntent`.
+
+### Tests Added
+- `services/enclave/test/seed-inventory.test.ts`: 34 tests, claiming through the real `custodyRoutes` and `KeyManager`, and funding on a local Anvil chain.
+- Twenty-three deliberate bugs were introduced. Two escaped at first, which led to new tests, and all are now caught.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 521 passed (524). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+- `seed-inventory.ts fund` in preview, against live Sepolia and the Trading API, with two new addresses: planned 0.012 ETH, 20 tokens, and a swap of 0.000796 ETH. It passed the calldata check and simulation, and sent nothing.
+
+### Known Limitations & Unresolved Questions
+- `--execute` and `seed:claim` have not run for real. There is no deployed enclave exposing `/admin/eoas` to claim from yet.
+- If funding stops midway, the swap may already have run. Running again reuses those tokens.
+- One funding wallet links the addresses on-chain, which is a known leak.
+- Transactions go out one at a time, with one confirmation each.
+
+### Integration Handoffs
+- **Felix:** mount `custodyRoutes` with `SEEDING_ENABLED=true` for the first run, and share the verified `ENCLAVE_PUB_KEY`. Allocate the inventory addresses before the claim, because the disclosure happens once.
+
+### Commit Reference
+- **Commit:** `5f8a9c6ac843fa7cae24cf46087cfce729cafb2a` (`feat(enclave): add inventory claiming and funding logic`)
+- **Pushed to Remote:** No
+
+---
+
 ## Task: Mandatory Deposit Journal Fields and Deterministic Replay
 
 - **Date:** 2026-11-06
