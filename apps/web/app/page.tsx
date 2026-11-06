@@ -1,5 +1,5 @@
-import { SimpleSwap } from '@/components/simple/simple-swap';
+import { Home } from '@/components/simple/home';
 
 export default function HomePage() {
-  return <SimpleSwap />;
+  return <Home />;
 }

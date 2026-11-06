@@ -14,7 +14,8 @@ import { Logo } from './logo';
 import { SimBanner } from './sim-banner';
 
 const NAV = [
-  { href: '/', label: 'Swap' },
+  { href: '/', label: 'Home' },
+  { href: '/swap', label: 'Swap' },
   { href: '/deposit', label: 'Deposit' },
   { href: '/withdraw', label: 'Withdraw' },
 ];
