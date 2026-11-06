@@ -12,7 +12,7 @@ The [Dockerfile](../services/enclave/Dockerfile) builds a self-contained runtime
 docker build -f services/enclave/Dockerfile -t cloakroom-attestation .
 ```
 
-See the [enclave README](../services/enclave/README.md) for Nitro image creation, vsock forwarding and verification. Public HTTPS, live KMS provisioning and final reproducible builds remain open. The recipient adapter, external ciphertext storage and reviewed-parameter infrastructure template are available in [the Nitro runbook](../infra/nitro/README.md).
+See the [enclave README](../services/enclave/README.md) for Nitro image creation, vsock forwarding and verification. Public HTTPS and final reproducible builds remain open. The recipient adapter, external ciphertext storage, live recovery verification and infrastructure template are covered in [the Nitro runbook](../infra/nitro/README.md).
 
 ## Configuration
 
