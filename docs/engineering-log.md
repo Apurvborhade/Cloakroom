@@ -661,3 +661,48 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `e20bb3ff01ad2a3ad41698f0e968c5c3ccbee054` (`test(enclave): add a live chain test script`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A7: Watcher With the Real Journal
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A7 (Apurva's workstream) — Watcher With the Real Journal
+- **Status:** Committed on branch `fix/watcher-real-journal`. Not pushed by this entry.
+- **Objective:** Make `DepositWatcher` work with the real `EncryptedJournal`, `InMemoryLedger` and `FifoSerialQueue`, and replay from `JournalEvent`.
+
+### Files Created
+- `services/enclave/test/watcher-journal.test.ts`
+
+### Files Modified
+- `services/enclave/src/watcher.ts`
+- `docs/decisions/2026-11-06-0258-deposit-journal-events.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Implementation Details
+- `WatcherJournal.append` now returns `Promise<unknown>`, so the real `Journal` fits.
+- `DepositWatcher.replay` accepts any `JournalEvent` and ignores events that are not about deposits.
+
+### Architectural Decisions
+- An opened session with no `baseline` or `baselineBlock` throws `MISSING_BASELINE`. Assuming zero could credit funds the address already held. The watcher always writes both.
+
+### Tests Added
+- `services/enclave/test/watcher-journal.test.ts`: 9 tests on a local Anvil chain with the real journal, ledger and queue, covering restarts and a failure between the journal write and the ledger.
+- Six deliberate bugs were introduced, and each one made a test fail. Undoing the type change produced a type error.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 317 passed and 3 failed in `kms-sealing.test.ts` and `sealed-state.test.ts`. These are the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Nothing starts the watcher at boot yet. This task only makes the parts fit.
+- Not run on Sepolia since this change.
+
+### Integration Handoffs
+- **Shreyas:** boot must replay the journal into the ledger, the watcher and inventory before calling `tick`.
+
+### Commit Reference
+- **Commit:** `a92fd18dbd5b6e4c8c949658e0704d9ab79a0881` (`fix(enclave): make the watcher fit the real journal`)
+- **Pushed to Remote:** No
