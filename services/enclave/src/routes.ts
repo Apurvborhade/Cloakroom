@@ -28,6 +28,8 @@ import type { InMemoryIntentStore } from './intents.js';
 import type { Inventory } from './inventory.js';
 import type { KeyManager } from './keys.js';
 import type { InMemoryLedger } from './ledger.js';
+import { marginRoutes } from './margin-routes.js';
+import type { MarginRouteDeps } from './margin-routes.js';
 import type { DepositWatcher } from './watcher.js';
 import type { WithdrawalOrders, WithdrawalStatuses } from './withdrawal-orders.js';
 
@@ -47,6 +49,12 @@ const ERROR_STATUS: Partial<Record<ErrorCode, number>> = {
   INSUFFICIENT_BALANCE: 400,
   INTENT_NOT_FOUND: 404,
   NO_INVENTORY: 409,
+  STALE_PRICE: 503,
+  MARGIN_DISABLED: 404,
+  POSITION_NOT_FOUND: 404,
+  POSITION_BUSY: 409,
+  INSUFFICIENT_COLLATERAL: 400,
+  INSUFFICIENT_LIQUIDITY: 409,
 };
 
 export interface ApiDeps {
@@ -54,12 +62,14 @@ export interface ApiDeps {
   config: EnclaveConfig;
   intentOrders: IntentOrders;
   intents: Pick<InMemoryIntentStore, 'listByOwner'>;
-  inventory: Pick<Inventory, 'linkOwner'>;
+  inventory: Pick<Inventory, 'linkDeposit'>;
   keys: KeyManager;
   ledger: Pick<InMemoryLedger, 'getBalance'>;
   watcher: Pick<DepositWatcher, 'openSession'>;
   withdrawalOrders: Pick<WithdrawalOrders, 'create'>;
   withdrawalStatuses: Pick<WithdrawalStatuses, 'listByOwner'>;
+  /** Present only when MARGIN_ENABLED is set. Without it the margin routes do not exist. */
+  margin?: MarginRouteDeps;
 }
 
 function nowSec(): number {
@@ -71,7 +81,7 @@ function nowSec(): number {
  * plaintext and carry only a code. Decrypting never proves who sent a request, so handlers must
  * still authorize it.
  */
-function privateRoute<T>(
+export function privateRoute<T>(
   app: FastifyInstance,
   keys: KeyManager,
   path: string,
@@ -189,7 +199,7 @@ export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
         expiry: nowSec() + config.DEPOSIT_SESSION_TTL_SEC,
       });
       // The same link replay rebuilds: an owner's payout must never come from their deposit address.
-      inventory.linkOwner(owner, address);
+      inventory.linkDeposit(owner, address);
       return { sessionId: session.id, depositAddress: address, expiresAt: session.expiry };
     },
     depositInvalidCode,
@@ -252,4 +262,6 @@ export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
       })),
     };
   });
+
+  if (deps.margin) marginRoutes(app, { auth, keys, ...deps.margin });
 }

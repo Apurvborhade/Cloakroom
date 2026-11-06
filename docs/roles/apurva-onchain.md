@@ -97,14 +97,16 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 Reuse the existing enclave service, deposit/withdrawal flows, custody, and Uniswap integration. The API and its private state processing stay inside the TEE; external ingress only relays encrypted traffic. Opening and closing positions still execute onchain.
 
-- [ ] Define signed margin commands, authenticated queries, wire schemas, and errors in `packages/shared/`, using Felix's accounting types. Reuse signature, nonce, expiry, and encrypted-transport checks; existing session keys remain read-only.
-- [ ] Add lending supply/redemption, open long/short, position/health queries, add-collateral, and full-close routes. Delegate all balance, debt, and margin mutations to Felix's accounting service. Apply its restrictions to withdrawals.
-- [ ] Extend Uniswap execution for both directions: buy ETH to open a long or close a short; sell ETH to open a short or close a long. Support required approvals and ETH/WETH handling, and return actual confirmed token deltas and costs.
-- [ ] Add narrowly scoped margin operation registration and signing validation, with Felix reviewing custody integration. Enforce bounded spending, permitted routers and recipients, minimum output, and deadlines; preserve existing swap guards.
-- [ ] Supply fresh risk-price reports separately from executable swap quotes. Reject invalid/stale price inputs for new risk and define outage behavior with Felix.
-- [ ] Run the liquidation monitor: submit candidates to Felix's risk checks, obtain a reserved operation, execute the full close, and return its outcome. Do not mutate balances or bypass maintenance-margin rules.
+- [x] Define signed margin commands, authenticated queries, wire schemas, and errors in `packages/shared/`, using Felix's accounting types. Reuse signature, nonce, expiry, and encrypted-transport checks; existing session keys remain read-only.
+- [x] Add lending supply/redemption, open long/short, position/health queries, add-collateral, and full-close routes. Delegate all balance, debt, and margin mutations to Felix's accounting service. Apply its restrictions to withdrawals.
+- [x] Extend Uniswap execution for both directions: buy ETH to open a long or close a short; sell ETH to open a short or close a long. Support required approvals and ETH/WETH handling, and return actual confirmed token deltas and costs.
+- [x] Add narrowly scoped margin operation registration and signing validation, with Felix reviewing custody integration. Enforce bounded spending, permitted routers and recipients, minimum output, and deadlines; preserve existing swap guards.
+- [x] Supply fresh risk-price reports separately from executable swap quotes. Reject invalid/stale price inputs for new risk and define outage behavior with Felix.
+- [x] Run the liquidation monitor: submit candidates to Felix's risk checks, obtain a reserved operation, execute the full close, and return its outcome. Do not mutate balances or bypass maintenance-margin rules.
 - [ ] Integrate transaction recovery and inventory reconciliation with Felix's journal state. Report definite failure versus unresolved status correctly; never treat a broadcast transaction as a confirmed close.
 - [ ] Build a small API demo client and integration tests for successful longs/shorts, insufficient liquidity, failed swaps, duplicate requests, simultaneous close/liquidation, and restart recovery.
+
+The ticked items work against the mock, and the signing changes still need Felix's review. See [margin-interface.md](../margin-interface.md).
 
 Primary ownership: margin changes to `routes.ts`, `auth.ts`, `server.ts`, `executor.ts`, `swap-calldata.ts`, `uniswap.ts`, `inventory.ts`, `price-poller.ts`, shared wire contracts, and demo scripts. Coordinate signing-policy changes in `keys.ts` with Felix. Existing base API/accounting responsibilities remain with Shreyas; this split applies to the margin extension.
 

@@ -1,12 +1,13 @@
 import { isDeepStrictEqual } from 'node:util';
-import { NATIVE } from '@cloakroom/shared';
+import { ERROR_CODES, NATIVE } from '@cloakroom/shared';
 import type {
   Journal, MarginAccounting, MarginFundingEvent, MarginFundingRequest,
-  MarginFundingReservation, MarginLendingBalance, MarginLendingCommand, SerialQueue,
+  MarginFundingReservation, LendingView, MarginSupplyMsg, SerialQueue,
 } from '@cloakroom/shared';
 import { getAddress } from 'viem';
 import type { Address } from 'viem';
 import type { InMemoryLedger } from './ledger.js';
+import { AuthError } from './auth.js';
 
 type Claim = { owner: Address; token: Address; amount: bigint; ref: string };
 type BalanceLedger = Pick<InMemoryLedger, 'getBalance' | 'getReservation' | 'reserve' | 'release'>;
@@ -14,7 +15,7 @@ const claimKey = (owner: Address, token: Address) => `${getAddress(owner)}:${get
 const fundingRef = (opId: string) => `margin:funding:${opId}`;
 const collateralRef = (opId: string) => `margin:collateral:${opId}`;
 function positive(value: bigint) {
-  if (typeof value !== 'bigint' || value <= 0n) throw new Error('MARGIN_AMOUNT_INVALID');
+  if (typeof value !== 'bigint' || value <= 0n) throw new AuthError(ERROR_CODES.INVALID_PAYLOAD, 'MARGIN_AMOUNT_INVALID');
 }
 
 /** Projected alongside the ordinary ledger, so both recover from the same journal. */
@@ -35,14 +36,14 @@ export class MarginFundingState {
     return { supplied, reserved, available: supplied - reserved };
   }
 
-  balance(owner: Address, token: Address): MarginLendingBalance {
+  balance(owner: Address, token: Address): LendingView {
     token = getAddress(token);
     const claimAmount = this.claims.get(claimKey(owner, token))?.amount ?? 0n;
     const available = this.pool(token).available;
-    return { token, claimAmount, redeemableAmount: claimAmount < available ? claimAmount : available };
+    return { token, supplied: claimAmount, available: claimAmount < available ? claimAmount : available };
   }
 
-  balances(owner: Address): MarginLendingBalance[] {
+  balances(owner: Address): LendingView[] {
     owner = getAddress(owner);
     return [...this.claims.values()].filter((claim) => claim.owner === owner)
       .map((claim) => this.balance(owner, claim.token));
@@ -76,27 +77,29 @@ export class MarginFundingState {
     }
     const previous = this.commands.get(event.opId);
     if (previous) {
-      if (!isDeepStrictEqual(previous, event)) throw new Error('MARGIN_OP_CONFLICT');
+      if (!isDeepStrictEqual(previous, event)) throw new AuthError(ERROR_CODES.NONCE_USED, 'MARGIN_OP_CONFLICT');
       return false;
     }
     const owner = getAddress(event.owner);
     if (event.t === 'MARGIN_OPEN_RESERVED') {
-      positive(event.collateral.amount); positive(event.borrow.amount);
+      positive(event.collateral.amount);
+      if (typeof event.borrow.amount !== 'bigint' || event.borrow.amount < 0n) throw new Error('MARGIN_AMOUNT_INVALID');
       const collateral = getAddress(event.collateral.token), borrowed = getAddress(event.borrow.token);
       if (this.ledger.getReservation(collateralRef(event.opId))) throw new Error('MARGIN_OP_CONFLICT');
       if (this.ledger.getBalance(owner, collateral).available < event.collateral.amount) throw new Error('INSUFFICIENT_BALANCE');
-      if (this.pool(borrowed).available < event.borrow.amount) throw new Error('INSUFFICIENT_LENDING_LIQUIDITY');
+      if (this.pool(borrowed).available < event.borrow.amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_LIQUIDITY, 'INSUFFICIENT_LENDING_LIQUIDITY');
     } else {
       positive(event.amount);
+      positive(event.nonce); positive(event.expiry);
       const token = getAddress(event.token);
       const claim = this.claims.get(claimKey(owner, token));
       if (claim) this.checkHold(claim.ref, owner, token, claim.amount);
       if (this.ledger.getReservation(fundingRef(event.opId))) throw new Error('MARGIN_OP_CONFLICT');
       if (event.t === 'MARGIN_SUPPLIED') {
-        if (this.ledger.getBalance(owner, token).available < event.amount) throw new Error('INSUFFICIENT_BALANCE');
+        if (this.ledger.getBalance(owner, token).available < event.amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_BALANCE);
       } else {
-        if ((claim?.amount ?? 0n) < event.amount) throw new Error('INSUFFICIENT_LENDING_CLAIM');
-        if (this.pool(token).available < event.amount) throw new Error('INSUFFICIENT_LENDING_LIQUIDITY');
+        if ((claim?.amount ?? 0n) < event.amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_BALANCE, 'INSUFFICIENT_LENDING_CLAIM');
+        if (this.pool(token).available < event.amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_LIQUIDITY, 'INSUFFICIENT_LENDING_LIQUIDITY');
       }
     }
     return true;
@@ -151,7 +154,7 @@ export interface MarginFundingDeps {
 }
 
 /** Funding only. Use the same queue as withdrawals and spot orders. */
-export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem' | 'lendingBalances'> {
+export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem' | 'lending'> {
   private readonly usdc: Address;
   private faulted = false;
 
@@ -162,7 +165,7 @@ export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem'
 
   private token(token: Address): Address {
     const normalized = getAddress(token);
-    if (normalized !== NATIVE && normalized !== this.usdc) throw new Error('MARGIN_TOKEN_INVALID');
+    if (normalized !== NATIVE && normalized !== this.usdc) throw new AuthError(ERROR_CODES.UNSUPPORTED_ASSET, 'MARGIN_TOKEN_INVALID');
     return normalized;
   }
 
@@ -182,18 +185,20 @@ export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem'
     });
   }
 
-  async supply(command: MarginLendingCommand): Promise<MarginLendingBalance> {
-    const event = { t: 'MARGIN_SUPPLIED', opId: command.opId, owner: getAddress(command.owner),
-      token: this.token(command.token), amount: command.amount } as const;
-    await this.commit(event);
-    return this.deps.ledger.margin.balance(event.owner, event.token);
+  private lendingEvent(t: 'MARGIN_SUPPLIED' | 'MARGIN_REDEEMED', owner: Address, message: MarginSupplyMsg) {
+    owner = getAddress(owner);
+    if (owner !== getAddress(message.owner)) throw new AuthError(ERROR_CODES.BAD_SIGNATURE);
+    positive(message.nonce); positive(message.expiry);
+    return { t, opId: `margin:command:${owner}:${message.nonce}`, owner,
+      token: this.token(message.token), amount: message.amount, nonce: message.nonce, expiry: message.expiry };
   }
 
-  async redeem(command: MarginLendingCommand): Promise<MarginLendingBalance> {
-    const event = { t: 'MARGIN_REDEEMED', opId: command.opId, owner: getAddress(command.owner),
-      token: this.token(command.token), amount: command.amount } as const;
-    await this.commit(event);
-    return this.deps.ledger.margin.balance(event.owner, event.token);
+  async supply(owner: Address, message: MarginSupplyMsg): Promise<void> {
+    await this.commit(this.lendingEvent('MARGIN_SUPPLIED', owner, message));
+  }
+
+  async redeem(owner: Address, message: MarginSupplyMsg): Promise<void> {
+    await this.commit(this.lendingEvent('MARGIN_REDEEMED', owner, message));
   }
 
   async reserveOpen(request: MarginFundingRequest): Promise<MarginFundingReservation> {
@@ -209,7 +214,7 @@ export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem'
     await this.commit({ t: 'MARGIN_OPEN_RELEASED', opId });
   }
 
-  lendingBalances(owner: Address): readonly MarginLendingBalance[] {
+  lending(owner: Address): readonly LendingView[] {
     return this.deps.ledger.margin.balances(owner);
   }
 }

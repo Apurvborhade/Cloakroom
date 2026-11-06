@@ -1,166 +1,100 @@
 import type { Address, Hex } from 'viem';
+import type { MarginAddCollateralMsg, MarginCloseMsg, MarginOpenMsg, MarginSupplyMsg } from '../eip712.js';
 import type { PriceReport } from './oracle.js';
 
-// Internal accounting contracts: token base units as bigint, timestamps in Unix seconds.
-export interface MarginAmount {
-  token: Address;
-  amount: bigint;
-}
-
 export type MarginSide = 'long' | 'short';
-export type MarginPositionStatus =
-  | 'opening' | 'open' | 'closing' | 'liquidating' | 'closed' | 'liquidated' | 'failed';
+export type MarginOperationKind = 'open' | 'close' | 'liquidate';
 
-export interface MarginPosition {
-  id: string;
-  owner: Address;
-  side: MarginSide;
-  status: MarginPositionStatus;
-  /** Original USDC contribution (6 decimals), not an additional asset on top of holdings. */
-  collateralUSDC: bigint;
-  holdings: readonly MarginAmount[];
-  debt: {
-    token: Address;
-    principal: bigint;
-    interest: bigint;
-    accruedAt: number;
-  };
-  /** Uncovered debt in debt.token units after liquidation; never credited as repaid. */
-  shortfall: bigint;
-  activeOpId?: string;
-}
+export type PositionStatus =
+  | 'opening'
+  | 'open'
+  | 'closing'
+  | 'liquidating'
+  | 'closed'
+  | 'liquidated'
+  | 'failed';
 
-export interface MarginLendingBalance {
-  token: Address;
-  claimAmount: bigint;
-  /** Portion currently redeemable from unborrowed, unreserved lending liquidity. */
-  redeemableAmount: bigint;
-}
-
-export interface MarginFundingRequest extends MarginCommand {
-  collateralUSDC: bigint;
-  borrow: MarginAmount;
-}
-
-/** A funding hold, not permission to execute a swap. */
-export interface MarginFundingReservation {
+/** One Uniswap swap that accounting has checked, reserved funds for, and journaled. */
+export interface MarginOperation {
+  /** Always `margin:<id>`, and never reused. */
   opId: string;
+  kind: MarginOperationKind;
+  positionId: Hex;
   owner: Address;
-  collateral: MarginAmount;
-  borrow: MarginAmount;
-  status: 'reserved' | 'released';
-}
-
-export type MarginFundingEvent =
-  | ({ t: 'MARGIN_SUPPLIED' } & MarginLendingCommand)
-  | ({ t: 'MARGIN_REDEEMED' } & MarginLendingCommand)
-  | ({ t: 'MARGIN_OPEN_RESERVED' } & Omit<MarginFundingReservation, 'status'>)
-  | { t: 'MARGIN_OPEN_RELEASED'; opId: string };
-
-export interface MarginHealth {
-  equityUSDC: bigint;
-  pnlUSDC: bigint;
-  maintenanceUSDC: bigint;
-  liquidationPrice: bigint | null; // USDC per ETH, scaled by 1e18.
-  liquidatable: boolean;
-}
-
-/** Stable ID for one authenticated command. Reuse with different parameters must fail. */
-export interface MarginCommand {
-  opId: string;
-  owner: Address;
-}
-
-export interface MarginLendingCommand extends MarginCommand, MarginAmount {}
-
-export interface MarginTradeLimits {
-  maxSlippageBps: number;
-  deadline: number;
-}
-
-export interface MarginOpenCommand extends MarginCommand, MarginTradeLimits {
-  side: MarginSide;
-  collateralUSDC: bigint;
-  borrow: MarginAmount;
-}
-
-export interface MarginCloseCommand extends MarginCommand, MarginTradeLimits {
-  positionId: string;
-}
-
-export interface MarginCollateralCommand extends MarginCommand {
-  positionId: string;
-  amountUSDC: bigint;
-}
-
-/** Full-position swaps; exact output permits repaying a short's ETH debt without overbuying. */
-export type MarginSwap = {
   tokenIn: Address;
   tokenOut: Address;
-  deadline: number;
-} & (
-  | { kind: 'exactIn'; amountIn: bigint; minAmountOut: bigint }
-  | { kind: 'exactOut'; amountOut: bigint; maxAmountIn: bigint }
-);
+  amountIn: bigint;
+  minAmountOut: bigint;
+  maxSlippageBps: number;
+  /** Unix seconds. Nothing is signed for this operation after it. */
+  expiry: number;
+}
 
-export interface PreparedMarginOperation {
-  opId: string;
-  positionId: string;
+/** The confirmed on-chain result, read from the receipt. */
+export interface MarginExecutionResult {
+  amountIn: bigint;
+  amountOut: bigint;
+  gasCost: bigint;
+  txHash: Hex;
+}
+
+/** The swap did not happen. If it was sent and reverted, the gas was still spent. */
+export interface MarginExecutionFailure {
+  reason: string;
+  gasCost?: bigint;
+  txHash?: Hex;
+}
+
+export interface PositionView {
+  id: Hex;
   owner: Address;
-  action: 'open' | 'close' | 'liquidate';
-  swap: MarginSwap;
+  side: MarginSide;
+  status: PositionStatus;
+  collateral: bigint;
+  /** Collateral times leverage, in USDC base units. */
+  sizeUsd: bigint;
+  debtToken: Address;
+  debt: bigint;
+  assetToken: Address;
+  asset: bigint;
+  entryPrice?: bigint;
+  liquidationPrice?: bigint;
+  equity?: bigint;
+  payout?: bigint;
+  shortfall?: bigint;
+}
+
+export interface LendingView {
+  token: Address;
+  supplied: bigint;
+  /** What could be redeemed now: supplied funds not currently out on loan. */
+  available: bigint;
 }
 
 /**
- * Swap amounts are custody debits/credits before protocol fees, excluding gas.
- * gasCostWei is cumulative confirmed gas expenditure, including approvals.
+ * What the margin API and execution need from accounting. Accounting is the only writer of margin
+ * balances and debt. Rejections throw an error carrying a code from ERROR_CODES.
+ *
+ * Each prepare method checks the risk, reserves the funds, and journals MARGIN_OP_APPROVED before
+ * returning. Execution then ends every operation in exactly one settle or fail, each of which must
+ * journal MARGIN_OP_SETTLED or MARGIN_OP_FAILED. A broadcast with no receipt calls neither, and the
+ * funds stay reserved until recovery finds the result.
  */
-export type MarginExecutionResult = { gasCostWei: bigint } & (
-  | {
-      status: 'confirmed';
-      txHash: Hex;
-      blockNumber: bigint;
-      amountIn: bigint;
-      amountOut: bigint;
-    }
-  | {
-      status: 'not_sent'; // No swap was submitted; approvals may already have spent gas.
-      reason: string;
-    }
-  | {
-      status: 'reverted';
-      txHash: Hex;
-      blockNumber: bigint;
-      reason: string;
-    }
-  | {
-      status: 'unresolved'; // A timeout is not a failure; reservations remain locked.
-      txHash: Hex;
-    }
-);
-
-export interface MarginOperation extends PreparedMarginOperation {
-  result?: MarginExecutionResult;
-}
-
 export interface MarginAccounting {
-  supply(command: MarginLendingCommand): Promise<MarginLendingBalance>;
-  redeem(command: MarginLendingCommand): Promise<MarginLendingBalance>;
-  addCollateral(command: MarginCollateralCommand): Promise<MarginPosition>;
+  supply(owner: Address, message: MarginSupplyMsg): Promise<void>;
+  redeem(owner: Address, message: MarginSupplyMsg): Promise<void>;
+  addCollateral(owner: Address, message: MarginAddCollateralMsg): Promise<void>;
 
-  /** Reserve and journal before returning execution limits. Risk prices are not swap quotes. */
-  prepareOpen(command: MarginOpenCommand, price: PriceReport): Promise<PreparedMarginOperation>;
-  prepareClose(command: MarginCloseCommand, price: PriceReport): Promise<PreparedMarginOperation>;
-  prepareLiquidation(opId: string, positionId: string, price: PriceReport): Promise<PreparedMarginOperation>;
+  prepareOpen(owner: Address, message: MarginOpenMsg, price: PriceReport): Promise<MarginOperation>;
+  prepareClose(owner: Address, message: MarginCloseMsg, price: PriceReport): Promise<MarginOperation>;
+  /** Positions below maintenance margin at this price. A read: it reserves nothing. */
+  liquidationCandidates(price: PriceReport): Promise<readonly Hex[]>;
+  /** Checks the position again. Null means it is healthy or already being closed. */
+  prepareLiquidation(positionId: Hex, price: PriceReport): Promise<MarginOperation | null>;
 
-  /** Apply a terminal result once; conflicting repeats fail, unresolved results keep holds. */
-  recordExecution(opId: string, result: MarginExecutionResult): Promise<MarginOperation>;
-  /** Replay before serving requests, then return unfinished operations for executor recovery. */
-  recover(): Promise<readonly MarginOperation[]>;
+  settle(opId: string, result: MarginExecutionResult): Promise<void>;
+  fail(opId: string, failure: MarginExecutionFailure): Promise<void>;
 
-  getOperation(opId: string): MarginOperation | undefined;
-  getPosition(positionId: string): MarginPosition | undefined;
-  positions(owner?: Address): readonly MarginPosition[];
-  lendingBalances(owner: Address): readonly MarginLendingBalance[];
-  health(positionId: string, price: PriceReport): MarginHealth;
+  positions(owner: Address, price: PriceReport | null): readonly PositionView[];
+  lending(owner: Address): readonly LendingView[];
 }

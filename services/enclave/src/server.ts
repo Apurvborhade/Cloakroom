@@ -17,10 +17,15 @@ import { EncryptedJournal } from './journal.js';
 import type { KeyManager, SigningPolicy } from './keys.js';
 import { InMemoryLedger } from './ledger.js';
 import { IntentExecutionPipeline } from './pipeline.js';
+import { LiquidationMonitor } from './liquidation.js';
+import { MockMarginAccounting } from './margin-mock.js';
+import { MarginOrders } from './margin-orders.js';
 import { PricePoller } from './price-poller.js';
+import { RiskPricePoller } from './risk-price.js';
 import { DepositWatcher } from './watcher.js';
 import { trackWithdrawals, WithdrawalOrders, WithdrawalStatuses } from './withdrawal-orders.js';
-import type { Journal } from '@cloakroom/shared';
+import { NATIVE } from '@cloakroom/shared';
+import type { Journal, MarginAccounting, PriceReport } from '@cloakroom/shared';
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
@@ -32,6 +37,8 @@ const DRAIN_CHECK_MS = 50;
 const ATTESTATION_NONCE = /^(?:[a-f0-9]{2}){32,64}$/;
 const MAX_ATTESTATIONS_IN_FLIGHT = 8;
 const MS_PER_SECOND = 1000;
+/** Sepolia's buy and sell prices differ by about 0.6%, so far beyond that means a bad reading. */
+const RISK_PRICE_MAX_SPREAD_BPS = 500;
 
 export type KeyJournal = Pick<Journal, 'append' | 'replay'>;
 
@@ -46,6 +53,15 @@ export interface BootOptions {
   socketPath?: string;
   /** Without a build hash, GET /attestation answers 503: there is no simulated quote. */
   attestation?: { buildHash: string; provider?: QuoteProvider };
+  /** Margin accounting. Simulation falls back to the in-memory stand-in if this is left out. */
+  marginAccounting?: (parts: {
+    journal: Pick<Journal, 'append'>;
+    history: Pick<Journal, 'replay'>;
+    queue: FifoSerialQueue;
+    ledger: InMemoryLedger;
+  }) => MarginAccounting;
+  /** Replaces the Uniswap risk price, so a test or demo can move it. Simulation only. */
+  riskPrices?: { latest(): PriceReport | null };
   /** Receives fixed status codes only, never request data or error text. */
   log?: (code: string) => void;
   drainTimeoutMs?: number;
@@ -62,6 +78,7 @@ export interface EnclaveParts {
   ledger: InMemoryLedger;
   pipeline: IntentExecutionPipeline;
   poller: PricePoller;
+  margin?: { accounting: MarginAccounting; liquidations: LiquidationMonitor; orders: MarginOrders; riskPrices: { latest(): PriceReport | null } };
   queue: FifoSerialQueue;
   watcher: DepositWatcher;
   withdrawalOrders: WithdrawalOrders;
@@ -173,6 +190,11 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     if ((await chain.getChainId()) !== config.CHAIN_ID) throw new Error('CHAIN_MISMATCH');
   });
 
+  await step('margin-config', () => {
+    if (!config.SIM_MODE && config.MARGIN_ENABLED && !options.marginAccounting) throw new Error('MARGIN_ACCOUNTING_REQUIRED');
+    if (!config.SIM_MODE && options.riskPrices) throw new Error('RISK_PRICE_OVERRIDE_REFUSED');
+  });
+
   await step('storage', () => {
     if (Boolean(options.openKeys) === Boolean(options.openRuntime)
         || (!config.SIM_MODE && !options.openRuntime)) throw new Error('PERSISTENT_CUSTODY_REQUIRED');
@@ -251,6 +273,15 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     journal: openedJournal,
     ledger,
   });
+  const marginAccounting: MarginAccounting | undefined = !config.MARGIN_ENABLED
+    ? undefined
+    : options.marginAccounting?.({ journal: trackedJournal, history: openedJournal, queue, ledger })
+      ?? new MockMarginAccounting({
+        journal: trackedJournal,
+        queue,
+        usdc: config.TOKEN_OUT_ADDRESS,
+        usdcDecimals: config.TOKEN_OUT_DECIMALS,
+      });
   const executor = new Executor({
     chain,
     chainId: config.CHAIN_ID,
@@ -273,6 +304,20 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
       feeBps: config.FEE_BPS,
       maxSlippageBpsCap: config.MAX_SLIPPAGE_BPS_CAP,
     },
+    ...(marginAccounting
+      ? {
+          margin: {
+            accounting: marginAccounting,
+            quoter,
+            inventory,
+            ledger,
+            reader: chain,
+            routerAddress: config.UNIVERSAL_ROUTER_ADDRESS,
+            wethAddress: config.WETH_ADDRESS,
+            maxSlippageBpsCap: config.MAX_SLIPPAGE_BPS_CAP,
+          },
+        }
+      : {}),
   });
   const intentOrders = new IntentOrders({ intents, journal: openedJournal, ledger, queue });
   const withdrawalOrders = new WithdrawalOrders({
@@ -298,6 +343,35 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     onError: () => log('PRICE_POLL_FAILED'),
   });
 
+  let margin: EnclaveParts['margin'];
+  let riskPoller: RiskPricePoller | undefined;
+  if (marginAccounting) {
+    riskPoller = options.riskPrices ? undefined : new RiskPricePoller({
+      quoter,
+      tokenOut: config.TOKEN_OUT_ADDRESS,
+      tokenOutDecimals: config.TOKEN_OUT_DECIMALS,
+      referenceAmountWei: config.PRICE_REFERENCE_AMOUNT_WEI,
+      intervalSec: config.PRICE_POLL_INTERVAL_SEC,
+      maxSpreadBps: RISK_PRICE_MAX_SPREAD_BPS,
+      swapper: privateKeyToAccount(generatePrivateKey()).address,
+      onReport: (report) => margin?.liquidations.onReport(report),
+      onError: () => log('RISK_PRICE_POLL_FAILED'),
+    });
+    const riskPrices = options.riskPrices ?? (riskPoller as RiskPricePoller);
+    const orders = new MarginOrders({
+      accounting: marginAccounting,
+      executor,
+      riskPrices,
+      onError: () => log('MARGIN_EXECUTION_ERROR'),
+    });
+    const liquidations = new LiquidationMonitor({
+      accounting: marginAccounting,
+      orders,
+      onError: () => log('LIQUIDATION_ERROR'),
+    });
+    margin = { accounting: marginAccounting, liquidations, orders, riskPrices };
+  }
+
   await step('inventory', () => inventory.refresh());
   const recovery = await step('recovery', () => executor.recover(openedJournal.replay()));
   const stuck = recovery.filter(({ status }) => status === 'review' || status === 'unresolved').length;
@@ -306,7 +380,19 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   const app = await step('routes', () =>
     buildApp({
-      api: { auth, config, intentOrders, intents, inventory, keys, ledger, watcher, withdrawalOrders, withdrawalStatuses },
+      api: {
+        auth, config, intentOrders, intents, inventory, keys, ledger, watcher, withdrawalOrders, withdrawalStatuses,
+        ...(margin
+          ? {
+              margin: {
+                accounting: margin.accounting,
+                orders: margin.orders,
+                riskPrices: margin.riskPrices,
+                tokens: [NATIVE, config.TOKEN_OUT_ADDRESS],
+              },
+            }
+          : {}),
+      },
       attestation: runtime?.attestation ?? (options.attestation
         ? new AttestationService(options.attestation.buildHash, {
             identity: keys,
@@ -321,6 +407,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   await step('start', () => {
     cleanups.push(watcher.start(chain, () => log('WATCHER_ERROR')));
     cleanups.push(poller.start());
+    if (riskPoller) cleanups.push(riskPoller.start());
     // On its own timer, so orders still expire and release funds when price checks are failing.
     const expiryTimer = setInterval(() => {
       intentOrders.expireDue().catch(() => log('INTENT_EXPIRY_ERROR'));
@@ -333,7 +420,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   const drainSwaps = async () => {
     const deadline = Date.now() + drainTimeoutMs;
-    const running = () => pipeline.inFlightCount + withdrawalOrders.inFlightCount;
+    const running = () => pipeline.inFlightCount + withdrawalOrders.inFlightCount + (margin?.orders.inFlightCount ?? 0);
     while (running() > 0 && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, DRAIN_CHECK_MS));
     }
@@ -353,7 +440,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   return {
     app,
-    parts: { auth, executor, intentOrders, intents, inventory, journal: openedJournal, keys, ledger, pipeline, poller, queue, watcher, withdrawalOrders, withdrawalStatuses },
+    parts: { auth, executor, intentOrders, intents, inventory, journal: openedJournal, keys, ledger, margin, pipeline, poller, queue, watcher, withdrawalOrders, withdrawalStatuses },
     recovery,
     stop,
   };

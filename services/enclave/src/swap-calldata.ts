@@ -14,6 +14,7 @@ const COMMAND_V3_SWAP_EXACT_IN = '00';
 const COMMAND_SWEEP = '04';
 const COMMAND_V2_SWAP_EXACT_IN = '08';
 const COMMAND_WRAP_ETH = '0b';
+const COMMAND_UNWRAP_WETH = '0c';
 
 const SWAP_V3 = parseAbiParameters('address, uint256, uint256, bytes, bool');
 const SWAP_V2 = parseAbiParameters('address, uint256, uint256, address[], bool');
@@ -53,6 +54,12 @@ function unsafe(reason: string): Error {
 function finalToken(path: Hex | readonly Address[]): Address {
   if (typeof path === 'string') return getAddress(`0x${path.slice(-40)}`);
   return getAddress(path[path.length - 1] as Address);
+}
+
+/** The token a swap starts from: the first 20 bytes of a V3 path, or the first entry of a V2 path. */
+function firstToken(path: Hex | readonly Address[]): Address {
+  if (typeof path === 'string') return getAddress(`0x${path.slice(2, 42)}`);
+  return getAddress(path[0] as Address);
 }
 
 /**
@@ -148,4 +155,105 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
   if (!throughRouter && !direct) throw unsafe('OUTPUT_PATTERN');
   if (direct && directMinimums + BigInt(swapsToEoa - 1) < rules.minOut) throw unsafe('SWAP_MINIMUM');
   if (direct && directMinimums < rules.floor) throw unsafe('LIMIT_FLOOR');
+}
+
+export interface TokenToNativeRules {
+  data: Hex;
+  /** The custody EOA that sends the swap and must receive the ETH. */
+  eoa: Address;
+  tokenIn: Address;
+  wethAddress: Address;
+  /** The exact amount the operation may spend. */
+  amountIn: bigint;
+  minOut: bigint;
+  nowSec: bigint;
+}
+
+/**
+ * The same idea as assertSafeSwapCalldata for selling a token for ETH, which only margin uses.
+ *
+ * The one allowed pattern is what the Trading API returns once the EOA has approved Permit2: swaps
+ * from the EOA's tokens into the router, then one UNWRAP paying the EOA at least minOut. Unlike a
+ * native swap, the transaction value can't limit the spend, so the swap amounts are added up here.
+ */
+export function assertSafeTokenToNativeCalldata(rules: TokenToNativeRules): void {
+  const eoa = getAddress(rules.eoa);
+  const tokenIn = getAddress(rules.tokenIn);
+  const weth = getAddress(rules.wethAddress);
+
+  let args: readonly [Hex, readonly Hex[], bigint];
+  try {
+    args = decodeFunctionData({ abi: ROUTER_ABI, data: rules.data }).args;
+  } catch {
+    throw unsafe('NOT_EXECUTE');
+  }
+  const [commands, inputs, deadline] = args;
+  if (deadline <= rules.nowSec) throw unsafe('DEADLINE_PASSED');
+
+  const bytes = commands.slice(2).match(/../g) ?? [];
+  if (bytes.length !== inputs.length) throw unsafe('MALFORMED');
+  const isEoa = (address: Address) => {
+    const normalized = getAddress(address);
+    return normalized === eoa || normalized === MSG_SENDER;
+  };
+
+  let spent = 0n;
+  let unwraps = 0;
+  try {
+    bytes.forEach((command, index) => {
+      const input = inputs[index] as Hex;
+      switch (command) {
+        case COMMAND_V3_SWAP_EXACT_IN:
+        case COMMAND_V2_SWAP_EXACT_IN: {
+          if (unwraps > 0) throw unsafe('SWAP_AFTER_UNWRAP');
+          const [recipient, amount, , path, payerIsUser] = decodeAbiParameters(
+            command === COMMAND_V3_SWAP_EXACT_IN ? SWAP_V3 : SWAP_V2,
+            input,
+          );
+          if (!payerIsUser) throw unsafe('SWAP_PAYER');
+          if (getAddress(recipient) !== ADDRESS_THIS) throw unsafe('SWAP_RECIPIENT');
+          if (firstToken(path) !== tokenIn || finalToken(path) !== weth) throw unsafe('SWAP_TOKEN');
+          spent += amount;
+          break;
+        }
+        case COMMAND_UNWRAP_WETH: {
+          const [recipient, minimum] = decodeAbiParameters(WRAP, input);
+          if (!isEoa(recipient)) throw unsafe('UNWRAP_RECIPIENT');
+          if (minimum < rules.minOut) throw unsafe('UNWRAP_MINIMUM');
+          unwraps += 1;
+          break;
+        }
+        case COMMAND_SWEEP: {
+          const [token, recipient] = decodeAbiParameters(SWEEP, input);
+          if (!isEoa(recipient)) throw unsafe('SWEEP_RECIPIENT');
+          if (getAddress(token) !== NATIVE_SWEEP) throw unsafe('SWEEP_TOKEN');
+          break;
+        }
+        default:
+          throw unsafe('UNKNOWN_COMMAND');
+      }
+    });
+  } catch (error) {
+    if ((error as Error).message.startsWith('UNSAFE_SWAP_CALLDATA')) throw error;
+    throw unsafe('MALFORMED');
+  }
+
+  if (unwraps !== 1) throw unsafe('OUTPUT_PATTERN');
+  if (spent !== rules.amountIn) throw unsafe('SWAP_AMOUNT');
+}
+
+/**
+ * The least a trade must return to honor a user's limit price, rounded up. A sell turns ETH into
+ * the token at no less than the price, and a buy turns the token into ETH at no more than it.
+ */
+export function minOutForLimit(
+  direction: 'sell' | 'buy',
+  amountIn: bigint,
+  limitPrice: bigint,
+  tokenDecimals: number,
+): bigint {
+  if (direction === 'sell') return limitFloor(amountIn, limitPrice, tokenDecimals);
+  if (amountIn <= 0n || limitPrice <= 0n) throw new Error('INVALID_SWAP_LIMIT');
+  const denominator = limitPrice * 10n ** BigInt(tokenDecimals);
+  return (amountIn * PRICE_AND_NATIVE_SCALE + denominator - 1n) / denominator;
 }

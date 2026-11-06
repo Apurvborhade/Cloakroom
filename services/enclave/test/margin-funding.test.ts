@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NATIVE } from '@cloakroom/shared';
-import type { JournalEvent, MarginFundingRequest } from '@cloakroom/shared';
+import type { JournalEvent, MarginFundingRequest, MarginSupplyMsg } from '@cloakroom/shared';
 import type { Address, Hex } from 'viem';
 import { openCustodyRuntime } from '../src/custody-runtime.js';
 import { replayLedger } from '../src/ledger.js';
@@ -18,6 +18,7 @@ const policy = { chainId: 1, maxGas: 1n, maxFeePerGas: 1n, maxPriorityFeePerGas:
 let state: MemoryCipherBlobStore, snapshots: MemoryCipherBlobStore;
 let runtime: Awaited<ReturnType<typeof openCustodyRuntime>>;
 let funding: MarginFunding, queue: FifoSerialQueue, nextId: number;
+let commandNonces: Map<string, bigint>;
 
 async function boot(allowCreate: boolean) {
   runtime = await openCustodyRuntime({
@@ -47,8 +48,13 @@ async function credit(owner: Address, token: Address, amount: bigint) {
     tokenOut: token, amountOut: amount, fee: 0n });
 }
 
-const supply = (opId: string, amount: bigint, token: Address = USDC) => funding.supply({ opId, owner: LENDER, token, amount });
-const redeem = (opId: string, amount: bigint, token: Address = USDC) => funding.redeem({ opId, owner: LENDER, token, amount });
+function message(id: string, amount: bigint, token: Address = USDC, owner = LENDER): MarginSupplyMsg {
+  const nonce = commandNonces.get(id) ?? BigInt(commandNonces.size + 1);
+  commandNonces.set(id, nonce);
+  return { owner, token, amount, nonce, expiry: 9_999_999_999n };
+}
+const supply = (id: string, amount: bigint, token: Address = USDC) => funding.supply(LENDER, message(id, amount, token));
+const redeem = (id: string, amount: bigint, token: Address = USDC) => funding.redeem(LENDER, message(id, amount, token));
 const request = (opId: string, amount = 200n, owner = TRADER, token: Address = USDC): MarginFundingRequest => ({
   opId, owner, collateralUSDC: 100n, borrow: { token, amount },
 });
@@ -59,7 +65,7 @@ async function countEvents() {
 }
 
 beforeEach(async () => {
-  state = new MemoryCipherBlobStore(); snapshots = new MemoryCipherBlobStore(); nextId = 0;
+  state = new MemoryCipherBlobStore(); snapshots = new MemoryCipherBlobStore(); nextId = 0; commandNonces = new Map();
   await boot(true);
 });
 afterEach(async () => { vi.restoreAllMocks(); await runtime?.close(); });
@@ -69,11 +75,12 @@ describe('margin funding', () => {
     await credit(LENDER, USDC, 500n);
     await supply('supply-a', 200n); await supply('supply-b', 100n);
     expect(runtime.ledger.getBalance(LENDER, USDC)).toMatchObject({ available: 200n, reserved: 300n });
-    expect(await redeem('redeem-a', 40n)).toMatchObject({ claimAmount: 260n, redeemableAmount: 260n });
+    await redeem('redeem-a', 40n);
+    expect(funding.lending(LENDER)[0]).toMatchObject({ supplied: 260n, available: 260n });
     expect(runtime.ledger.getBalance(LENDER, USDC)).toMatchObject({ available: 240n, reserved: 260n });
     await redeem('redeem-b', 260n);
     expect(runtime.ledger.getBalance(LENDER, USDC)).toMatchObject({ available: 500n, reserved: 0n });
-    expect(funding.lendingBalances(LENDER)).toEqual([]);
+    expect(funding.lending(LENDER)).toEqual([]);
     runtime.ledger.assertInvariants();
   });
 
@@ -84,7 +91,7 @@ describe('margin funding', () => {
     await funding.reserveOpen(request('open', 250n, TRADER, token));
     expect(runtime.ledger.getBalance(TRADER, USDC)).toMatchObject({ available: 0n, reserved: 100n });
     expect(runtime.ledger.margin.pool(token)).toEqual({ supplied: 300n, reserved: 250n, available: 50n });
-    expect(funding.lendingBalances(LENDER)).toEqual([{ token, claimAmount: 300n, redeemableAmount: 50n }]);
+    expect(funding.lending(LENDER)).toEqual([{ token, supplied: 300n, available: 50n }]);
     await expect(redeem('too-much', 51n, token)).rejects.toThrow('INSUFFICIENT_LENDING_LIQUIDITY');
     await redeem('partial', 50n, token);
     await funding.releaseOpen('open'); await funding.releaseOpen('open');
@@ -106,12 +113,22 @@ describe('margin funding', () => {
     expect(runtime.ledger.getBalance(TRADER, USDC).available).toBe(100n);
   });
 
+  it('reserves fully funded collateral without requiring a loan', async () => {
+    await credit(TRADER, USDC, 100n);
+    await funding.reserveOpen(request('unleveraged', 0n));
+    expect(runtime.ledger.getBalance(TRADER, USDC)).toMatchObject({ available: 0n, reserved: 100n });
+    expect(runtime.ledger.margin.pool(USDC)).toEqual({ supplied: 0n, reserved: 0n, available: 0n });
+    await funding.releaseOpen('unleveraged');
+    expect(runtime.ledger.getBalance(TRADER, USDC).available).toBe(100n);
+    runtime.ledger.assertInvariants();
+  });
+
   it('cannot supply reserved collateral or use a lending claim as collateral', async () => {
     await credit(LENDER, USDC, 300n); await credit(TRADER, USDC, 100n);
     await supply('supply', 300n);
     await expect(funding.reserveOpen(request('self-collateral', 200n, LENDER))).rejects.toThrow('INSUFFICIENT_BALANCE');
     await funding.reserveOpen(request('open'));
-    await expect(funding.supply({ opId: 'reuse', owner: TRADER, token: USDC, amount: 1n })).rejects.toThrow('INSUFFICIENT_BALANCE');
+    await expect(funding.supply(TRADER, message('reuse', 1n, USDC, TRADER))).rejects.toThrow('INSUFFICIENT_BALANCE');
   });
 
   it.each(['supply', 'withdraw'] as const)('serializes lending against withdrawals when %s arrives first', async (first) => {
@@ -164,7 +181,8 @@ describe('margin funding', () => {
     await credit(LENDER, USDC, 300n); await credit(TRADER, USDC, 100n);
     const before = await countEvents();
     await expect(supply('bad', amount)).rejects.toThrow('MARGIN_AMOUNT_INVALID');
-    await expect(funding.reserveOpen(request('bad', amount))).rejects.toThrow('MARGIN_AMOUNT_INVALID');
+    await expect(funding.reserveOpen({ ...request('bad'), collateralUSDC: amount })).rejects.toThrow('MARGIN_AMOUNT_INVALID');
+    if (amount !== 0n) await expect(funding.reserveOpen(request('bad', amount))).rejects.toThrow('MARGIN_AMOUNT_INVALID');
     expect(await countEvents()).toBe(before);
   });
 
@@ -173,7 +191,8 @@ describe('margin funding', () => {
     await expect(redeem('missing', 1n)).rejects.toThrow('INSUFFICIENT_LENDING_CLAIM');
     await expect(funding.releaseOpen('missing')).rejects.toThrow('MARGIN_RESERVATION_NOT_FOUND');
     await expect(supply('bad-token', 1n, OTHER)).rejects.toThrow('MARGIN_TOKEN_INVALID');
-    await expect(supply('', 1n)).rejects.toThrow('MARGIN_OP_INVALID');
+    await expect(funding.supply(LENDER, { ...message('bad-nonce', 1n), nonce: 0n })).rejects.toThrow('MARGIN_AMOUNT_INVALID');
+    await expect(funding.supply(OTHER, message('wrong-owner', 1n))).rejects.toThrow('BAD_SIGNATURE');
     expect(await countEvents()).toBe(before);
   });
 
@@ -202,7 +221,7 @@ describe('margin funding', () => {
     await runtime.close(); await boot(false);
     expect(runtime.ledger.totals()).toEqual(totals);
     expect(runtime.ledger.margin.reservations()).toEqual(holds);
-    expect(funding.lendingBalances(LENDER)).toEqual([{ token: USDC, claimAmount: 250n, redeemableAmount: 50n }]);
+    expect(funding.lending(LENDER)).toEqual([{ token: USDC, supplied: 250n, available: 50n }]);
     const before = await countEvents();
     await supply('supply', 300n); await funding.reserveOpen(request('open')); await redeem('partial', 50n);
     expect(await countEvents()).toBe(before);
@@ -224,8 +243,8 @@ describe('margin funding', () => {
     write.mockRestore();
     const restored = await replayLedger(runtime.journal);
     const next = new MarginFunding({ ledger: restored, journal: runtime.journal, queue, usdc: USDC });
-    await next.supply({ opId: 'supply', owner: LENDER, token: USDC, amount: 300n });
-    expect(restored.margin.balance(LENDER, USDC).claimAmount).toBe(300n);
+    await next.supply(LENDER, message('supply', 300n));
+    expect(restored.margin.balance(LENDER, USDC).supplied).toBe(300n);
     restored.assertInvariants();
   });
 
@@ -237,6 +256,7 @@ describe('margin funding', () => {
     });
     await expect(supply('supply', 300n)).rejects.toThrow('JOURNAL_UNAVAILABLE');
     await expect(supply('retry', 300n)).rejects.toThrow('MARGIN_FUNDING_UNAVAILABLE');
+    await expect(runtime.keys.allocate('inventory')).rejects.toThrow('KEY_MANAGER_UNAVAILABLE');
     await runtime.close(); await boot(false);
     expect(runtime.ledger.getBalance(LENDER, USDC)).toMatchObject({ available: 0n, reserved: 300n });
     const before = await countEvents();

@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem';
 import type { IntentMsg } from '../eip712.js';
-import type { MarginFundingEvent } from './margin.js';
+import type { MarginFundingEvent } from './margin-funding.js';
 
 /**
  * Discriminator union for append-only hash-chained journal events.
@@ -73,7 +73,32 @@ export type JournalEvent =
     }
   | { t: 'WITHDRAWAL_CONFIRMED'; id: string; owner: Address }
   | { t: 'WITHDRAWAL_FAILED'; id: string; owner: Address; reason: string }
-  | { t: 'FEE_BOOKED'; opId: string; token: Address; feeAmount: bigint };
+  | { t: 'FEE_BOOKED'; opId: string; token: Address; feeAmount: bigint }
+  /** Written by margin accounting. The signer will only sign a margin swap that matches one. */
+  | {
+      t: 'MARGIN_OP_APPROVED';
+      opId: string;
+      kind: 'open' | 'close' | 'liquidate';
+      positionId: string;
+      owner: Address;
+      tokenIn: Address;
+      tokenOut: Address;
+      amountIn: bigint;
+      minAmountOut: bigint;
+      maxSlippageBps: number;
+      /** Unix seconds. Nothing is signed for this operation after it. */
+      expiry: number;
+    }
+  | { t: 'MARGIN_OP_BROADCAST'; opId: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex }
+  | {
+      t: 'MARGIN_OP_SETTLED';
+      opId: string;
+      amountIn: bigint;
+      amountOut: bigint;
+      gasCost: bigint;
+      txHash: Hex;
+    }
+  | { t: 'MARGIN_OP_FAILED'; opId: string; reason: string; gasCost?: bigint; txHash?: Hex };
 
 export interface JournalEntry {
   sequence: number;

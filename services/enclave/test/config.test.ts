@@ -67,7 +67,7 @@ describe('loadConfig', () => {
     expect(config.FEE_BPS).toBe(0);
   });
 
-  it.each(ENV_VARIABLES)('refuses to start without %s', (name) => {
+  it.each(ENV_VARIABLES.filter((name) => name !== 'MARGIN_ENABLED'))('refuses to start without %s', (name) => {
     expect(() => loadConfig(validEnv({ [name]: undefined }))).toThrow(name);
   });
 

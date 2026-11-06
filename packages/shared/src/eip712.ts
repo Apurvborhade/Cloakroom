@@ -62,6 +62,45 @@ export const EIP712_TYPES = {
     { name: 'nonce', type: 'uint64' },
     { name: 'expiry', type: 'uint64' },
   ],
+  MarginSupply: [
+    { name: 'owner', type: 'address' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'nonce', type: 'uint64' },
+    { name: 'expiry', type: 'uint64' },
+  ],
+  MarginRedeem: [
+    { name: 'owner', type: 'address' },
+    { name: 'token', type: 'address' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'nonce', type: 'uint64' },
+    { name: 'expiry', type: 'uint64' },
+  ],
+  MarginOpen: [
+    { name: 'owner', type: 'address' },
+    { name: 'side', type: 'uint8' },           // 0: long, 1: short
+    { name: 'collateral', type: 'uint256' },   // USDC base units
+    { name: 'leverageBps', type: 'uint32' },   // position size / collateral: 40000 is 4x
+    { name: 'limitPrice', type: 'uint256' },   // 1e18 fixed point: highest for a long, lowest for a short
+    { name: 'maxSlippageBps', type: 'uint16' },
+    { name: 'nonce', type: 'uint64' },
+    { name: 'expiry', type: 'uint64' },
+  ],
+  MarginAddCollateral: [
+    { name: 'owner', type: 'address' },
+    { name: 'positionId', type: 'bytes32' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'nonce', type: 'uint64' },
+    { name: 'expiry', type: 'uint64' },
+  ],
+  MarginClose: [
+    { name: 'owner', type: 'address' },
+    { name: 'positionId', type: 'bytes32' },
+    { name: 'limitPrice', type: 'uint256' },   // 1e18 fixed point: lowest for a long, highest for a short
+    { name: 'maxSlippageBps', type: 'uint16' },
+    { name: 'nonce', type: 'uint64' },
+    { name: 'expiry', type: 'uint64' },
+  ],
 } as const;
 
 export type SessionGrantMsg = {
@@ -106,6 +145,44 @@ export type WithdrawalMsg = {
   token: Address;
   amount: bigint;
   to: Address;
+  nonce: bigint;
+  expiry: bigint;
+};
+
+export type MarginSupplyMsg = {
+  owner: Address;
+  token: Address;
+  amount: bigint;
+  nonce: bigint;
+  expiry: bigint;
+};
+
+export type MarginRedeemMsg = MarginSupplyMsg;
+
+export type MarginOpenMsg = {
+  owner: Address;
+  side: number; // 0: long, 1: short
+  collateral: bigint;
+  leverageBps: number;
+  limitPrice: bigint;
+  maxSlippageBps: number;
+  nonce: bigint;
+  expiry: bigint;
+};
+
+export type MarginAddCollateralMsg = {
+  owner: Address;
+  positionId: Hex;
+  amount: bigint;
+  nonce: bigint;
+  expiry: bigint;
+};
+
+export type MarginCloseMsg = {
+  owner: Address;
+  positionId: Hex;
+  limitPrice: bigint;
+  maxSlippageBps: number;
   nonce: bigint;
   expiry: bigint;
 };

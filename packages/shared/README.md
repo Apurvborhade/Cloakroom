@@ -6,8 +6,8 @@ Types, EIP-712 definitions and constants, shared so the browser signs exactly wh
 
 ## Margin accounting contract
 
-[MarginAccounting](src/types/margin.ts) defines the internal API/executor handoff; its implementation follows separately. Amounts use token base units as `bigint`, USDC collateral uses 6 decimals, and timestamps use Unix seconds. Existing `PriceReport` prices use 18 decimals. Wire schemas and signatures remain separate.
+[MarginAccounting](src/types/margin.ts) is the API/executor contract. See the [backend handoff](../../docs/margin-interface.md) for signed commands and execution results.
 
-After authenticating a command, pass its stable `opId` to accounting. `prepareOpen`, `prepareClose` and `prepareLiquidation` reserve funds and return bounded swap instructions. The executor supplies actual confirmed amounts and gas costs through `recordExecution`. Timeouts remain `unresolved`; only confirmed execution, a confirmed revert or proof that no swap was submitted can finish an operation. `recover` restores journal state and returns unfinished operations for the executor to resolve through the same method.
+[MarginFunding](../../services/enclave/src/margin-funding.ts) implements supply, redemption and lending queries against the existing ledger. Pass the same journal and queue used by withdrawals. Authenticate commands first; their owner and nonce identify retries. `replayLedger` restores funding claims and reservations alongside ordinary balances.
 
-Supply, redemption and added collateral transfer existing ledger claims; they do not create deposits or send transactions. Query results are snapshots, and only accounting mutates balances, debt and positions. API routes must authenticate and restrict queries to the requesting owner; liquidation candidates still require accounting's health check.
+`reserveOpen` locks USDC collateral and lending liquidity; it does not authorize a swap or issue spendable debt. Full risk checks and position settlement remain separate work. Until execution is authorized, `releaseOpen` returns those holds. Supply and redemption move existing claims; physical inventory alone never creates lending liquidity.
