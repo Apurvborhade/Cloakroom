@@ -60,6 +60,28 @@ pnpm start:enclave
 
 It needs `flock` to save custody state. Linux includes it, and on macOS install it with `brew install flock`. Without it the service stops with `BOOT_FAILED:keys`.
 
+## Two-user round trip
+
+The Phase 1 gate on real Sepolia, through the running service: two users deposit, then each withdraws to a fresh wallet, paid from an address they never funded. It needs no seeding, because each user's deposit address joins the pool when their session ends.
+
+Start the service in another terminal, with `DEPOSIT_SESSION_TTL_SEC=120` in `.env` so the run takes minutes rather than a quarter of an hour. It needs `TEST_PRIVATE_KEY` with about 0.05 ETH. Each run deposits 0.02 ETH per user and pays out 0.003 ETH per user. The rest stays in the pool as those users' balances.
+
+```bash
+pnpm test:roundtrip
+```
+
+## Swap through the running service
+
+Alice signs an order to sell 0.001 ETH for the output token, and the running service swaps it through the real Uniswap router with the real signer. Run `pnpm test:roundtrip` first: this uses the balance and pool addresses it leaves. The limit is 90% of the current price, so the next price check triggers it.
+
+Add `--preview` to read the price and balance without signing an order.
+
+```bash
+pnpm test:swap
+```
+
+The tokens stay in the pool as Alice's balance. Withdrawing them needs a pool address she isn't linked to that holds tokens, so seed the pool first.
+
 ## Seeding the inventory
 
 `services/enclave/scripts/seed-inventory.ts` has two steps. It refuses to run anywhere except Sepolia or a local Anvil chain.
