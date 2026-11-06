@@ -11,12 +11,6 @@ export type LendingChange =
   | { action: 'none'; amount: 0n; limited: boolean }
   | { action: 'supply' | 'redeem'; amount: bigint; limited: boolean };
 
-/** The share of the balance lent now, as a whole percent. */
-export function lentPercent({ available, supplied }: LendingPosition): number {
-  const total = available + supplied;
-  return total === 0n ? 0 : Number((supplied * 100n) / total);
-}
-
 /**
  * What moves the owner to lending this percent of their balance. `limited` means less can come back
  * now than they asked for, because the rest is out on loan.

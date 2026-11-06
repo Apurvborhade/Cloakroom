@@ -23,6 +23,7 @@ import { TxLink } from '../transactions/tx-link';
 import { Address as AddressText } from '../ui/address';
 import { Countdown } from '../ui/countdown';
 import { BalanceFreshness, DebugItem, DebugPanel, Elapsed } from './debug';
+import { LendingOption } from './lending-option';
 import { ActionButton, AmountBox, Detail, SimpleCard, StatusLine } from './parts';
 
 interface ActiveDeposit {
@@ -282,7 +283,7 @@ export function SimpleDeposit() {
   const hashes = [sent.token, sent.native].filter((hash): hash is Hash => Boolean(hash));
 
   return (
-    <SimpleCard title="Deposit">
+    <SimpleCard title="Deposit" after={<LendingOption token={token.address} symbol={token.symbol} decimals={token.decimals} />}>
       {tokens.length > 1 && !active && (
         <div className="flex gap-1.5 px-1 pb-1">
           {tokens.map((item) => (

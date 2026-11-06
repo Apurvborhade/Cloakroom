@@ -1,10 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { Address, Hash } from 'viem';
 import { useCreateWithdrawal } from '@/hooks/use-actions';
 import { useOwner } from '@/hooks/use-owner';
-import { useBalances, useWithdrawalStatuses } from '@/hooks/use-private-data';
+import { useBalances, useMarginLending, useWithdrawalStatuses } from '@/hooks/use-private-data';
 import { describeError } from '@/lib/api/errors';
 import { cn } from '@/lib/cn';
 import { appConfig, knownTokens, tokenFor } from '@/lib/config';
@@ -14,7 +15,6 @@ import { ChainReceipt } from '../transactions/chain-receipt';
 import { TxLink } from '../transactions/tx-link';
 import { Address as AddressText } from '../ui/address';
 import { BalanceFreshness, DebugItem, DebugPanel, Elapsed } from './debug';
-import { LendingOption } from './lending-option';
 import { RecentWithdrawals } from './recent-history';
 import { ActionButton, AmountBox, PrivateBalance, SimpleCard, StatusLine } from './parts';
 
@@ -23,6 +23,7 @@ export function SimpleWithdraw() {
   const tokens = knownTokens();
   const balances = useBalances();
   const statuses = useWithdrawalStatuses();
+  const lending = useMarginLending();
   const create = useCreateWithdrawal();
   const [tokenAddress, setTokenAddress] = useState<Address>(tokens[0]!.address);
   const [amount, setAmount] = useState('');
@@ -32,6 +33,7 @@ export function SimpleWithdraw() {
   const token = tokenFor(tokenAddress)!;
   const balance = balances.data?.balances.find((item) => item.token.toLowerCase() === tokenAddress.toLowerCase());
   const available = balance ? BigInt(balance.available) : null;
+  const lent = BigInt(lending.data?.lending.find((item) => item.token.toLowerCase() === tokenAddress.toLowerCase())?.supplied ?? '0');
   const form = useMemo(
     () => validateWithdrawForm(
       { token: tokenAddress, decimals: token.decimals, amount, destination },
@@ -64,15 +66,7 @@ export function SimpleWithdraw() {
   };
 
   return (
-    <SimpleCard
-      title="Withdraw"
-      after={
-        <>
-          <LendingOption token={tokenAddress} symbol={token.symbol} decimals={token.decimals} />
-          <RecentWithdrawals />
-        </>
-      }
-    >
+    <SimpleCard title="Withdraw" after={<RecentWithdrawals />}>
       <div className="flex gap-1.5 px-1 pb-1">
         {tokens.map((item) => (
           <button
@@ -97,6 +91,12 @@ export function SimpleWithdraw() {
         onChange={setAmount}
         footer={<PrivateBalance token={tokenAddress} decimals={token.decimals} symbol={token.symbol} onMax={setAmount} />}
       />
+      {lent > 0n && (
+        <p className="px-3 py-1 text-xs text-fg-subtle">
+          {formatUnitsDisplay(lent, token.decimals, 5)} {token.symbol} is lent out, so it can't be withdrawn. Take it back on{' '}
+          <Link href="/deposit" className="font-medium text-accent hover:text-accent-strong">Deposit</Link> first.
+        </p>
+      )}
       <div className="rounded-2xl bg-ink-800 p-4">
         <label htmlFor="withdraw-to" className="text-sm text-fg-subtle">To address</label>
         <input

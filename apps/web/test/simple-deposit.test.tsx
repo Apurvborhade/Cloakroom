@@ -35,6 +35,9 @@ vi.mock('@/lib/config', () => {
     tokenFor: (address: string) => [native, tokenOut].find((token) => token.address.toLowerCase() === address.toLowerCase()) ?? null,
   };
 });
+vi.mock('@/components/simple/lending-option', () => ({
+  LendingOption: ({ symbol }: { symbol: string }) => <p>Lend my {symbol}</p>,
+}));
 vi.mock('@/components/transactions/chain-receipt', () => ({ ChainReceipt: () => null }));
 vi.mock('@/components/transactions/tx-link', () => ({ TxLink: ({ hash }: { hash: string }) => <span>{hash}</span> }));
 vi.mock('@/components/ui/address', () => ({ Address: ({ value }: { value: string }) => <span>{value}</span> }));
@@ -55,7 +58,7 @@ vi.mock('@/components/simple/parts', async () => {
       <label>{label}<input id={id} value={value} onChange={(event) => onChange(event.target.value)} /></label>
     ),
     Detail: ({ label, children }: { label: string; children: unknown }) => <p>{label}: {children as never}</p>,
-    SimpleCard: ({ children }: { children: unknown }) => <div>{children as never}</div>,
+    SimpleCard: ({ children, after }: { children: unknown; after?: unknown }) => <div>{children as never}{after as never}</div>,
     StatusLine: ({ title, children }: { title: string; children?: unknown }) => <div role="status"><b>{title}</b>{children as never}</div>,
   };
 });
@@ -76,6 +79,13 @@ describe('deposit screen', () => {
     state.walletToken = 1_000_000_000n;
     state.mutateAsync = vi.fn(async (asset: string) => ({ ...session, asset }));
     state.send = vi.fn(async ({ value }: { value?: bigint }) => (value ? '0xeth' : '0xusdc'));
+  });
+
+  it('offers lending for the token chosen', () => {
+    render(<SimpleDeposit />);
+    expect(screen.getByText('Lend my ETH')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'USDC' }));
+    expect(screen.getByText('Lend my USDC')).toBeTruthy();
   });
 
   it('shows the reserve before any funds are sent, and adds it on top of an ETH amount', async () => {
