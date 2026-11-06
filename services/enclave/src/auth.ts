@@ -138,35 +138,70 @@ export class AuthService {
    */
   validateExpiry(expiry: bigint, isSessionGrant = false): void {
     const now = BigInt(this.clock());
+    if (isSessionGrant) {
+      if (expiry <= now) {
+        throw new AuthError(
+          ERROR_CODES.EXPIRED,
+          'Session grant expiry must be strictly in the future',
+        );
+      }
+      if (expiry > now + BigInt(this.sessionGrantTtlSec)) {
+        throw new AuthError(
+          ERROR_CODES.EXPIRED,
+          'Session grant expiry exceeds maximum TTL',
+        );
+      }
+      return;
+    }
+
     const minAllowed = now - BigInt(this.maxClockSkewSec);
-    const maxAllowed = isSessionGrant
-      ? now + BigInt(this.sessionGrantTtlSec)
-      : now + BigInt(this.maxExpiryFutureSec);
+    const maxAllowed = now + BigInt(this.maxExpiryFutureSec);
 
     if (expiry < minAllowed) {
       throw new AuthError(
         ERROR_CODES.EXPIRED,
-        isSessionGrant
-          ? 'Session grant is already expired'
-          : 'Request expiry is beyond allowed clock skew',
+        'Request expiry is beyond allowed clock skew',
       );
     }
 
     if (expiry > maxAllowed) {
       throw new AuthError(
         ERROR_CODES.EXPIRED,
-        isSessionGrant
-          ? 'Session grant expiry exceeds maximum TTL'
-          : 'Request expiry is too far into the future',
+        'Request expiry is too far into the future',
       );
     }
   }
 
-  /**
-   * Verifies an owner-signed EIP-712 typed-data message against the enclave domain.
-   *
-   * @returns The normalized owner address upon successful signature verification.
-   */
+  async verifyOwnerSignature(
+    primaryType: 'SessionGrant',
+    message: SessionGrantMsg,
+    signature: Hex,
+  ): Promise<Address>;
+  async verifyOwnerSignature(
+    primaryType: 'DepositRequest',
+    message: DepositRequestMsg,
+    signature: Hex,
+  ): Promise<Address>;
+  async verifyOwnerSignature(
+    primaryType: 'Intent',
+    message: IntentMsg,
+    signature: Hex,
+  ): Promise<Address>;
+  async verifyOwnerSignature(
+    primaryType: 'CancelIntent',
+    message: CancelIntentMsg,
+    signature: Hex,
+  ): Promise<Address>;
+  async verifyOwnerSignature(
+    primaryType: 'Withdrawal',
+    message: WithdrawalMsg,
+    signature: Hex,
+  ): Promise<Address>;
+  async verifyOwnerSignature<K extends OwnerPrimaryType>(
+    primaryType: K,
+    message: OwnerMessageMap[K],
+    signature: Hex,
+  ): Promise<Address>;
   async verifyOwnerSignature<K extends OwnerPrimaryType>(
     primaryType: K,
     message: OwnerMessageMap[K],
@@ -176,15 +211,66 @@ export class AuthService {
     let recovered: Address;
 
     try {
-      recovered = await recoverTypedDataAddress({
-        domain,
-        types: EIP712_TYPES,
-        primaryType: primaryType as any,
-        message: message as any,
-        signature,
-      });
-    } catch {
-      throw new AuthError(ERROR_CODES.BAD_SIGNATURE, 'Invalid signature format or recovery failure');
+      switch (primaryType) {
+        case 'SessionGrant':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: 'SessionGrant',
+            message: message as SessionGrantMsg,
+            signature,
+          });
+          break;
+        case 'DepositRequest':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: 'DepositRequest',
+            message: message as DepositRequestMsg,
+            signature,
+          });
+          break;
+        case 'Intent':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: 'Intent',
+            message: message as IntentMsg,
+            signature,
+          });
+          break;
+        case 'CancelIntent':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: 'CancelIntent',
+            message: message as CancelIntentMsg,
+            signature,
+          });
+          break;
+        case 'Withdrawal':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: 'Withdrawal',
+            message: message as WithdrawalMsg,
+            signature,
+          });
+          break;
+        default: {
+          const exhaustiveCheck: never = primaryType;
+          throw new AuthError(
+            ERROR_CODES.INVALID_PAYLOAD,
+            `Unsupported primary type: ${String(exhaustiveCheck)}`,
+          );
+        }
+      }
+    } catch (err) {
+      if (err instanceof AuthError) throw err;
+      throw new AuthError(
+        ERROR_CODES.BAD_SIGNATURE,
+        'Invalid signature format or recovery failure',
+      );
     }
 
     const normSigner = getAddress(recovered);
@@ -202,7 +288,8 @@ export class AuthService {
 
   /**
    * Validates and registers an ephemeral session grant authorized by the owner.
-   * A new grant for an owner overwrites any previous grant.
+   * A new grant for an owner overwrites any previous grant upon success.
+   * If registration fails, any existing valid grant remains intact.
    *
    * Note: Session grants reside in memory and do not persist across enclave restarts.
    */
@@ -311,16 +398,75 @@ export class AuthService {
    * 2. Validates expiry horizon and clock skew outside the queue.
    * 3. Atomically validates and consumes nonce inside FifoSerialQueue with journal durability.
    */
+  async verifyAndAuthorizeMutation(
+    primaryType: 'DepositRequest',
+    message: DepositRequestMsg,
+    signature: Hex,
+  ): Promise<{ owner: Address; nonce: bigint }>;
+  async verifyAndAuthorizeMutation(
+    primaryType: 'Intent',
+    message: IntentMsg,
+    signature: Hex,
+  ): Promise<{ owner: Address; nonce: bigint }>;
+  async verifyAndAuthorizeMutation(
+    primaryType: 'CancelIntent',
+    message: CancelIntentMsg,
+    signature: Hex,
+  ): Promise<{ owner: Address; nonce: bigint }>;
+  async verifyAndAuthorizeMutation(
+    primaryType: 'Withdrawal',
+    message: WithdrawalMsg,
+    signature: Hex,
+  ): Promise<{ owner: Address; nonce: bigint }>;
+  async verifyAndAuthorizeMutation<K extends MutatingPrimaryType>(
+    primaryType: K,
+    message: MutatingMessageMap[K],
+    signature: Hex,
+  ): Promise<{ owner: Address; nonce: bigint }>;
   async verifyAndAuthorizeMutation<K extends MutatingPrimaryType>(
     primaryType: K,
     message: MutatingMessageMap[K],
     signature: Hex,
   ): Promise<{ owner: Address; nonce: bigint }> {
-    const owner = await this.verifyOwnerSignature(
-      primaryType as OwnerPrimaryType,
-      message as OwnerMessageMap[OwnerPrimaryType],
-      signature,
-    );
+    let owner: Address;
+    switch (primaryType) {
+      case 'DepositRequest':
+        owner = await this.verifyOwnerSignature(
+          'DepositRequest',
+          message as DepositRequestMsg,
+          signature,
+        );
+        break;
+      case 'Intent':
+        owner = await this.verifyOwnerSignature(
+          'Intent',
+          message as IntentMsg,
+          signature,
+        );
+        break;
+      case 'CancelIntent':
+        owner = await this.verifyOwnerSignature(
+          'CancelIntent',
+          message as CancelIntentMsg,
+          signature,
+        );
+        break;
+      case 'Withdrawal':
+        owner = await this.verifyOwnerSignature(
+          'Withdrawal',
+          message as WithdrawalMsg,
+          signature,
+        );
+        break;
+      default: {
+        const exhaustiveCheck: never = primaryType;
+        throw new AuthError(
+          ERROR_CODES.INVALID_PAYLOAD,
+          `Unsupported mutation type: ${String(exhaustiveCheck)}`,
+        );
+      }
+    }
+
     this.validateExpiry(message.expiry, false);
     await this.consumeNonce(owner, message.nonce);
     return { owner, nonce: message.nonce };

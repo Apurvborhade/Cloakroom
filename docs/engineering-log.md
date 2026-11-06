@@ -678,3 +678,32 @@ This document is the canonical, chronological record of all backend and accounti
 - **Shreyas (Task 6B — Fastify Server & Routes):** Route handlers in `server.ts` will call `authService.createSessionGrant`, `authService.verifySessionQuery`, and `authService.verifyAndAuthorizeMutation`.
 - **Felix (KeyManager / Attestation):** Enclave bootstrap passes `enclavePubKey` into `AuthService` dependencies upon initialization.
 - **Frontend / Pradnyesh:** Mutating request nonces must start at `1n` (`0n` is rejected); `SessionGrant` expiry can be up to 30 minutes; restarting the enclave clears in-memory session grants.
+
+---
+
+## Task 6A: Security Review Corrections (Session Expiry & Auth Typing)
+
+- **Date:** 2026-11-06
+- **Owner:** Shreyas (API & Backend)
+- **Branch:** `feat/auth-session-nonce`
+- **Status:** Completed
+- **Objective:** Address security review findings: eliminate unsafe `any` casts in `services/enclave/src/auth.ts`, enforce strict future expiry for session grants without clock skew relaxation, and add regression tests ensuring rejected grants do not corrupt the active session registry.
+
+### Changes
+- `services/enclave/src/auth.ts`:
+  - Enforced strict future expiry for session grants (`message.expiry > BigInt(clock())`). Expired grants are rejected even if within `MAX_CLOCK_SKEW_SEC`. Ordinary requests and queries retain standard clock skew tolerance.
+  - Ensured failed grant validations occur before mutation, preventing rejected replacement grants from overwriting active grants.
+  - Eliminated all unsafe `any` casts: introduced typed function overloads and an exhaustive switch block mapping each EIP-712 primary type to its corresponding message schema without weakening types.
+- `services/enclave/test/auth.test.ts`:
+  - Added test: grant expiry exactly equal to now is rejected.
+  - Added test: grant expiry one second in the past is rejected.
+  - Added test: grant expiry 30 seconds in the past is rejected, even though ordinary requests allow 60 seconds of skew.
+  - Added test: a valid future grant still succeeds.
+  - Added test: a rejected replacement grant does not invalidate or overwrite the existing valid grant.
+
+### Verification
+- `pnpm test`: 256 passed across 12 test suites.
+- `pnpm typecheck`: Clean (0 errors).
+- `pnpm build`: Clean (0 errors).
+- `git diff --check`: Clean.
+- Zero `any` casts in `services/enclave/src/auth.ts`.
