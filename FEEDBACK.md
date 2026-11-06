@@ -38,8 +38,9 @@ We did not find a helper for this, so we wrote our own decoder for the Universal
 | --- | --- | --- | --- |
 | Split across pools (0.1 ETH, default routing) | `WRAP_ETH`, 3 x `V3_SWAP_EXACT_IN`, 2 x `SWEEP` | Router, then `SWEEP` pays the recipient | `SWEEP`, while each swap has 0 |
 | Single pool (0.001 ETH, V2 and V3 only) | `WRAP_ETH`, `V3_SWAP_EXACT_IN`, `SWEEP` | The swap pays the recipient directly | The swap's `amountOutMin` |
+| Split, paying directly (about 0.0004 ETH, V2 and V3 only) | `WRAP_ETH`, 2 x `V3_SWAP_EXACT_IN`, `SWEEP` | Each swap pays the recipient directly | Each swap's `amountOutMin`, which together came to 1 unit below `minimumAmount` |
 
-Our first live swap was refused by our own validator, because we had only seen the first shape. Nothing was lost, but we would not have known about the second shape without running it.
+Our validator refused live transactions twice, because it had not yet seen the second and third shapes. Nothing was lost either time, and we only learned about them by running real swaps at different sizes.
 
 **Suggestion:** publish a small helper or documented recipe, such as `verifySwapCalldata(calldata, { recipient, tokenOut, minOut })`, or document the command patterns the API can return.
 

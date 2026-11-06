@@ -70,7 +70,7 @@ We deploy no contracts of our own.
 | Checking prices from quotes | [`price-poller.ts:86`](services/enclave/src/price-poller.ts#L86) |
 | Running a swap | [`executor.ts:371`](services/enclave/src/executor.ts#L371) |
 | Requesting a quote for a swap | [`executor.ts:422`](services/enclave/src/executor.ts#L422) |
-| Checking the router calldata before signing | [`executor.ts:452`](services/enclave/src/executor.ts#L452), [`swap-calldata.ts:55`](services/enclave/src/swap-calldata.ts#L55) |
+| Checking the router calldata before signing | [`executor.ts:452`](services/enclave/src/executor.ts#L452), [`swap-calldata.ts:56`](services/enclave/src/swap-calldata.ts#L56) |
 | Simulating the swap | [`executor.ts:469`](services/enclave/src/executor.ts#L469) |
 | Sending the swap | [`executor.ts:531`](services/enclave/src/executor.ts#L531) |
 | Reading the output from the receipt | [`executor.ts:568`](services/enclave/src/executor.ts#L568) |
