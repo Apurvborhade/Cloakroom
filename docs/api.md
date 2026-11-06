@@ -127,6 +127,10 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 | `GET /health/reconcile` | none | `{ ok, perToken: [{ token, onChain, claims }] }` |
 | `POST /admin/eoas` | `AdminEoas` + admin signature | `{ addresses }` (one-time inventory disclosure) |
 
+Reads signed by a session key answer `EXPIRED` if the query itself has expired, and `UNKNOWN_SESSION` for every other failure, including a wrong signature or a wrong session key. Anyone can send a query naming any owner, so different errors would reveal who has an active session. Session grants live in memory, so after a restart reads answer `UNKNOWN_SESSION` until the user signs a new grant.
+
+Each `POST /deposit-session` allocates a new address. `pending` in a balance is always `0` for now, because deposits are credited only once confirmed.
+
 `/health/reconcile` returns aggregates only, with no per-user data. Never return custody EOA addresses except the one assigned to a deposit session, and the one-time admin seeding call.
 
 ### Attestation response (Nitro, phase 0)

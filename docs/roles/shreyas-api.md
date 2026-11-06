@@ -25,7 +25,8 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 - [x] `packages/shared` with types, constants, schemas, and EIP-712 definitions. Unblocks Pradnyesh and Apurva (Task 2)
 - [x] Publish `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces so Apurva can code against them (Task 2)
 - [x] Fastify server and boot lifecycle: `server.ts`, `main.ts`
-- [ ] Route handlers and envelope decryption for the private API
+- [x] Session, deposit-session and balance routes, with envelope decryption: `routes.ts`
+- [ ] Intent and withdrawal routes
 
 ### Phase 1 (hours 3 to 12)
 
