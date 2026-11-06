@@ -5,6 +5,8 @@ import { AuthService } from './auth.js';
 import { toSigningPolicy } from './config.js';
 import type { EnclaveConfig } from './config.js';
 import { custodyRoutes } from './custody-routes.js';
+import { apiRoutes } from './routes.js';
+import type { ApiDeps } from './routes.js';
 import { Executor } from './executor.js';
 import type { RecoveredOperation, SwapDeps } from './executor.js';
 import { InMemoryIntentStore } from './intents.js';
@@ -65,11 +67,11 @@ export interface RunningEnclave {
 
 /** Logging stays off, because request bodies and addresses are private. */
 export async function buildApp(options: {
-  config: EnclaveConfig;
-  keys: KeyManager;
+  api: ApiDeps;
   attestation?: AttestationService;
 }): Promise<FastifyInstance> {
-  const { attestation, config, keys } = options;
+  const { api, attestation } = options;
+  const { config, keys } = api;
   const app = Fastify({ logger: false });
 
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'INVALID_PAYLOAD' }));
@@ -106,6 +108,7 @@ export async function buildApp(options: {
     seedingEnabled: config.SEEDING_ENABLED,
     chainId: config.CHAIN_ID,
   });
+  apiRoutes(app, api);
   return app;
 }
 
@@ -256,8 +259,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   const app = await step('routes', () =>
     buildApp({
-      config,
-      keys,
+      api: { auth, config, inventory, keys, ledger, watcher },
       attestation: options.attestation
         ? new AttestationService(options.attestation.buildHash, {
             identity: keys,
