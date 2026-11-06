@@ -23,6 +23,7 @@ One decision per file. This page is the index, so check here first.
 | [TEE platform: AWS Nitro Enclaves](2026-11-06-0151-tee-platform.md) | Felix | Phase 0 |
 | [Network: Sepolia (pending a Trading API quote test)](2026-11-06-0229-network-sepolia.md) | Apurva | Phase 0 |
 | [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) | Apurva, Pradnyesh, Shreyas | Phase 2 |
+| [Swap safety rules](2026-11-06-1304-swap-safety-rules.md) | Apurva, Felix | Phase 2 |
 | [Open-source licence](2026-11-06-0151-open-source-licence.md) | Team | Before hour 0 |
 | [The spec wins over the plan](2026-11-06-0151-spec-over-plan.md) | Team | Settled |
 | [Files with no owner](2026-11-06-0151-unowned-files.md) | Shreyas | Phase 0 |
@@ -71,8 +72,6 @@ These are facts to check, not decisions.
 | --- | --- |
 | TEE provider access, pricing, attestation format, how a quote is fetched and how secrets reach the enclave | Felix |
 | HPKE library choice (for example `@hpke/core`) works in both the browser and Node, in our build | Felix |
-| Exact swap flow: wrap step from ETH, Permit2 approval from an ERC-20 | Apurva |
-| The Trading API returns a Sepolia quote for WETH to USDC, and the router in its calldata matches `UNIVERSAL_ROUTER_ADDRESS` | Apurva |
 | A Sepolia RPC URL works through an Anon-RPC worker, and the provider accepts that traffic. Some providers refuse Tor | Pradnyesh |
 | How the Anon-RPC harness plugs into viem | Pradnyesh |
-| Trading API rate limits allow one quote per `PRICE_POLL_INTERVAL_SEC`, and it quotes for a throwaway `swapper`. Check with `pnpm smoke:quote` | Apurva |
+| Trading API rate limits over a long run. A short burst passed `pnpm smoke:quote`, including throwaway `swapper` addresses | Apurva |
