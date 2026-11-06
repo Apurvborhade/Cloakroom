@@ -4,7 +4,8 @@
  * connect-src stays at https:/wss: because the Anon-RPC worker resolves its hash-pinned bundle
  * from resolvers named on-chain and dials KPS relays, which cannot be listed ahead of time.
  * Plain-http origins (a local enclave or chain) are added only when configured.
- * script-src needs 'unsafe-inline' for Next's inline runtime and the harness's srcdoc bootstrap.
+ * script-src needs 'unsafe-inline' for Next's inline runtime and the harness's srcdoc bootstrap,
+ * and 'wasm-unsafe-eval' because anonymizing clients like Nox and tor-js are WebAssembly.
  */
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -28,7 +29,7 @@ const plainHttp = [
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' blob: data:${isDev ? " 'unsafe-eval'" : ''}`,
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' blob: data:${isDev ? " 'unsafe-eval'" : ''}`,
   "worker-src 'self' blob: data:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",

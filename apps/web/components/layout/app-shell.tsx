@@ -9,6 +9,8 @@ import { AttestationBadge } from '../dashboard/attestation-badge';
 import { NetworkBadge } from '../wallet/network-badge';
 import { WalletButton } from '../wallet/wallet-button';
 import { WrongChainBanner } from '../wallet/wrong-chain-banner';
+import { AnonRpcBadge } from './anon-rpc-badge';
+import { AnonRpcBanner } from './anon-rpc-banner';
 import { ConfigBanner } from './config-banner';
 import { Logo } from './logo';
 import { SimBanner } from './sim-banner';
@@ -41,6 +43,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
       <SimBanner />
       <ConfigBanner />
+      <AnonRpcBanner />
       <WrongChainBanner />
       <header className="sticky top-0 z-40 bg-ink-950/85 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -67,10 +70,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               </ul>
             </nav>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="hidden md:block">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden xl:block">
               <AttestationBadge />
             </div>
+            <AnonRpcBadge />
             <NetworkBadge />
             <WalletButton />
           </div>

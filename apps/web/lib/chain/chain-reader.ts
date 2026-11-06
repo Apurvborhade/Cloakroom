@@ -19,6 +19,10 @@ export interface ChainReadStatus {
   failedReads: number;
   byMethod: Record<string, number>;
   lastReadAt: number | null;
+  /** Where Cloakroom API requests go. Direct only if Anon-RPC is off or the user chose it. */
+  apiRoute: 'anon-rpc' | 'direct';
+  apiRequests: number;
+  apiFailures: number;
 }
 
 export class ChainReadUnavailableError extends Error {
@@ -52,6 +56,8 @@ export interface ChainReaderDeps {
 type Listener = () => void;
 
 const DEFAULT_READY_TIMEOUT_MS = 45_000;
+/** Keeps API requests, which name the owner to the enclave, unlinkable from wallet chain reads. */
+const API_ISOLATION_KEY = 'cloakroom-api';
 
 export class ChainReader {
   readonly route: ChainReadRoute;
@@ -65,7 +71,16 @@ export class ChainReader {
   constructor(config: AppConfig['chainRead'], deps: ChainReaderDeps = {}) {
     this.#config = config;
     this.#deps = { readyTimeoutMs: DEFAULT_READY_TIMEOUT_MS, now: Date.now, ...deps };
-    const base = { totalReads: 0, failedReads: 0, byMethod: {}, lastReadAt: null };
+    const usesAnon = config.mode === 'anon-rpc' && Boolean(config.anonSpecifier && config.anonTargetUrl && config.anonBootstrapRpcUrl);
+    const base = {
+      totalReads: 0,
+      failedReads: 0,
+      byMethod: {},
+      lastReadAt: null,
+      apiRoute: usesAnon ? ('anon-rpc' as const) : ('direct' as const),
+      apiRequests: 0,
+      apiFailures: 0,
+    };
     if (config.mode === 'direct-dev' && config.devDirectRpcUrl) {
       this.route = 'direct-dev';
       this.#status = { ...base, route: 'direct-dev', state: 'ready', detail: 'Development fallback: reads go directly to the configured RPC and are NOT anonymized.' };
@@ -113,6 +128,33 @@ export class ChainReader {
       throw error;
     }
   };
+
+  /**
+   * A fetch for the Cloakroom API. With Anon-RPC on, it hides the user's IP from the operator, and
+   * it fails rather than falling back: only setApiDirect, which the user chooses, goes direct.
+   */
+  apiFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const direct = this.#deps.fetchFn ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args));
+    if (this.#status.apiRoute === 'direct') return direct(input, init);
+    try {
+      const worker = await this.#ensureWorker();
+      const response = await worker.fetch(String(input), { ...init, anonOptions: { isolationKey: API_ISOLATION_KEY } });
+      this.#status = { ...this.#status, apiRequests: this.#status.apiRequests + 1 };
+      this.#emit();
+      return response;
+    } catch (error) {
+      this.#status = { ...this.#status, apiRequests: this.#status.apiRequests + 1, apiFailures: this.#status.apiFailures + 1 };
+      this.#emit();
+      throw error;
+    }
+  };
+
+  /** The user's explicit choice to reach the API directly, which shows the operator their IP. */
+  setApiDirect(direct: boolean): void {
+    if (this.route !== 'anon-rpc') return;
+    this.#status = { ...this.#status, apiRoute: direct ? 'direct' : 'anon-rpc' };
+    this.#emit();
+  }
 
   close(): void {
     this.#worker?.close();

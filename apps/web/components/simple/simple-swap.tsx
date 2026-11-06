@@ -3,6 +3,7 @@
 import { NATIVE } from '@cloakroom/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { MAX_INTENT_LIFETIME_SEC, useCreateIntent } from '@/hooks/use-actions';
+import { useChainReadStatus } from '@/hooks/use-chain-reader';
 import { usePoolPrice } from '@/hooks/use-pool-price';
 import { useBalances, useIntentStatuses } from '@/hooks/use-private-data';
 import { describeError } from '@/lib/api/errors';
@@ -37,6 +38,7 @@ export function SimpleSwap() {
   const [order, setOrder] = useState<{ id: string; at: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const price = usePoolPrice();
+  const chain = useChainReadStatus();
   const balances = useBalances();
   const statuses = useIntentStatuses();
   const create = useCreateIntent();
@@ -88,7 +90,7 @@ export function SimpleSwap() {
           : choice.invalid
             ? 'Enter a valid trigger price'
             : limit === null
-              ? 'Price unavailable'
+              ? (chain.state === 'starting' || price.isLoading ? 'Getting the price privately…' : 'Price unavailable. Enter a trigger price')
               : open
                 ? 'Swapping…'
                 : create.isPending
@@ -140,7 +142,7 @@ export function SimpleSwap() {
         <Detail label="Price">
           {spot !== null
             ? `1 ETH ≈ ${formatPrice(spot, 2)} ${tokenOut.symbol}`
-            : price.isLoading ? 'Loading…' : 'Unavailable'}
+            : price.isLoading || chain.state === 'starting' ? 'Connecting privately…' : 'Unavailable'}
         </Detail>
         <div className="flex items-center justify-between gap-4 px-3 py-1 text-sm">
           <label htmlFor="swap-trigger" className="shrink-0 text-fg-subtle">Trigger price</label>

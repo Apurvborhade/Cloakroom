@@ -134,3 +134,70 @@ describe('pool spot price', () => {
     expect(spotPriceFromSqrt(0n, true, 18, 6)).toBe(0n);
   });
 });
+
+describe('Cloakroom API routing', () => {
+  const config = {
+    mode: 'anon-rpc' as const,
+    anonSpecifier: '0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A' as const,
+    anonTargetUrl: 'https://rpc.example',
+    anonBootstrapRpcUrl: 'https://boot.example',
+    anonWorkerConfig: null,
+    devDirectRpcUrl: null,
+  };
+  const setup = (overrides: Partial<{ ready: Promise<void>; workerFetch: typeof fetch }> = {}) => {
+    const workerFetch = vi.fn(overrides.workerFetch ?? (async () => new Response('from-worker')));
+    const directFetch = vi.fn(async () => new Response('direct'));
+    class AnonRpcWorker {
+      ready = overrides.ready ?? Promise.resolve();
+      fetch = workerFetch;
+      close() {}
+    }
+    const reader = new ChainReader(config, {
+      loadHarness: async () => ({ AnonRpcWorker }) as never,
+      fetchFn: directFetch as never,
+      readyTimeoutMs: 50,
+    });
+    return { directFetch, reader, workerFetch };
+  };
+
+  it('sends API requests through the worker, isolated from chain reads', async () => {
+    const { directFetch, reader, workerFetch } = setup();
+    const response = await reader.apiFetch('https://api.example/balance', { method: 'POST', body: 'sealed' });
+    expect(await response.text()).toBe('from-worker');
+    expect(directFetch).not.toHaveBeenCalled();
+    expect(workerFetch).toHaveBeenCalledWith('https://api.example/balance', {
+      method: 'POST',
+      body: 'sealed',
+      anonOptions: { isolationKey: 'cloakroom-api' },
+    });
+    expect(reader.getStatus()).toMatchObject({ apiRoute: 'anon-rpc', apiRequests: 1, apiFailures: 0 });
+  });
+
+  it('never falls back to a direct request on its own', async () => {
+    const { directFetch, reader } = setup({ ready: Promise.reject(new Error('network down')) });
+    await expect(reader.apiFetch('https://api.example/balance')).rejects.toThrow();
+    expect(directFetch).not.toHaveBeenCalled();
+    expect(reader.getStatus()).toMatchObject({ state: 'failed', apiFailures: 1 });
+  });
+
+  it('goes direct only when chosen, and can switch back', async () => {
+    const { directFetch, reader, workerFetch } = setup();
+    reader.setApiDirect(true);
+    await reader.apiFetch('https://api.example/balance');
+    expect(directFetch).toHaveBeenCalledOnce();
+    expect(workerFetch).not.toHaveBeenCalled();
+
+    reader.setApiDirect(false);
+    await reader.apiFetch('https://api.example/balance');
+    expect(directFetch).toHaveBeenCalledOnce();
+    expect(workerFetch).toHaveBeenCalledOnce();
+  });
+
+  it('uses a direct connection when Anon-RPC is not configured', async () => {
+    const directFetch = vi.fn(async () => new Response('direct'));
+    const reader = new ChainReader({ ...config, mode: 'direct-dev', devDirectRpcUrl: 'https://rpc.example' }, { fetchFn: directFetch as never });
+    await reader.apiFetch('https://api.example/balance');
+    expect(directFetch).toHaveBeenCalledOnce();
+    expect(reader.getStatus().apiRoute).toBe('direct');
+  });
+});

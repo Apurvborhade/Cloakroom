@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { Address } from 'viem';
+import type { Address, Hash } from 'viem';
 import { useCreateWithdrawal } from '@/hooks/use-actions';
 import { useOwner } from '@/hooks/use-owner';
 import { useBalances, useWithdrawalStatuses } from '@/hooks/use-private-data';
@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 import { appConfig, knownTokens, tokenFor } from '@/lib/config';
 import { formatUnitsDisplay } from '@/lib/format/units';
 import { validateWithdrawForm } from '@/lib/withdraw/form';
+import { ChainReceipt } from '../transactions/chain-receipt';
 import { TxLink } from '../transactions/tx-link';
 import { Address as AddressText } from '../ui/address';
 import { BalanceFreshness, DebugItem, DebugPanel, Elapsed } from './debug';
@@ -121,6 +122,7 @@ export function SimpleWithdraw() {
             <DebugItem label="To"><AddressText value={latest.to} head={8} tail={6} /></DebugItem>
             {current?.reason && <DebugItem label="Reason"><code className="font-mono">{current.reason}</code></DebugItem>}
             {current?.txHash && <DebugItem label="Transaction"><TxLink hash={current.txHash} /></DebugItem>}
+            {current?.txHash && <DebugItem label="Chain check"><ChainReceipt hash={current.txHash as Hash} /></DebugItem>}
             <DebugItem label="Withdrawal ID"><AddressText value={latest.id} head={10} tail={8} /></DebugItem>
           </dl>
         </DebugPanel>

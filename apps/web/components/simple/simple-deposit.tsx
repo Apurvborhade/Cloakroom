@@ -17,6 +17,7 @@ import { canSendNow } from '@/lib/deposit/lifecycle';
 import { nowSec } from '@/lib/format/time';
 import { formatUnitsDisplay, parseUnitsStrict } from '@/lib/format/units';
 import { updateDeposit } from '@/lib/state/activity';
+import { ChainReceipt } from '../transactions/chain-receipt';
 import { TxLink } from '../transactions/tx-link';
 import { Address as AddressText } from '../ui/address';
 import { Countdown } from '../ui/countdown';
@@ -145,6 +146,7 @@ export function SimpleDeposit() {
             <DebugItem label="Sent to"><AddressText value={sent.address} head={8} tail={6} /></DebugItem>
             {sent.expiresAt !== undefined && <DebugItem label="Address valid for"><Countdown deadline={sent.expiresAt} expiredLabel="Expired" /></DebugItem>}
             <DebugItem label="Transaction"><TxLink hash={sent.hash} /></DebugItem>
+            <DebugItem label="Chain check"><ChainReceipt hash={sent.hash} /></DebugItem>
           </dl>
         </DebugPanel>
       )}

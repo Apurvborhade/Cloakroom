@@ -47,7 +47,8 @@ Nonces come from the millisecond clock and always increase, because the API cann
 
 - **No silent fallback.** If the specifier, target or bootstrap URL is missing, or the harness fails or times out, reads are off and the UI says so. A direct RPC is used only with `NEXT_PUBLIC_CHAIN_READ_MODE=direct-dev`, and it is labelled "not anonymized".
 - Each account gets a random `isolationKey`.
-- **Status: integrated and unit-tested against a mock harness, but not yet run against a live Anon-RPC network.** The package ships no default specifier address, and the docs site was unreachable from this environment. Set `NEXT_PUBLIC_ANON_RPC_SPECIFIER_ADDRESS` and the URLs from the [wallet guide](https://ethereum.github.io/anon-rpc/wallets/).
+- **Cloakroom API requests also go through Anon-RPC.** They were already encrypted to the enclave, and this hides the user's IP from the operator. If Anon-RPC is down, requests fail and a banner offers a direct connection, which only the user can choose. Only the bootstrap read and the wallet's own traffic stay outside it. In a test, encrypted `/balance` calls took 0.7 to 1.9 seconds through Nox, against about 20 ms directly.
+- **Status: running against the live Nox mixnet on Sepolia**, including in a production build. Its specifier is `0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A`, on Sepolia, so the bootstrap RPC reads Sepolia. The header badge shows live status and the read count, and the harness starts on load and retries 30 seconds after a failure. `tor-js` also boots in the app, but its published demo gateway timed out when tested. Nox is a third-party network, so reads depend on it being up, and there is no fallback to a plain RPC.
 - Traffic that does not go through Anon-RPC is listed on `/diagnostics`: wallet signing and the deposit transfer (the wallet's own RPC), the harness's one bootstrap specifier read, the Cloakroom API itself, and all of the enclave's own reads.
 
 ## Honest status
