@@ -12,6 +12,17 @@ The catch is trust: you're trusting the TEE hardware and one operator, not math.
 
 We ran this on Sepolia through the real server and signer. It wasn't inside a TEE yet, so there's no confidentiality claim for this run.
 
+```mermaid
+flowchart LR
+  alice["Alice's wallet"] -- "deposit" --> addrA["Address 0x6657"]
+  bob["Bob's wallet"] -- "deposit" --> addrB["Address 0x1E55"]
+  addrB -- "pays Alice" --> newA["Alice's new wallet"]
+  addrA -- "pays Bob" --> newB["Bob's new wallet"]
+  addrB -- "swaps for Alice" --> uni["Uniswap"]
+```
+
+Only the server knows which address and payout belong to whom. Here are the actual transactions.
+
 Alice and Bob each deposit 0.02 ETH. A single test wallet paid for both here, which real users wouldn't do.
 
 - [Alice's deposit](https://sepolia.etherscan.io/tx/0x5fb82751ee0ad88219e09ade2ff7d9a88c254ac993a66ef188248d7b91134837) goes to `0x6657...8Bc1`
@@ -25,6 +36,37 @@ Each withdraws 0.003 ETH to a fresh wallet, and each is paid from the other's de
 Alice then signs an order to sell 0.001 ETH for USDC above a limit price. Her order stays inside the server. When a price check meets the limit, [the swap](https://sepolia.etherscan.io/tx/0x749e037765df655095b4205bfee238bb9c1a70585bc16371e6f4728dca829d9b) goes through Uniswap from `0x1E55...0379`. The ledger credits her 25.16 USDC. Nothing on-chain says it's hers.
 
 ## How it works
+
+```mermaid
+flowchart LR
+  user["User's wallet and browser"]
+
+  subgraph tee["Inside the TEE"]
+    direction TB
+    api["API: decrypts and checks requests"]
+    watcher["Deposit watcher"]
+    poller["Price checks"]
+    executor["Executor: runs swaps and payouts"]
+    signer["Signer: holds the keys, checks each transaction"]
+    state[("Queue, ledger and encrypted journal")]
+
+    api --> state
+    watcher --> state
+    api --> executor
+    poller --> executor
+    executor --> state
+    executor --> signer
+  end
+
+  uniswap["Uniswap Trading API"]
+  chain["Ethereum: custody addresses, Universal Router"]
+
+  user -- "signed, encrypted requests" --> tee
+  user -- "ETH deposits" --> chain
+  tee -- "quotes" --> uniswap
+  tee -- "signed transactions" --> chain
+  chain -- "balances" --> tee
+```
 
 The service holds every custody key and the private ledger. Users sign requests with their own wallet and encrypt them to the service's key, which is proven by the TEE's attestation.
 
