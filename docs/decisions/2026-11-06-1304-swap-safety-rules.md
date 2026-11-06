@@ -10,6 +10,8 @@ The spec says to run the Trading API's transaction through `eth_call` and requir
 
 ## Decision
 
+The [binding limit floor](2026-11-06-1555-binding-limit-floor.md) adds a second minimum to these rules, with no rounding tolerance.
+
 1. **Read the calldata.** `assertSafeSwapCalldata` decodes the router commands before signing, and allows only `WRAP_ETH`, `V3_SWAP_EXACT_IN`, `V2_SWAP_EXACT_IN` and `SWEEP`. The router enforces each minimum on-chain. The live API has returned three shapes, and only these pass:
    - **Through the router:** every swap leaves its output in the router, and exactly one `SWEEP` pays the output token to the custody EOA with a minimum of at least `minOut`.
    - **One direct swap:** a swap pays the custody EOA directly, ends in the output token, and has a minimum of at least `minOut`.

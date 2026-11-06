@@ -538,11 +538,10 @@ describe('Executor.runIntent', () => {
 
   describe('the price condition', () => {
     it.each([
-      ['at or above, met', 0, PRICE, 'settled'],
+      ['at or above, met', 0, (PRICE * 99n) / 100n, 'settled'],
       ['at or above, not met', 0, PRICE + 1n, 'pending'],
-      ['at or below, met', 1, PRICE, 'settled'],
-      ['at or below, not met', 1, PRICE - 1n, 'pending'],
-      ['an unknown comparator', 2, PRICE, 'pending'],
+      ['at or below, which has no floor', 1, PRICE, 'failed'],
+      ['an unknown comparator', 2, PRICE, 'failed'],
     ])('%s', async (_name, comparator, triggerPrice, expected) => {
       const context = await setup();
       const stored = await makeIntent(context, { comparator, triggerPrice });
@@ -561,6 +560,87 @@ describe('Executor.runIntent', () => {
       const outcome = await context.executor.runIntent(stored);
 
       expect(outcome).toEqual({ status: 'pending', reason: 'CONDITION_NOT_MET' });
+      expect(context.signer.signed).toEqual([]);
+    });
+
+    it('refuses a comparator with no floor before asking for a quote', async () => {
+      const context = await setup();
+      const stored = await makeIntent(context, { comparator: 1, triggerPrice: PRICE });
+
+      const outcome = await context.executor.runIntent(stored);
+
+      expect(outcome).toEqual({ status: 'failed', reason: 'UNSUPPORTED_COMPARATOR' });
+      expect(context.requests).toEqual([]);
+      expect(context.signer.signed).toEqual([]);
+    });
+  });
+
+  describe('the order limit', () => {
+    /** A limit 0.25% under the quote, so the order's 0.5% slippage would go below it. */
+    const NEAR_PRICE = (PRICE * 9_975n) / 10_000n;
+
+    it('keeps the full slippage when the minimum stays above the limit', async () => {
+      const context = await setup();
+      const stored = await makeIntent(context, { triggerPrice: (PRICE * 99n) / 100n, maxSlippageBps: 50 });
+
+      await mineUntilDone(context.executor.runIntent(stored));
+
+      expect(context.requests.map((request) => request.slippagePercent)).toEqual([0.5]);
+    });
+
+    it('asks again with only the room above the limit', async () => {
+      const context = await setup();
+      const stored = await makeIntent(context, { triggerPrice: NEAR_PRICE, maxSlippageBps: 50 });
+
+      const outcome = await mineUntilDone(context.executor.runIntent(stored));
+
+      expect(outcome.status).toBe('settled');
+      // The room is just under 25 bps, and rounding down keeps the minimum above the limit.
+      expect(context.requests.map((request) => request.slippagePercent)).toEqual([0.5, 0.24]);
+    });
+
+    it('waits when the quote is at the limit, leaving no room for slippage', async () => {
+      const context = await setup();
+      const stored = await makeIntent(context, { triggerPrice: PRICE, maxSlippageBps: 50 });
+
+      const outcome = await context.executor.runIntent(stored);
+
+      expect(outcome).toEqual({ status: 'pending', reason: 'NO_ROOM_ABOVE_LIMIT' });
+      expect(context.requests).toHaveLength(1);
+      expect(context.signer.signed).toEqual([]);
+    });
+
+    it('waits when the second quote drops below the limit', async () => {
+      let quotes = 0;
+      const context = await setup({
+        hook: (_request, quote) => {
+          quotes += 1;
+          return quotes === 1 ? quote : { ...quote, amountOut: (quote.amountOut * 9_900n) / 10_000n };
+        },
+      });
+      const stored = await makeIntent(context, { triggerPrice: NEAR_PRICE, maxSlippageBps: 50 });
+
+      const outcome = await context.executor.runIntent(stored);
+
+      expect(outcome).toEqual({ status: 'pending', reason: 'NO_ROOM_ABOVE_LIMIT' });
+      expect(context.signer.signed).toEqual([]);
+    });
+
+    it('refuses calldata whose minimum ignores the tighter slippage', async () => {
+      const context = await setup({
+        hook: (request, quote) => ({
+          ...quote,
+          transaction: {
+            ...quote.transaction!,
+            data: swapCalldata({ eoa: request.swapper, minOut: (AMOUNT_OUT * 9_950n) / 10_000n }),
+          },
+        }),
+      });
+      const stored = await makeIntent(context, { triggerPrice: NEAR_PRICE, maxSlippageBps: 50 });
+
+      const outcome = await context.executor.runIntent(stored);
+
+      expect(outcome).toEqual({ status: 'pending', reason: 'UNSAFE_CALLDATA' });
       expect(context.signer.signed).toEqual([]);
     });
   });

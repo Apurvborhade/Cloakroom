@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters } from 'viem';
 import type { Address, Hex } from 'viem';
-import { assertSafeSwapCalldata } from '../src/swap-calldata.js';
+import { assertSafeSwapCalldata, limitFloor } from '../src/swap-calldata.js';
 import { SEPOLIA_DIRECT_SPLIT_QUOTE, SEPOLIA_QUOTE, SEPOLIA_SINGLE_ROUTE_QUOTE } from './fixtures/sepolia-quote.js';
 
 const ROUTER_ABI = parseAbi(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable']);
@@ -66,7 +66,40 @@ function build(commands: Array<[string, Hex]>, deadline = NOW + 60n): Hex {
 }
 
 const check = (data: Hex) =>
-  assertSafeSwapCalldata({ data, eoa: EOA, tokenOut: TOKEN, minOut: MIN_OUT, nowSec: NOW });
+  assertSafeSwapCalldata({ data, eoa: EOA, tokenOut: TOKEN, minOut: MIN_OUT, floor: 0n, nowSec: NOW });
+
+describe('limitFloor', () => {
+  it('is the amount times the limit price, with no slippage taken off', () => {
+    expect(limitFloor(10n ** 17n, 3_000n * 10n ** 18n, 6)).toBe(300_000_000n);
+  });
+
+  it('rounds up, so a fill cannot land just under the limit', () => {
+    expect(limitFloor(1n, 10n ** 18n, 6)).toBe(1n);
+    expect(limitFloor(10n ** 18n + 1n, 10n ** 18n, 6)).toBe(1_000_001n);
+  });
+});
+
+describe('the limit floor in calldata', () => {
+  const half = MIN_OUT / 2n;
+  const checkFloor = (data: Hex, floor: bigint) =>
+    assertSafeSwapCalldata({ data, eoa: EOA, tokenOut: TOKEN, minOut: MIN_OUT, floor, nowSec: NOW });
+
+  it('accepts minimums exactly at the floor', () => {
+    expect(() => checkFloor(build([swapV3(), sweep(TOKEN, EOA, MIN_OUT)]), MIN_OUT)).not.toThrow();
+    expect(() => checkFloor(build([swapV3(EOA, false, half), swapV3(EOA, false, half)]), MIN_OUT)).not.toThrow();
+  });
+
+  it('refuses a sweep that clears minOut but not the floor', () => {
+    expect(() => checkFloor(build([swapV3(), sweep(TOKEN, EOA, MIN_OUT)]), MIN_OUT + 1n)).toThrow('LIMIT_FLOOR');
+  });
+
+  it('gives split swaps no rounding tolerance against the floor', () => {
+    const split = build([swapV3(EOA, false, half), swapV3(EOA, false, half - 1n)]);
+
+    expect(() => checkFloor(split, MIN_OUT - 1n)).not.toThrow();
+    expect(() => checkFloor(split, MIN_OUT)).toThrow('LIMIT_FLOOR');
+  });
+});
 
 describe('assertSafeSwapCalldata', () => {
   it('accepts a real Trading API response from Sepolia', () => {
@@ -76,6 +109,7 @@ describe('assertSafeSwapCalldata', () => {
         eoa: SEPOLIA_QUOTE.eoa,
         tokenOut: SEPOLIA_QUOTE.tokenOut,
         minOut: SEPOLIA_QUOTE.minOut,
+        floor: 0n,
         nowSec: SEPOLIA_QUOTE.deadline - 1n,
       }),
     ).not.toThrow();
@@ -88,6 +122,7 @@ describe('assertSafeSwapCalldata', () => {
         eoa: ATTACKER,
         tokenOut: SEPOLIA_QUOTE.tokenOut,
         minOut: SEPOLIA_QUOTE.minOut,
+        floor: 0n,
         nowSec: SEPOLIA_QUOTE.deadline - 1n,
       }),
     ).toThrow('SWEEP_RECIPIENT');
@@ -100,6 +135,7 @@ describe('assertSafeSwapCalldata', () => {
         eoa: SEPOLIA_QUOTE.eoa,
         tokenOut: SEPOLIA_QUOTE.tokenOut,
         minOut: SEPOLIA_QUOTE.minOut + 1n,
+        floor: 0n,
         nowSec: SEPOLIA_QUOTE.deadline - 1n,
       }),
     ).toThrow('SWEEP_MINIMUM');
@@ -113,6 +149,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: SEPOLIA_SINGLE_ROUTE_QUOTE.eoa,
           tokenOut: SEPOLIA_SINGLE_ROUTE_QUOTE.tokenOut,
           minOut: SEPOLIA_SINGLE_ROUTE_QUOTE.minOut,
+          floor: 0n,
           nowSec: SEPOLIA_SINGLE_ROUTE_QUOTE.deadline - 1n,
         }),
       ).not.toThrow();
@@ -125,6 +162,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: ATTACKER,
           tokenOut: SEPOLIA_SINGLE_ROUTE_QUOTE.tokenOut,
           minOut: SEPOLIA_SINGLE_ROUTE_QUOTE.minOut,
+          floor: 0n,
           nowSec: SEPOLIA_SINGLE_ROUTE_QUOTE.deadline - 1n,
         }),
       ).toThrow('SWAP_RECIPIENT');
@@ -137,6 +175,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: SEPOLIA_SINGLE_ROUTE_QUOTE.eoa,
           tokenOut: SEPOLIA_SINGLE_ROUTE_QUOTE.tokenOut,
           minOut: SEPOLIA_SINGLE_ROUTE_QUOTE.minOut + 1n,
+          floor: 0n,
           nowSec: SEPOLIA_SINGLE_ROUTE_QUOTE.deadline - 1n,
         }),
       ).toThrow('SWAP_MINIMUM');
@@ -174,6 +213,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: SEPOLIA_DIRECT_SPLIT_QUOTE.eoa,
           tokenOut: SEPOLIA_DIRECT_SPLIT_QUOTE.tokenOut,
           minOut: SEPOLIA_DIRECT_SPLIT_QUOTE.minOut,
+          floor: 0n,
           nowSec: SEPOLIA_DIRECT_SPLIT_QUOTE.deadline - 1n,
         }),
       ).not.toThrow();
@@ -186,6 +226,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: ATTACKER,
           tokenOut: SEPOLIA_DIRECT_SPLIT_QUOTE.tokenOut,
           minOut: SEPOLIA_DIRECT_SPLIT_QUOTE.minOut,
+          floor: 0n,
           nowSec: SEPOLIA_DIRECT_SPLIT_QUOTE.deadline - 1n,
         }),
       ).toThrow('SWAP_RECIPIENT');
@@ -198,6 +239,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: SEPOLIA_DIRECT_SPLIT_QUOTE.eoa,
           tokenOut: SEPOLIA_DIRECT_SPLIT_QUOTE.tokenOut,
           minOut: SEPOLIA_DIRECT_SPLIT_QUOTE.minOut + 1n,
+          floor: 0n,
           nowSec: SEPOLIA_DIRECT_SPLIT_QUOTE.deadline - 1n,
         }),
       ).toThrow('SWAP_MINIMUM');

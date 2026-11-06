@@ -143,7 +143,7 @@ describe('loadConfig', () => {
   });
 
   it('allows swap-sized gas with the example values', () => {
-    expect(loadConfig(validEnv()).SIGNING_MAX_GAS).toBeGreaterThanOrEqual(900_000n);
+    expect(loadConfig(validEnv()).SIGNING_MAX_GAS).toBeGreaterThanOrEqual(1_080_000n);
   });
 
   it('builds a policy the real KeyManager accepts', () => {
