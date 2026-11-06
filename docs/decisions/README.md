@@ -75,4 +75,4 @@ These are facts to check, not decisions.
 | The Trading API returns a Sepolia quote for WETH to USDC, and the router in its calldata matches `UNIVERSAL_ROUTER_ADDRESS` | Apurva |
 | A Sepolia RPC URL works through an Anon-RPC worker, and the provider accepts that traffic. Some providers refuse Tor | Pradnyesh |
 | How the Anon-RPC harness plugs into viem | Pradnyesh |
-| Trading API rate limits allow one quote per `PRICE_POLL_INTERVAL_SEC` | Apurva |
+| Trading API rate limits allow one quote per `PRICE_POLL_INTERVAL_SEC`, and it quotes for a throwaway `swapper`. Check with `pnpm smoke:quote` | Apurva |

@@ -750,3 +750,53 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `8a2a01ab17a027331b0c5fb92a4d73f4b94c075d` (`feat(enclave): add signing limits to the environment config`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A9: Price Poller
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A9 (Apurva's workstream) — Price Poller
+- **Status:** Committed on branch `feat/price-poller`. Not yet run against the live Trading API. Not pushed by this entry.
+- **Objective:** Check the price from the enclave's own Uniswap quote, replacing the dropped CRE workflow as the trigger for intents.
+
+### Files Created
+- `services/enclave/src/uniswap.ts`
+- `services/enclave/src/price-poller.ts`
+- `services/enclave/test/price-poller.test.ts`
+- `services/enclave/scripts/quote-check.ts`
+
+### Files Modified
+- `services/enclave/src/config.ts` and `.env.example` (added `UNISWAP_API_URL`, `TOKEN_OUT_DECIMALS`, `PRICE_QUOTE_TIMEOUT_MS`)
+- `package.json` (added `smoke:quote`)
+- `docs/deployment.md`, `docs/enclave.md`, `docs/roles/apurva-onchain.md`, `docs/decisions/README.md`, `scripts/README.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- Polls use a throwaway `swapper`, so custody addresses are not sent to Uniswap every interval. The live API accepting this is not yet confirmed.
+- A failed poll reports nothing, and `latest` returns null once a price is over two intervals old.
+- Polls never overlap, and `onReport` is not awaited, so a slow swap cannot stop price checks.
+- `UniswapClient` treats responses as untrusted, and rejects anything but a `CLASSIC` route.
+- Errors carry a code and an HTTP status only.
+
+### Tests Added
+- `services/enclave/test/price-poller.test.ts`: 37 tests with a fake API, using the values from a real Sepolia quote.
+- Twenty-two deliberate bugs were introduced, and each one made a test fail.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 372 passed (375). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Not run against the live Trading API, because `.env` had no `UNISWAP_API_KEY`. Run `pnpm smoke:quote`.
+- Trading API rate limits are unchecked.
+- Nothing starts the poller at boot, and `IntentStore` does not exist yet.
+
+### Integration Handoffs
+- **Shreyas:** `onReport` will call `IntentStore.due`. The report's `pair` is `<NATIVE>/<TOKEN_OUT_ADDRESS>` in checksummed form, and `source` is `uniswap`.
+
+### Commit Reference
+- **Commits:** `82cc823430c350a88b7d0ab6734a2c0fae4327b5` (`feat(enclave): add a Uniswap Trading API client`), `49b20bc9075cc2269fdaf1ab65249c586a009723` (`feat(enclave): add the price poller`)
+- **Pushed to Remote:** No

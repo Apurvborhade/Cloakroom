@@ -27,3 +27,13 @@ pnpm smoke:sepolia
 A run takes a few minutes and costs a little gas. Unspent test ETH goes back to the test wallet at the end, even if a step fails. If that return fails too, run the script again: its addresses come from the test key, so it recovers them first.
 
 Optional settings: `SMOKE_SESSION_TTL_SEC` (default 90), `SMOKE_POLL_MS` (default 4000), `SMOKE_STEP_TIMEOUT_MS` (default 300000).
+
+## Live quote check
+
+`services/enclave/scripts/quote-check.ts` sends a few quote requests to the Uniswap Trading API with the same code the price poller uses, each from a new throwaway address. It sends nothing on-chain.
+
+Add these to `.env`, using the values in `.env.example`: `UNISWAP_API_KEY`, `UNISWAP_API_URL`, `CHAIN_ID`, `TOKEN_OUT_ADDRESS`, `TOKEN_OUT_DECIMALS`, `PRICE_REFERENCE_AMOUNT_WEI` and `PRICE_QUOTE_TIMEOUT_MS`.
+
+```bash
+pnpm smoke:quote
+```

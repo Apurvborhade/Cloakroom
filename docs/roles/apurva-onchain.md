@@ -50,7 +50,9 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 - [ ] `runIntent`, following the 7 steps in [chain-logic.md](../chain-logic.md)
 - [ ] Treat the API's transaction as untrusted: pin `to`, run `eth_call`, require output of at least `minOut`
-- [ ] Price poller: quote every `PRICE_POLL_INTERVAL_SEC`, pass it to `IntentStore.due`, and trigger nothing when a poll fails
+- [x] Price poller: quote every `PRICE_POLL_INTERVAL_SEC`, and trigger nothing when a poll fails
+- [ ] Run `pnpm smoke:quote` against the live Trading API
+- [ ] Connect the price poller to `IntentStore.due` at boot
 - [ ] Recheck the intent's condition against the swap's own quote before signing
 - [ ] Keep a running list of Uniswap friction points for `FEEDBACK.md`
 
