@@ -155,11 +155,14 @@ export function ActionButton({
   onClick,
   disabled = false,
   loading = false,
+  className,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
   loading?: boolean;
+  /** Extra styling for the action itself, not the connect and sign-in steps. */
+  className?: string;
 }) {
   const { isConnected, isConnecting, wrongChain } = useOwner();
   const { openConnectModal } = useConnectModal();
@@ -198,5 +201,5 @@ export function ActionButton({
       </div>
     );
   }
-  return <Button size="lg" className={big} loading={loading} disabled={disabled} onClick={onClick}>{label}</Button>;
+  return <Button size="lg" className={cn(big, className)} loading={loading} disabled={disabled} onClick={onClick}>{label}</Button>;
 }

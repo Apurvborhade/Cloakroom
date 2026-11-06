@@ -124,7 +124,7 @@ export function PositionsTable() {
       <CardBody className="p-0">
         {positions.isLoading && <div className="p-5"><Skeleton className="h-16" /></div>}
         {positions.error && <div className="p-5"><Notice tone="error">{describeError(positions.error)}</Notice></div>}
-        {positions.data && rows.length === 0 && <EmptyState title="No active positions" action={<LinkButton href="/margin/trade" size="sm">Open a position</LinkButton>} />}
+        {positions.data && rows.length === 0 && <EmptyState title="No active positions" action={<LinkButton href="/margin" size="sm">Open a position</LinkButton>} />}
         {rows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-sm">

@@ -26,7 +26,7 @@ Tests: `pnpm --filter @cloakroom/web test`. They also run as part of the root `p
 | `/deposit` | Sign a `DepositRequest`, get the address, QR code and countdown, send ETH, then follow submitted → confirmed → credited | `/deposit-session`, `/balance` |
 | `/swap` | Conditional ETH → output-token intents with a review before signing, the intent list and cancellation | `/intents`, `/intents/status`, `/intents/cancel` |
 | `/withdraw` | Token, amount and destination, review, then locked → sent → confirmed with the transaction link and an on-chain receipt check | `/withdrawals`, `/withdrawals/status` |
-| `/margin` (`/trade`, `/positions`, `/lending`) | Overview, open long or short (up to 4x), add collateral, full close, supply and redeem | `/margin/*` |
+| `/margin` (`/positions`) | Open a long or short (up to 4x), add collateral, full close. Lending is an opt-in on `/withdraw` | `/margin/*` |
 | `/attestation` | Enclave key, salt, build hash, quote, the offline verification command and the trust model | `GET /attestation`, `GET /sim/enclave-key` |
 | `/diagnostics` | API, keys, HPKE self-test, session, Anon-RPC routing, margin availability, safe refresh actions | none of its own |
 

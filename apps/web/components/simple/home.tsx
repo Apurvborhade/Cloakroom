@@ -14,6 +14,7 @@ const ACTIONS: Array<{ href: string; title: string; description: string; icon: s
   { href: '/deposit', title: 'Deposit', description: 'Add ETH or USDC to your private balance', icon: '↓' },
   { href: '/swap', title: 'Swap', description: 'Swap ETH for USDC from an address not linked to you', icon: '⇄' },
   { href: '/withdraw', title: 'Withdraw', description: 'Send funds to any address', icon: '↑' },
+  { href: '/margin', title: 'Margin', description: 'Go long or short on ETH, up to 4x', icon: '↗' },
 ];
 
 function display(value: bigint, decimals: number): string {
@@ -67,7 +68,7 @@ export function Home() {
         </div>
         <BalanceBody />
       </section>
-      <nav aria-label="Actions" className="grid gap-4 sm:grid-cols-3">
+      <nav aria-label="Actions" className="grid gap-4 sm:grid-cols-2">
         {ACTIONS.map((action) => (
           <Link
             key={action.href}

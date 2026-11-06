@@ -25,3 +25,35 @@ body {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+.leverage-slider {
+  --leverage-fill: #8b9bff;
+  --leverage-track: #3a3a3a;
+  height: 4px;
+  border-radius: 9999px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.leverage-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(139, 155, 255, 0.35);
+}
+
+.leverage-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(139, 155, 255, 0.35);
+}
+
+.leverage-slider:focus-visible {
+  outline: 2px solid #8b9bff;
+  outline-offset: 6px;
+}

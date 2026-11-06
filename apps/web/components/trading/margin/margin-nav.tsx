@@ -5,17 +5,15 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/cn';
 
 const TABS = [
-  { href: '/margin', label: 'Overview' },
-  { href: '/margin/trade', label: 'Open position' },
+  { href: '/margin', label: 'Trade' },
   { href: '/margin/positions', label: 'Positions' },
-  { href: '/margin/lending', label: 'Lending' },
 ];
 
 export function MarginNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Margin" className="mb-6 overflow-x-auto">
-      <ul className="flex gap-1 border-b border-ink-700">
+    <nav aria-label="Margin" className="mb-4 overflow-x-auto">
+      <ul className="flex justify-center gap-1">
         {TABS.map((tab) => (
           <li key={tab.href}>
             <Link

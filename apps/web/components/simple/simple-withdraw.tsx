@@ -14,6 +14,7 @@ import { ChainReceipt } from '../transactions/chain-receipt';
 import { TxLink } from '../transactions/tx-link';
 import { Address as AddressText } from '../ui/address';
 import { BalanceFreshness, DebugItem, DebugPanel, Elapsed } from './debug';
+import { LendingOption } from './lending-option';
 import { RecentWithdrawals } from './recent-history';
 import { ActionButton, AmountBox, PrivateBalance, SimpleCard, StatusLine } from './parts';
 
@@ -63,7 +64,15 @@ export function SimpleWithdraw() {
   };
 
   return (
-    <SimpleCard title="Withdraw" after={<RecentWithdrawals />}>
+    <SimpleCard
+      title="Withdraw"
+      after={
+        <>
+          <LendingOption token={tokenAddress} symbol={token.symbol} decimals={token.decimals} />
+          <RecentWithdrawals />
+        </>
+      }
+    >
       <div className="flex gap-1.5 px-1 pb-1">
         {tokens.map((item) => (
           <button

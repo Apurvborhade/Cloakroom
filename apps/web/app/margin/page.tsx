@@ -1,11 +1,5 @@
-import { MarginOverview } from '@/components/trading/margin/margin-overview';
-import { PositionsTable } from '@/components/trading/margin/positions-table';
+import { MarginTrade } from '@/components/simple/margin-trade';
 
-export default function MarginOverviewPage() {
-  return (
-    <div className="space-y-6">
-      <MarginOverview />
-      <PositionsTable />
-    </div>
-  );
+export default function MarginPage() {
+  return <MarginTrade />;
 }

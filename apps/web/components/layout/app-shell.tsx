@@ -20,12 +20,12 @@ const NAV = [
   { href: '/swap', label: 'Swap' },
   { href: '/deposit', label: 'Deposit' },
   { href: '/withdraw', label: 'Withdraw' },
+  ...(appConfig.marginUi === 'off' ? [] : [{ href: '/margin', label: 'Margin' }]),
 ];
 
 /** Kept for testing and verification, out of the way of the three main actions. */
 const MORE = [
   { href: '/activity', label: 'Activity' },
-  ...(appConfig.marginUi === 'off' ? [] : [{ href: '/margin', label: 'Margin' }]),
   { href: '/attestation', label: 'Attestation' },
   { href: '/diagnostics', label: 'Diagnostics' },
 ];

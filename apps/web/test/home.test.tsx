@@ -27,11 +27,12 @@ describe('home page', () => {
     state.balances = {};
   });
 
-  it('always offers deposit, swap and withdraw', () => {
+  it('always offers deposit, swap, withdraw and margin', () => {
     render(<Home />);
     expect(screen.getByRole('link', { name: /Deposit/ }).getAttribute('href')).toBe('/deposit');
     expect(screen.getByRole('link', { name: /Swap/ }).getAttribute('href')).toBe('/swap');
     expect(screen.getByRole('link', { name: /Withdraw/ }).getAttribute('href')).toBe('/withdraw');
+    expect(screen.getByRole('link', { name: /Margin/ }).getAttribute('href')).toBe('/margin');
   });
 
   it('asks to sign in before showing a balance', () => {
