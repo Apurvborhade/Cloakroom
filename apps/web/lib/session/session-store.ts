@@ -15,9 +15,10 @@ import type { EnclaveBinding, SignedWire, TypedDataSigner } from '../wallet/type
  * The read-only session key lifecycle.
  *
  * The key is generated with secure randomness (viem's generatePrivateKey uses
- * crypto.getRandomValues), lives only in this module's memory, and is never written to storage,
- * logged or sent anywhere. A refresh therefore loses it; the user signs a new grant. It can only
- * sign SessionQuery reads: mutations always go through the primary wallet.
+ * crypto.getRandomValues) and is never logged or sent anywhere. In the browser it is kept in
+ * sessionStorage, so a refresh doesn't ask for another signature; it goes when the tab closes or
+ * the grant expires. It can only sign SessionQuery reads: anyone holding it can see this owner's
+ * balances until it expires, but mutations always go through the primary wallet.
  */
 export interface ReadSession {
   owner: Address;
@@ -40,15 +41,40 @@ export type SessionEndReason = 'expired' | 'account-changed' | 'chain-changed' |
 
 type Listener = () => void;
 
+const STORAGE_KEY = 'cloakroom.read-session';
+
+export type SessionStorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
 export class SessionStore {
   #account: PrivateKeyAccount | null = null;
   #snapshot: ReadSession | null = null;
   #lastEnd: SessionEndReason | null = null;
   #listeners = new Set<Listener>();
   #clock: () => number;
+  #storage: SessionStorageLike | null;
 
-  constructor(clock: () => number = nowSec) {
+  constructor(clock: () => number = nowSec, storage: SessionStorageLike | null = null) {
     this.#clock = clock;
+    this.#storage = storage;
+    this.#restore();
+  }
+
+  #restore(): void {
+    try {
+      const saved = this.#storage?.getItem(STORAGE_KEY);
+      if (!saved) return;
+      const { key, session } = JSON.parse(saved) as { key: Hex; session: ReadSession };
+      if (session.expiresAt - EXPIRY_MARGIN_SEC <= this.#clock()) {
+        this.#storage?.removeItem(STORAGE_KEY);
+        return;
+      }
+      this.#account = privateKeyToAccount(key);
+      this.#snapshot = session;
+    } catch {
+      this.#account = null;
+      this.#snapshot = null;
+      try { this.#storage?.removeItem(STORAGE_KEY); } catch { /* Storage is unavailable. */ }
+    }
   }
 
   subscribe = (listener: Listener): (() => void) => {
@@ -83,7 +109,8 @@ export class SessionStore {
     api: CloakroomApi;
   }): Promise<ReadSession> {
     const owner = getAddress(params.owner);
-    const account = privateKeyToAccount(generatePrivateKey());
+    const key = generatePrivateKey();
+    const account = privateKeyToAccount(key);
     const request = buildSessionGrant(params.binding, {
       owner,
       sessionKey: account.address,
@@ -100,6 +127,11 @@ export class SessionStore {
       enclavePubKey: params.binding.enclavePubKey,
     };
     this.#lastEnd = null;
+    try {
+      this.#storage?.setItem(STORAGE_KEY, JSON.stringify({ key, session: this.#snapshot }));
+    } catch {
+      // Without storage the session still works until the next refresh.
+    }
     this.#emit();
     return this.#snapshot;
   }
@@ -122,6 +154,7 @@ export class SessionStore {
     this.#account = null;
     this.#snapshot = null;
     this.#lastEnd = reason;
+    try { this.#storage?.removeItem(STORAGE_KEY); } catch { /* Storage is unavailable. */ }
     this.#emit();
   }
 
@@ -130,4 +163,12 @@ export class SessionStore {
   }
 }
 
-export const sessionStore = new SessionStore();
+function browserStorage(): SessionStorageLike | null {
+  try {
+    return typeof window === 'undefined' ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+export const sessionStore = new SessionStore(nowSec, browserStorage());

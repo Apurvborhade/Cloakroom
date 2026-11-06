@@ -14,10 +14,15 @@ import { Logo } from './logo';
 import { SimBanner } from './sim-banner';
 
 const NAV = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/deposit', label: 'Deposit' },
+  { href: '/', label: 'Home' },
   { href: '/swap', label: 'Swap' },
+  { href: '/deposit', label: 'Deposit' },
   { href: '/withdraw', label: 'Withdraw' },
+];
+
+/** Kept for testing and verification, out of the way of the three main actions. */
+const MORE = [
+  { href: '/activity', label: 'Activity' },
   ...(appConfig.marginUi === 'off' ? [] : [{ href: '/margin', label: 'Margin' }]),
   { href: '/attestation', label: 'Attestation' },
   { href: '/diagnostics', label: 'Diagnostics' },
@@ -37,13 +42,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <SimBanner />
       <ConfigBanner />
       <WrongChainBanner />
-      <header className="sticky top-0 z-40 border-b border-ink-700 bg-ink-950/85 backdrop-blur">
+      <header className="sticky top-0 z-40 bg-ink-950/85 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-8">
-            <Link href="/" aria-label="Cloakroom dashboard">
+            <Link href="/" aria-label="Cloakroom home">
               <Logo />
             </Link>
-            <nav aria-label="Primary" className="hidden lg:block">
+            <nav aria-label="Primary" className="hidden sm:block">
               <ul className="flex items-center gap-1">
                 {NAV.map((item) => (
                   <li key={item.href}>
@@ -51,8 +56,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                       href={item.href}
                       aria-current={isActive(pathname, item.href) ? 'page' : undefined}
                       className={cn(
-                        'rounded-md px-3 py-1.5 text-sm transition-colors',
-                        isActive(pathname, item.href) ? 'bg-ink-800 text-fg' : 'text-fg-subtle hover:text-fg',
+                        'rounded-full px-3 py-1.5 text-base transition-colors',
+                        isActive(pathname, item.href) ? 'text-fg' : 'text-fg-subtle hover:text-fg',
                       )}
                     >
                       {item.label}
@@ -70,14 +75,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             <WalletButton />
           </div>
         </div>
-        <nav aria-label="Primary mobile" className="border-t border-ink-800 lg:hidden">
+        <nav aria-label="Primary mobile" className="sm:hidden">
           <ul className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-3 py-2">
             {NAV.map((item) => (
               <li key={item.href} className="shrink-0">
                 <Link
                   href={item.href}
                   aria-current={isActive(pathname, item.href) ? 'page' : undefined}
-                  className={cn('block rounded-md px-3 py-1.5 text-xs', isActive(pathname, item.href) ? 'bg-ink-800 text-fg' : 'text-fg-subtle')}
+                  className={cn('block rounded-full px-3 py-1.5 text-sm', isActive(pathname, item.href) ? 'text-fg' : 'text-fg-subtle')}
                 >
                   {item.label}
                 </Link>
@@ -89,12 +94,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
         {children}
       </main>
-      <footer className="border-t border-ink-800">
+      <footer>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-[11px] text-fg-faint sm:px-6">
-          <p>
-            Cloakroom is not a mixer and does not make transactions invisible. Amounts and timing are public on-chain; the enclave and its operator are part of the trust model.
-          </p>
-          <p>No analytics. No trackers.</p>
+          <p>Not a mixer. Amounts and timing are public on-chain, and you are trusting the enclave and its operator.</p>
+          <nav aria-label="More" className="flex flex-wrap gap-3">
+            {MORE.map((item) => <Link key={item.href} href={item.href} className="hover:text-fg-muted">{item.label}</Link>)}
+          </nav>
         </div>
       </footer>
     </div>

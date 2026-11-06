@@ -67,6 +67,13 @@ export interface RawEnv {
   NEXT_PUBLIC_DEV_DIRECT_RPC_URL?: string;
 }
 
+/**
+ * Sepolia's 0.01% USDC/WETH pool, the closest of its four pools to the Trading API's quote. The
+ * swap screen reads it for a live price and to set the order's limit.
+ */
+const SEPOLIA_REFERENCE_POOL = getAddress('0xfeed501c2b21d315f04946f85fc6416b640240b5');
+const SEPOLIA_USDC = getAddress('0x1c7d4b196cb0c7b01d743fbc6116a902379c7238');
+
 /** The MVP margin scope documented in docs/margin-interface.md: up to 4x. */
 export const MARGIN_MVP_MAX_LEVERAGE_BPS = 40_000;
 
@@ -207,7 +214,8 @@ export function parseConfig(env: RawEnv): AppConfig {
     allowSimulatedEnclave: trimmed(env.NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE) === 'true',
     marginUi,
     marginMaxLeverageBps: Math.max(10_000, marginMaxLeverageBps),
-    uniswapPool: address(env.NEXT_PUBLIC_UNISWAP_POOL_ADDRESS, 'NEXT_PUBLIC_UNISWAP_POOL_ADDRESS', issues),
+    uniswapPool: address(env.NEXT_PUBLIC_UNISWAP_POOL_ADDRESS, 'NEXT_PUBLIC_UNISWAP_POOL_ADDRESS', issues)
+      ?? (chainId === sepolia.id && tokenOutAddress === SEPOLIA_USDC ? SEPOLIA_REFERENCE_POOL : null),
     chainRead: {
       mode,
       anonSpecifier,

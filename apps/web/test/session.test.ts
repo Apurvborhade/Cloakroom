@@ -22,7 +22,7 @@ function apiReturning(expiresAt: number) {
 }
 
 describe('SessionStore', () => {
-  it('asks for a grant no longer than the enclave allows and keeps the key in memory only', async () => {
+  it('asks for a grant no longer than the enclave allows and exposes no key', async () => {
     let now = 1_000_000;
     const store = new SessionStore(() => now);
     const { api, spy } = apiReturning(now + 10_000);
@@ -35,6 +35,49 @@ describe('SessionStore', () => {
     // The snapshot exposes addresses only: nothing 32 bytes long (a private key) is reachable.
     expect(Object.keys(store.getSnapshot()!).sort()).toEqual(['chainId', 'enclavePubKey', 'expiresAt', 'owner', 'sessionAddress']);
     expect(store.isActive(owner.address, binding)).toBe(true);
+  });
+
+  describe('across a page refresh', () => {
+    const memoryStorage = () => {
+      const items = new Map<string, string>();
+      return {
+        items,
+        getItem: (key: string) => items.get(key) ?? null,
+        setItem: (key: string, value: string) => void items.set(key, value),
+        removeItem: (key: string) => void items.delete(key),
+      };
+    };
+
+    it('keeps the session without another signature, and forgets it when ended', async () => {
+      const now = 1_000_000;
+      const storage = memoryStorage();
+      const first = new SessionStore(() => now, storage);
+      const { api } = apiReturning(now + 1_000);
+      const session = await first.establish({ owner: owner.address, binding, ownerSigner: signer as never, api });
+
+      const reloaded = new SessionStore(() => now, storage);
+      expect(reloaded.getSnapshot()).toEqual(session);
+      expect(reloaded.isActive(owner.address, binding)).toBe(true);
+      const query = await reloaded.signQuery(owner.address, binding);
+      expect(query.message.owner.toLowerCase()).toBe(owner.address.toLowerCase());
+
+      reloaded.end('manual');
+      expect(storage.items.size).toBe(0);
+      expect(new SessionStore(() => now, storage).getSnapshot()).toBeNull();
+    });
+
+    it('does not restore an expired session or unreadable data', async () => {
+      let now = 1_000_000;
+      const storage = memoryStorage();
+      const { api } = apiReturning(now + 1_000);
+      await new SessionStore(() => now, storage).establish({ owner: owner.address, binding, ownerSigner: signer as never, api });
+      now += 2_000;
+      expect(new SessionStore(() => now, storage).getSnapshot()).toBeNull();
+      expect(storage.items.size).toBe(0);
+
+      storage.setItem('cloakroom.read-session', 'not json');
+      expect(new SessionStore(() => now, storage).getSnapshot()).toBeNull();
+    });
   });
 
   it('signs queries with the session key, not the owner', async () => {
