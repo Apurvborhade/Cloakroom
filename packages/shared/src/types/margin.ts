@@ -51,7 +51,7 @@ export interface PositionView {
   side: MarginSide;
   status: PositionStatus;
   collateral: bigint;
-  /** Collateral times leverage, in USDC base units. */
+  /** Initial collateral times leverage, in USDC base units. */
   sizeUsd: bigint;
   debtToken: Address;
   debt: bigint;
@@ -60,7 +60,11 @@ export interface PositionView {
   entryPrice?: bigint;
   liquidationPrice?: bigint;
   equity?: bigint;
+  /** Remaining USDC credited after the debt is repaid. */
   payout?: bigint;
+  /** Excess ETH from a short's buyback, credited in wei. */
+  payoutNative?: bigint;
+  /** Unpaid principal, in debtToken base units. */
   shortfall?: bigint;
 }
 

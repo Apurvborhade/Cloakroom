@@ -25,6 +25,9 @@ TEE verification suites are implemented alongside the enclave package:
 | --- | --- | --- | --- |
 | `keys.test.ts` | TEE | Signing guard | Unregistered operations are refused; each `opId` signs once |
 | `envelope.test.ts` | TEE | HPKE seal and open, tampered ciphertext | Round-trips with the frontend library; tampering is rejected |
+| `margin-roundtrip.test.ts` | TEE | Long/short opening, closure, liquidation, withdrawals and restart recovery | Actual custody balances match claims, test liquidity and booked gas; recovery settles once |
+
+Run the margin suite with `pnpm exec vitest run services/enclave/test/margin-roundtrip.test.ts`. It uses Anvil, funded test inventory and a fixed-price router with ERC20/Permit2 approvals. Requests, signing, encrypted journal recovery and asset transfers run through the application; live Uniswap and Nitro are separate checks.
 
 ## Rejection tests
 

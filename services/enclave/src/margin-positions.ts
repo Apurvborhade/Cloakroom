@@ -12,7 +12,7 @@ export type MarginStateEvent = Extract<JournalEvent, { t:
 export type MarginApproval = Extract<MarginStateEvent, { t: 'MARGIN_OP_APPROVED' }>;
 type Terminal = Extract<MarginStateEvent, { t: 'MARGIN_OP_SETTLED' | 'MARGIN_OP_FAILED' }>;
 type Operation = { approval: MarginApproval; broadcast?: Extract<MarginStateEvent, { t: 'MARGIN_OP_BROADCAST' }>; terminal?: Terminal };
-export interface LongPosition extends PositionView {
+export interface MarginPosition extends PositionView {
   openOpId: string;
   usdcDecimals: number;
   cash: bigint;
@@ -20,17 +20,17 @@ export interface LongPosition extends PositionView {
 
 /** Durable projection; the command service validates risk before approval. */
 export class MarginPositionState {
-  private readonly entries = new Map<Hex, LongPosition>();
+  private readonly entries = new Map<Hex, MarginPosition>();
   private readonly operations = new Map<string, Operation>();
 
   constructor(private readonly ledger: InMemoryLedger) {}
 
-  position(id: Hex): LongPosition | undefined {
+  position(id: Hex): MarginPosition | undefined {
     const position = this.entries.get(id);
     return position && structuredClone(position);
   }
 
-  positions(): LongPosition[] { return [...this.entries.values()].map((p) => structuredClone(p)); }
+  positions(): MarginPosition[] { return [...this.entries.values()].map((p) => structuredClone(p)); }
 
   operation(opId: string): Operation | undefined {
     const operation = this.operations.get(opId);
@@ -38,11 +38,12 @@ export class MarginPositionState {
   }
 
   private funding(event: MarginApproval): Extract<MarginFundingEvent, { t: 'MARGIN_OPEN_RESERVED' }> {
-    if (event.accounting?.kind !== 'long-open') throw new Error('MARGIN_APPROVAL_INVALID');
+    if (event.accounting?.kind !== 'long-open' && event.accounting?.kind !== 'short-open') throw new Error('MARGIN_APPROVAL_INVALID');
+    const long = event.accounting.kind === 'long-open';
     const collateral = event.accounting.message.collateral;
     return { t: 'MARGIN_OPEN_RESERVED', opId: event.opId, owner: event.owner,
-      collateral: { token: event.tokenIn, amount: collateral },
-      borrow: { token: event.tokenIn, amount: event.amountIn - collateral } };
+      collateral: { token: long ? event.tokenIn : event.tokenOut, amount: collateral },
+      borrow: { token: event.tokenIn, amount: long ? event.amountIn - collateral : event.amountIn } };
   }
 
   validate(event: MarginStateEvent): boolean {
@@ -50,17 +51,24 @@ export class MarginPositionState {
       if (!event.accounting) return false;
       if (!this.ledger.margin.validateCommand(event)) return false;
       if (event.amountIn <= 0n || event.minAmountOut <= 0n) throw new Error('MARGIN_APPROVAL_INVALID');
-      if (event.accounting.kind === 'long-open') {
-        if (event.kind !== 'open' || this.entries.has(event.positionId as Hex) || event.tokenOut !== NATIVE) {
+      if (event.accounting.kind === 'long-open' || event.accounting.kind === 'short-open') {
+        const long = event.accounting.kind === 'long-open';
+        if (event.kind !== 'open' || this.entries.has(event.positionId as Hex) ||
+          event.accounting.message.side !== (long ? 0 : 1) || event.owner !== getAddress(event.accounting.message.owner) ||
+          (long ? event.tokenOut !== NATIVE || event.tokenIn === NATIVE : event.tokenIn !== NATIVE || event.tokenOut === NATIVE)) {
           throw new Error('MARGIN_APPROVAL_INVALID');
         }
         this.ledger.margin.validate(this.funding(event));
       } else {
         const position = this.owned(event.owner, event.positionId as Hex);
         if (position.status !== 'open') throw new AuthError(ERROR_CODES.POSITION_BUSY);
-        if (event.kind === 'open' || event.amountIn !== position.asset || event.tokenIn !== NATIVE || event.tokenOut !== position.debtToken) {
+        if (event.accounting.kind !== `${position.side}-${event.kind}` ||
+          event.kind === 'open' || event.tokenIn !== position.assetToken || event.tokenOut !== position.debtToken ||
+          (position.side === 'long' ? event.amountIn !== position.asset : event.amountIn > position.asset + position.cash)) {
           throw new Error('MARGIN_APPROVAL_INVALID');
         }
+        if (position.side === 'short' && (event.kind === 'close' || event.amountIn < position.asset + position.cash) &&
+          event.minAmountOut < position.debt) throw new Error('MARGIN_APPROVAL_INVALID');
       }
       return true;
     }
@@ -70,7 +78,8 @@ export class MarginPositionState {
       const position = this.owned(owner, positionId);
       if (position.status !== 'open') throw new AuthError(ERROR_CODES.POSITION_BUSY);
       if (typeof amount !== 'bigint' || amount <= 0n) throw new AuthError(ERROR_CODES.INVALID_PAYLOAD);
-      if (this.ledger.getBalance(owner, position.debtToken).available < amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_BALANCE);
+      const usdc = position.side === 'long' ? position.debtToken : position.assetToken;
+      if (this.ledger.getBalance(owner, usdc).available < amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_BALANCE);
       return true;
     }
     const operation = this.operations.get(event.opId);
@@ -101,13 +110,15 @@ export class MarginPositionState {
     if (!this.validate(event)) return;
     if (event.t === 'MARGIN_OP_APPROVED') {
       const metadata = event.accounting!;
-      if (metadata.kind === 'long-open') {
+      if (metadata.kind === 'long-open' || metadata.kind === 'short-open') {
+        const long = metadata.kind === 'long-open';
         this.ledger.margin.authorize(this.funding(event));
         this.entries.set(event.positionId as Hex, {
-          id: event.positionId as Hex, owner: getAddress(event.owner), side: 'long', status: 'opening',
-          collateral: metadata.message.collateral, sizeUsd: event.amountIn,
-          debtToken: getAddress(event.tokenIn), debt: event.amountIn - metadata.message.collateral,
-          assetToken: NATIVE, asset: 0n, cash: 0n,
+          id: event.positionId as Hex, owner: getAddress(event.owner), side: long ? 'long' : 'short', status: 'opening',
+          collateral: metadata.message.collateral,
+          sizeUsd: metadata.message.collateral * BigInt(metadata.message.leverageBps) / 10_000n,
+          debtToken: getAddress(event.tokenIn), debt: long ? event.amountIn - metadata.message.collateral : event.amountIn,
+          assetToken: getAddress(event.tokenOut), asset: 0n, cash: 0n,
           openOpId: event.opId, usdcDecimals: metadata.usdcDecimals,
         });
       } else {
@@ -120,7 +131,8 @@ export class MarginPositionState {
     if (event.t === 'MARGIN_COLLATERAL_ADDED') {
       const { amount, positionId } = event.message;
       const position = this.entries.get(positionId)!;
-      this.ledger.reserve(position.owner, position.debtToken, amount, event.opId);
+      const usdc = position.side === 'long' ? position.debtToken : position.assetToken;
+      this.ledger.reserve(position.owner, usdc, amount, event.opId);
       this.ledger.consume(event.opId);
       position.cash += amount;
       position.collateral += amount;
@@ -142,15 +154,24 @@ export class MarginPositionState {
     } else if (operation.approval.kind === 'open') {
       this.ledger.margin.activate(position.openOpId);
       position.asset = event.amountOut;
-      position.entryPrice = event.amountIn * 10n ** 36n / (event.amountOut * 10n ** BigInt(position.usdcDecimals));
+      const long = position.side === 'long';
+      const [usdc, eth] = long ? [event.amountIn, event.amountOut] : [event.amountOut, event.amountIn];
+      position.entryPrice = usdc * 10n ** 36n / (eth * 10n ** BigInt(position.usdcDecimals));
+      if (!long) position.cash = position.collateral;
       position.status = 'open';
     } else {
-      const proceeds = event.amountOut + position.cash;
+      const long = position.side === 'long';
+      const proceeds = event.amountOut + (long ? position.cash : 0n);
       const repaid = proceeds < position.debt ? proceeds : position.debt;
       position.shortfall = position.debt - repaid;
-      position.payout = proceeds - repaid;
+      position.payout = long ? proceeds - repaid : position.asset + position.cash - event.amountIn;
       this.ledger.margin.repay(position.openOpId, repaid);
-      if (position.payout > 0n) this.ledger.credit(position.owner, position.debtToken, position.payout, event.opId);
+      const usdc = long ? position.debtToken : position.assetToken;
+      if (position.payout > 0n) this.ledger.credit(position.owner, usdc, position.payout, event.opId);
+      if (!long) {
+        position.payoutNative = proceeds - repaid;
+        if (position.payoutNative > 0n) this.ledger.credit(position.owner, NATIVE, position.payoutNative, `${event.opId}:surplus`);
+      }
       position.debt = position.shortfall;
       position.asset = 0n;
       position.cash = 0n;
@@ -160,7 +181,7 @@ export class MarginPositionState {
     operation.terminal = structuredClone(event);
   }
 
-  owned(owner: Address, id: Hex): LongPosition {
+  owned(owner: Address, id: Hex): MarginPosition {
     const position = this.position(id);
     if (!position || position.owner !== getAddress(owner)) throw new AuthError(ERROR_CODES.POSITION_NOT_FOUND);
     return position;
@@ -172,8 +193,9 @@ export class MarginPositionState {
     const add = (token: Address, amount: bigint) => result.set(token, (result.get(token) ?? 0n) + amount);
     for (const p of this.entries.values()) {
       if (p.status !== 'open' && p.status !== 'closing' && p.status !== 'liquidating') continue;
-      add(p.debtToken, p.cash - p.debt);
-      add(p.assetToken, p.asset);
+      const long = p.side === 'long';
+      add(p.debtToken, (long ? p.cash : 0n) - p.debt);
+      add(p.assetToken, p.asset + (long ? 0n : p.cash));
     }
     return result;
   }

@@ -90,9 +90,9 @@ export type JournalEvent =
       expiry: number;
       /** Absent on simulation-only approvals that do not move ledger balances. */
       accounting?:
-        | { kind: 'long-open'; message: MarginOpenMsg; usdcDecimals: number }
-        | { kind: 'long-close'; message: MarginCloseMsg }
-        | { kind: 'long-liquidate' };
+        | { kind: 'long-open' | 'short-open'; message: MarginOpenMsg; usdcDecimals: number }
+        | { kind: 'long-close' | 'short-close'; message: MarginCloseMsg }
+        | { kind: 'long-liquidate' | 'short-liquidate' };
     }
   | { t: 'MARGIN_COLLATERAL_ADDED'; opId: string; message: MarginAddCollateralMsg }
   | { t: 'MARGIN_OP_BROADCAST'; opId: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex }

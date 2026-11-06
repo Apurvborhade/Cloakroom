@@ -14,7 +14,7 @@ import type { BootOptions } from './server.js';
 import { UniswapClient } from './uniswap.js';
 import { createNitroUniswapClient } from './nitro-uniswap.js';
 import { createNitroRpcTransport } from './nitro-rpc.js';
-import { LongMarginAccounting } from './margin-accounting.js';
+import { JournaledMarginAccounting } from './margin-accounting.js';
 
 function required(env: Readonly<Record<string, string | undefined>>, name: string): string {
   const value = env[name];
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     }) : createNitroUniswapClient(config),
     ...custody(config, env, buildHash),
     ...(config.MARGIN_ENABLED ? { marginAccounting: (parts: Parameters<NonNullable<BootOptions['marginAccounting']>>[0]) =>
-      new LongMarginAccounting({ ...parts, usdc: config.TOKEN_OUT_ADDRESS, usdcDecimals: config.TOKEN_OUT_DECIMALS,
+      new JournaledMarginAccounting({ ...parts, usdc: config.TOKEN_OUT_ADDRESS, usdcDecimals: config.TOKEN_OUT_DECIMALS,
         maxPriceAgeSec: config.PRICE_POLL_INTERVAL_SEC * 2 }) } : {}),
     socketPath: nitro ? '\0cloakroom-attestation' : undefined,
     log: (code) => console.log(code),
