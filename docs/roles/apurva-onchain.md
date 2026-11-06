@@ -59,8 +59,9 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 ### Phase 3 (hours 22 to 29)
 
-- [ ] `Executor.recover`: settle, rebroadcast or fail
-- [ ] `recovery.test.ts`, `watcher.test.ts`, `executor.fork.test.ts`, `price-poller.test.ts`
+- [x] `Executor.recover`: settle, rebroadcast, or flag for review
+- [x] `executor-recover.test.ts`, `watcher.test.ts`, `price-poller.test.ts`
+- [ ] `executor.fork.test.ts`
 - [ ] Lead `e2e.fork.test.ts`
 
 ### Phase 4 (hours 29 to 36)

@@ -13,7 +13,7 @@ Chain tests run against an Anvil fork. Set `CHAIN_ID` to whatever the fork repor
 | `auth.test.ts` | Shreyas | 31 unit tests: signatures, expiry horizons, clock skew, session grants, and serialized nonce durability | Each bad input returns its error code; concurrent duplicate nonces reject |
 | `concurrency.test.ts` | Shreyas | Two withdrawals of 80% at once; intent versus withdrawal race | Exactly one wins |
 | `journal.test.ts` | Shreyas | Replay rebuilds state; one altered entry | Same balances; hash chain breaks on tamper |
-| `recovery.test.ts` | Apurva | Kill after `EXEC_BROADCAST`, before settlement | Reboot settles once, never executes twice |
+| `executor-recover.test.ts` | Apurva | Restarts with the journal reopened from disk: after a send, before a send, during a revert, with a moved nonce, and with no chain access | Reboot settles once, never executes twice |
 | `watcher.test.ts` | Apurva | Deposit confirmations, repeat checks, closed sessions | Credited once, only after N blocks |
 | `executor.fork.test.ts` | Apurva | Swap, `minOut`, malicious calldata, revert | Swap runs from a non-depositor EOA; `to` other than the router is refused; revert releases funds |
 | `price-poller.test.ts` | Apurva | Failed polls, condition met or not, condition no longer met on the swap's own quote | A failed poll triggers nothing; intent stays pending when the condition no longer holds |

@@ -221,7 +221,7 @@ An EOA runs one operation at a time. `pick` also requires the gas reserve when s
 export interface Executor {
   runIntent(i: StoredIntent): Promise<SwapOutcome>; // quote, check, sign, broadcast, settle
   runWithdrawal(w: LockedWithdrawal): Promise<{ finished: Promise<WithdrawalOutcome> }>; // transfer, confirm, finalize
-  recover(): Promise<void>;                          // on boot: settle or fail unfinished ops
+  recover(history: AsyncIterable<{ event: JournalEvent }>): Promise<RecoveredOperation[]>; // on boot: finish what a restart interrupted
 }
 ```
 
