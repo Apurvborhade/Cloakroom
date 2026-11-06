@@ -7,9 +7,9 @@ export const chainReader = new ChainReader(appConfig.chainRead);
 /** Which browser reads exist and where they go, for the diagnostics panel and README. */
 export const BROWSER_READS = [
   { name: 'Cloakroom API requests (encrypted)', methods: ['every API route, unless you choose a direct connection'] },
-  { name: 'Deposit transaction receipt', methods: ['eth_getTransactionReceipt', 'eth_blockNumber'] },
+  { name: 'Deposit transaction receipts', methods: ['eth_getTransactionReceipt'] },
   { name: 'Wallet ETH balance', methods: ['eth_getBalance'] },
-  { name: 'Wallet output-token balance', methods: ['eth_call (balanceOf)'] },
+  { name: 'Wallet USDC balance', methods: ['eth_call (balanceOf)'] },
   { name: 'Withdrawal payout receipt', methods: ['eth_getTransactionReceipt'] },
   { name: 'Uniswap pool price for swaps', methods: ['eth_call (slot0, token0, token1, decimals)'] },
 ] as const;

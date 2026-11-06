@@ -11,7 +11,7 @@ import { BalanceFreshness } from './debug';
 import { ActionButton, StatusLine } from './parts';
 
 const ACTIONS: Array<{ href: string; title: string; description: string; icon: string }> = [
-  { href: '/deposit', title: 'Deposit', description: 'Add ETH to your private balance', icon: '↓' },
+  { href: '/deposit', title: 'Deposit', description: 'Add ETH or USDC to your private balance', icon: '↓' },
   { href: '/swap', title: 'Swap', description: 'Swap ETH for USDC from an address not linked to you', icon: '⇄' },
   { href: '/withdraw', title: 'Withdraw', description: 'Send funds to any address', icon: '↑' },
 ];

@@ -1,8 +1,9 @@
 'use client';
 
-import type { IntentStatusResponse, LendingResponse, PositionsResponse, WithdrawalStatusResponse } from '@cloakroom/shared';
+import type { DepositStatusResponse, IntentStatusResponse, LendingResponse, PositionsResponse, WithdrawalStatusResponse } from '@cloakroom/shared';
 import {
   getBalances,
+  getDepositStatuses,
   getIntentStatuses,
   getMarginLending,
   getMarginPositions,
@@ -19,6 +20,13 @@ const SLOW = 20_000;
 
 export function useBalances() {
   return usePrivateRead('balance', getBalances, { refetchInterval: BALANCE });
+}
+
+const OPEN_DEPOSIT = new Set(['awaiting_funds', 'awaiting_gas', 'awaiting_token']);
+export function useDepositStatuses() {
+  return usePrivateRead<DepositStatusResponse>('deposits', getDepositStatuses, {
+    refetchInterval: (data) => (data?.deposits.some((item) => OPEN_DEPOSIT.has(item.status)) ? FAST : SLOW),
+  });
 }
 
 const OPEN_INTENT = new Set(['pending', 'executing']);

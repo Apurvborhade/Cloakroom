@@ -1,6 +1,6 @@
 'use client';
 
-import { MAX_EXPIRY_FUTURE_SEC, NATIVE } from '@cloakroom/shared';
+import { MAX_EXPIRY_FUTURE_SEC } from '@cloakroom/shared';
 import type { Address, Hex } from 'viem';
 import {
   cancelIntent,
@@ -33,9 +33,10 @@ import { useSignedAction } from './use-signed-action';
 
 export function useOpenDepositSession() {
   return useSignedAction({
-    build: (_: void, { owner, binding }) =>
-      buildDepositRequest(binding, { owner, asset: NATIVE, nonce: nextNonce(), expiry: mutationExpiry() }),
+    build: (asset: Address, { owner, binding }) =>
+      buildDepositRequest(binding, { owner, asset, nonce: nextNonce(), expiry: mutationExpiry() }),
     send: openDepositSession,
+    refresh: ['deposits'],
     onSuccess: (result) =>
       recordDeposit({ sessionId: result.sessionId, depositAddress: result.depositAddress, expiresAt: result.expiresAt, createdAt: nowSec() }),
   });

@@ -1,6 +1,7 @@
 import {
   BalanceResponseSchema,
   DepositSessionResponseSchema,
+  DepositStatusResponseSchema,
   IntentStatusResponseSchema,
   LendingResponseSchema,
   MarginOrderResponseSchema,
@@ -34,6 +35,7 @@ export const PRIVATE_ROUTES = {
   intentStatus: '/intents/status',
   intentCancel: '/intents/cancel',
   withdrawals: '/withdrawals',
+  depositStatus: '/deposits/status',
   withdrawalStatus: '/withdrawals/status',
   marginSupply: '/margin/lending/supply',
   marginRedeem: '/margin/lending/redeem',
@@ -49,6 +51,8 @@ const R = PRIVATE_ROUTES;
 // Owner-signed (primary wallet).
 export const createSession = (api: CloakroomApi, ctx: SealContext, req: SignedWire<SessionGrantWire>) =>
   api.postPrivate(R.session, req, ctx, SessionResponseSchema);
+export const getDepositStatuses = (api: CloakroomApi, ctx: SealContext, req: SignedWire<SessionQueryWire>) =>
+  api.postPrivate(R.depositStatus, req, ctx, DepositStatusResponseSchema);
 export const openDepositSession = (api: CloakroomApi, ctx: SealContext, req: SignedWire<DepositRequestWire>) =>
   api.postPrivate(R.depositSession, req, ctx, DepositSessionResponseSchema);
 export const createIntent = (api: CloakroomApi, ctx: SealContext, req: SignedWire<IntentWire>) =>
