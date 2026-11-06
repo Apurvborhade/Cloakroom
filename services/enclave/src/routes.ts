@@ -7,13 +7,15 @@ import {
   SignedIntentSchema,
   SignedSessionGrantSchema,
   SignedSessionQuerySchema,
+  SignedWithdrawalSchema,
   wireToCancelIntentMsg,
   wireToDepositRequestMsg,
   wireToIntentMsg,
   wireToSessionGrantMsg,
   wireToSessionQueryMsg,
+  wireToWithdrawalMsg,
 } from '@cloakroom/shared';
-import type { Envelope, ErrorCode, IntentMsg, SessionQueryMsg } from '@cloakroom/shared';
+import type { Envelope, ErrorCode, IntentMsg, SessionQueryMsg, WithdrawalMsg } from '@cloakroom/shared';
 import type { FastifyInstance } from 'fastify';
 import { getAddress } from 'viem';
 import type { Address, Hex } from 'viem';
@@ -27,6 +29,7 @@ import type { Inventory } from './inventory.js';
 import type { KeyManager } from './keys.js';
 import type { InMemoryLedger } from './ledger.js';
 import type { DepositWatcher } from './watcher.js';
+import type { WithdrawalOrders, WithdrawalStatuses } from './withdrawal-orders.js';
 
 /** The encrypted body on the wire. The plaintext limit is enforced when it is decrypted. */
 const WIRE_BODY_LIMIT_BYTES = 24 * 1024;
@@ -43,6 +46,7 @@ const ERROR_STATUS: Partial<Record<ErrorCode, number>> = {
   INVALID_PAYLOAD: 400,
   INSUFFICIENT_BALANCE: 400,
   INTENT_NOT_FOUND: 404,
+  NO_INVENTORY: 409,
 };
 
 export interface ApiDeps {
@@ -54,6 +58,8 @@ export interface ApiDeps {
   keys: KeyManager;
   ledger: Pick<InMemoryLedger, 'getBalance'>;
   watcher: Pick<DepositWatcher, 'openSession'>;
+  withdrawalOrders: Pick<WithdrawalOrders, 'create'>;
+  withdrawalStatuses: Pick<WithdrawalStatuses, 'listByOwner'>;
 }
 
 function nowSec(): number {
@@ -132,8 +138,32 @@ function assertRunnableIntent(intent: IntentMsg, config: EnclaveConfig): void {
   if (!valid) throw new AuthError(ERROR_CODES.INVALID_PAYLOAD);
 }
 
+/** Refuses a withdrawal that could never be paid, before it spends the owner's nonce. */
+function assertPayableWithdrawal(withdrawal: WithdrawalMsg, config: EnclaveConfig): void {
+  const token = getAddress(withdrawal.token);
+  if (token !== NATIVE && token !== config.TOKEN_OUT_ADDRESS) {
+    throw new AuthError(ERROR_CODES.UNSUPPORTED_ASSET);
+  }
+  const valid =
+    withdrawal.amount > 0n &&
+    getAddress(withdrawal.to) !== NATIVE &&
+    (token !== NATIVE || withdrawal.amount <= config.MAX_AMOUNT_NATIVE_WEI);
+  if (!valid) throw new AuthError(ERROR_CODES.INVALID_PAYLOAD);
+}
+
 export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
-  const { auth, config, intentOrders, intents, inventory, keys, ledger, watcher } = deps;
+  const {
+    auth,
+    config,
+    intentOrders,
+    intents,
+    inventory,
+    keys,
+    ledger,
+    watcher,
+    withdrawalOrders,
+    withdrawalStatuses,
+  } = deps;
 
   privateRoute(app, keys, '/session', SignedSessionGrantSchema, async ({ message, signature }) => {
     const grant = await auth.createSessionGrant(wireToSessionGrantMsg(message), signature as Hex);
@@ -202,5 +232,24 @@ export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
     const { owner } = await auth.verifyAndAuthorizeMutation('CancelIntent', cancel, signature as Hex);
     await intentOrders.cancel(owner, cancel.intentId);
     return { status: 'cancelled' };
+  });
+
+  privateRoute(app, keys, '/withdrawals', SignedWithdrawalSchema, async ({ message, signature }) => {
+    const withdrawal = wireToWithdrawalMsg(message);
+    assertPayableWithdrawal(withdrawal, config);
+    const { owner } = await auth.verifyAndAuthorizeMutation('Withdrawal', withdrawal, signature as Hex);
+    return { withdrawalId: await withdrawalOrders.create(owner, withdrawal), status: 'locked' };
+  });
+
+  privateRoute(app, keys, '/withdrawals/status', SignedSessionQuerySchema, async ({ message, signature }) => {
+    const owner = await authorizeRead(auth, wireToSessionQueryMsg(message), signature as Hex);
+    return {
+      withdrawals: withdrawalStatuses.listByOwner(owner).map(({ id, status, txHash, reason }) => ({
+        id,
+        status,
+        ...(txHash === undefined ? {} : { txHash }),
+        ...(reason === undefined ? {} : { reason }),
+      })),
+    };
   });
 }

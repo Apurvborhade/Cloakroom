@@ -18,6 +18,7 @@ import { InMemoryLedger } from './ledger.js';
 import { IntentExecutionPipeline } from './pipeline.js';
 import { PricePoller } from './price-poller.js';
 import { DepositWatcher } from './watcher.js';
+import { trackWithdrawals, WithdrawalOrders, WithdrawalStatuses } from './withdrawal-orders.js';
 import type { Journal } from '@cloakroom/shared';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
@@ -58,6 +59,8 @@ export interface EnclaveParts {
   poller: PricePoller;
   queue: FifoSerialQueue;
   watcher: DepositWatcher;
+  withdrawalOrders: WithdrawalOrders;
+  withdrawalStatuses: WithdrawalStatuses;
 }
 
 export interface RunningEnclave {
@@ -194,12 +197,16 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     onSessionClosed: (eoa) => inventory.markInventory(eoa),
   });
 
+  const withdrawalStatuses = new WithdrawalStatuses();
+  const trackedJournal = trackWithdrawals(openedJournal, withdrawalStatuses);
+
   await step('replay', async () => {
     for await (const { event, timestamp } of openedJournal.replay()) {
       ledger.apply(event);
       intents.apply(event, timestamp);
       inventory.replay(event);
       watcher.replay(event);
+      withdrawalStatuses.apply(event);
     }
   });
   await step('signing-state', () => keys.restoreSigningState());
@@ -221,7 +228,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     chainId: config.CHAIN_ID,
     signer: keys,
     inventory,
-    journal: openedJournal,
+    journal: trackedJournal,
     ledger,
     queue,
     confirmations,
@@ -240,6 +247,13 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     },
   });
   const intentOrders = new IntentOrders({ intents, journal: openedJournal, ledger, queue });
+  const withdrawalOrders = new WithdrawalOrders({
+    executor,
+    journal: trackedJournal,
+    ledger,
+    queue,
+    onError: () => log('WITHDRAWAL_JOURNAL_ERROR'),
+  });
   const pipeline = new IntentExecutionPipeline({
     intents,
     executor,
@@ -264,7 +278,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   const app = await step('routes', () =>
     buildApp({
-      api: { auth, config, intentOrders, intents, inventory, keys, ledger, watcher },
+      api: { auth, config, intentOrders, intents, inventory, keys, ledger, watcher, withdrawalOrders, withdrawalStatuses },
       attestation: options.attestation
         ? new AttestationService(options.attestation.buildHash, {
             identity: keys,
@@ -290,10 +304,11 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   const drainSwaps = async () => {
     const deadline = Date.now() + drainTimeoutMs;
-    while (pipeline.inFlightCount > 0 && Date.now() < deadline) {
+    const running = () => pipeline.inFlightCount + withdrawalOrders.inFlightCount;
+    while (running() > 0 && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, DRAIN_CHECK_MS));
     }
-    if (pipeline.inFlightCount > 0) log('SHUTDOWN_WITH_SWAPS_RUNNING');
+    if (running() > 0) log('SHUTDOWN_WITH_SWAPS_RUNNING');
   };
 
   let stopping: Promise<void> | undefined;
@@ -311,7 +326,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   return {
     app,
-    parts: { auth, executor, intentOrders, intents, inventory, journal: openedJournal, keys, ledger, pipeline, poller, queue, watcher },
+    parts: { auth, executor, intentOrders, intents, inventory, journal: openedJournal, keys, ledger, pipeline, poller, queue, watcher, withdrawalOrders, withdrawalStatuses },
     recovery,
     stop,
   };
