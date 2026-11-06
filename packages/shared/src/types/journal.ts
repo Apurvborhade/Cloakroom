@@ -1,5 +1,6 @@
 import type { Address, Hex } from 'viem';
 import type { IntentMsg } from '../eip712.js';
+import type { MarginFundingEvent } from './margin.js';
 
 /**
  * Discriminator union for append-only hash-chained journal events.
@@ -10,6 +11,7 @@ import type { IntentMsg } from '../eip712.js';
  * - EOA Relabeling: Relabeling from 'deposit' to 'inventory' occurs upon DEPOSIT_SESSION_CLOSED.
  */
 export type JournalEvent =
+  | MarginFundingEvent
   | { t: 'SIGNING_REGISTERED'; opId: string; eoa: Address; to: Address; value: bigint; dataHash: Hex; data?: Hex; chainId: number }
   | { t: 'SIGNING_COMPLETED'; opId: string; txHash: Hex }
   | { t: 'NONCE_USED'; owner: Address; nonce: bigint }

@@ -8,6 +8,7 @@ import type {
 } from '@cloakroom/shared';
 import { getAddress } from 'viem';
 import type { Address } from 'viem';
+import { MarginFundingState } from './margin-funding.js';
 
 export type ReservationStatus = 'active' | 'released' | 'consumed';
 
@@ -49,6 +50,7 @@ export class InMemoryLedger implements Ledger {
   private readonly operationalGasSpent = new Map<Address, bigint>();
   private readonly bookedGasFees = new Map<string, OperationalGasRecord>();
   private readonly depositSessions = new Map<string, Address>();
+  readonly margin = new MarginFundingState(this);
 
   private getOrCreateBalance(owner: Address, token: Address): BalanceRecord {
     let ownerMap = this.userBalances.get(owner);
@@ -297,6 +299,13 @@ export class InMemoryLedger implements Ledger {
 
   apply(event: JournalEvent): void {
     switch (event.t) {
+      case 'MARGIN_SUPPLIED':
+      case 'MARGIN_REDEEMED':
+      case 'MARGIN_OPEN_RESERVED':
+      case 'MARGIN_OPEN_RELEASED': {
+        this.margin.apply(event);
+        break;
+      }
       case 'NONCE_USED': {
         this.setNonce(event.owner, event.nonce);
         break;
@@ -465,6 +474,7 @@ export class InMemoryLedger implements Ledger {
   }
 
   assertInvariants(): void {
+    this.margin.assertInvariants();
     // 1. Non-negativity check
     for (const [owner, tokenMap] of this.userBalances.entries()) {
       for (const [token, bal] of tokenMap.entries()) {

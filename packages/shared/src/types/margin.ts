@@ -37,6 +37,26 @@ export interface MarginLendingBalance {
   redeemableAmount: bigint;
 }
 
+export interface MarginFundingRequest extends MarginCommand {
+  collateralUSDC: bigint;
+  borrow: MarginAmount;
+}
+
+/** A funding hold, not permission to execute a swap. */
+export interface MarginFundingReservation {
+  opId: string;
+  owner: Address;
+  collateral: MarginAmount;
+  borrow: MarginAmount;
+  status: 'reserved' | 'released';
+}
+
+export type MarginFundingEvent =
+  | ({ t: 'MARGIN_SUPPLIED' } & MarginLendingCommand)
+  | ({ t: 'MARGIN_REDEEMED' } & MarginLendingCommand)
+  | ({ t: 'MARGIN_OPEN_RESERVED' } & Omit<MarginFundingReservation, 'status'>)
+  | { t: 'MARGIN_OPEN_RELEASED'; opId: string };
+
 export interface MarginHealth {
   equityUSDC: bigint;
   pnlUSDC: bigint;

@@ -1,0 +1,215 @@
+import { isDeepStrictEqual } from 'node:util';
+import { NATIVE } from '@cloakroom/shared';
+import type {
+  Journal, MarginAccounting, MarginFundingEvent, MarginFundingRequest,
+  MarginFundingReservation, MarginLendingBalance, MarginLendingCommand, SerialQueue,
+} from '@cloakroom/shared';
+import { getAddress } from 'viem';
+import type { Address } from 'viem';
+import type { InMemoryLedger } from './ledger.js';
+
+type Claim = { owner: Address; token: Address; amount: bigint; ref: string };
+type BalanceLedger = Pick<InMemoryLedger, 'getBalance' | 'getReservation' | 'reserve' | 'release'>;
+const claimKey = (owner: Address, token: Address) => `${getAddress(owner)}:${getAddress(token)}`;
+const fundingRef = (opId: string) => `margin:funding:${opId}`;
+const collateralRef = (opId: string) => `margin:collateral:${opId}`;
+function positive(value: bigint) {
+  if (typeof value !== 'bigint' || value <= 0n) throw new Error('MARGIN_AMOUNT_INVALID');
+}
+
+/** Projected alongside the ordinary ledger, so both recover from the same journal. */
+export class MarginFundingState {
+  private readonly claims = new Map<string, Claim>();
+  private readonly holds = new Map<string, MarginFundingReservation>();
+  private readonly commands = new Map<string, MarginFundingEvent>();
+
+  constructor(private readonly ledger: BalanceLedger) {}
+
+  pool(token: Address): { supplied: bigint; reserved: bigint; available: bigint } {
+    token = getAddress(token);
+    let supplied = 0n, reserved = 0n;
+    for (const claim of this.claims.values()) if (claim.token === token) supplied += claim.amount;
+    for (const hold of this.holds.values()) {
+      if (hold.status === 'reserved' && hold.borrow.token === token) reserved += hold.borrow.amount;
+    }
+    return { supplied, reserved, available: supplied - reserved };
+  }
+
+  balance(owner: Address, token: Address): MarginLendingBalance {
+    token = getAddress(token);
+    const claimAmount = this.claims.get(claimKey(owner, token))?.amount ?? 0n;
+    const available = this.pool(token).available;
+    return { token, claimAmount, redeemableAmount: claimAmount < available ? claimAmount : available };
+  }
+
+  balances(owner: Address): MarginLendingBalance[] {
+    owner = getAddress(owner);
+    return [...this.claims.values()].filter((claim) => claim.owner === owner)
+      .map((claim) => this.balance(owner, claim.token));
+  }
+
+  reservation(opId: string): MarginFundingReservation | undefined {
+    const hold = this.holds.get(opId);
+    return hold && structuredClone(hold);
+  }
+
+  reservations(): MarginFundingReservation[] {
+    return [...this.holds.values()].filter((hold) => hold.status === 'reserved').map((hold) => structuredClone(hold));
+  }
+
+  private checkHold(ref: string, owner: Address, token: Address, amount: bigint) {
+    const hold = this.ledger.getReservation(ref);
+    if (!hold || hold.status !== 'active' || hold.owner !== owner || hold.token !== token || hold.amount !== amount) {
+      throw new Error('MARGIN_RESERVATION_MISMATCH');
+    }
+  }
+
+  /** False means an identical command was already applied; validate before appending. */
+  validate(event: MarginFundingEvent): boolean {
+    if (typeof event.opId !== 'string' || !event.opId) throw new Error('MARGIN_OP_INVALID');
+    if (event.t === 'MARGIN_OPEN_RELEASED') {
+      const hold = this.holds.get(event.opId);
+      if (!hold) throw new Error('MARGIN_RESERVATION_NOT_FOUND');
+      if (hold.status === 'released') return false;
+      this.checkHold(collateralRef(hold.opId), hold.owner, hold.collateral.token, hold.collateral.amount);
+      return true;
+    }
+    const previous = this.commands.get(event.opId);
+    if (previous) {
+      if (!isDeepStrictEqual(previous, event)) throw new Error('MARGIN_OP_CONFLICT');
+      return false;
+    }
+    const owner = getAddress(event.owner);
+    if (event.t === 'MARGIN_OPEN_RESERVED') {
+      positive(event.collateral.amount); positive(event.borrow.amount);
+      const collateral = getAddress(event.collateral.token), borrowed = getAddress(event.borrow.token);
+      if (this.ledger.getReservation(collateralRef(event.opId))) throw new Error('MARGIN_OP_CONFLICT');
+      if (this.ledger.getBalance(owner, collateral).available < event.collateral.amount) throw new Error('INSUFFICIENT_BALANCE');
+      if (this.pool(borrowed).available < event.borrow.amount) throw new Error('INSUFFICIENT_LENDING_LIQUIDITY');
+    } else {
+      positive(event.amount);
+      const token = getAddress(event.token);
+      const claim = this.claims.get(claimKey(owner, token));
+      if (claim) this.checkHold(claim.ref, owner, token, claim.amount);
+      if (this.ledger.getReservation(fundingRef(event.opId))) throw new Error('MARGIN_OP_CONFLICT');
+      if (event.t === 'MARGIN_SUPPLIED') {
+        if (this.ledger.getBalance(owner, token).available < event.amount) throw new Error('INSUFFICIENT_BALANCE');
+      } else {
+        if ((claim?.amount ?? 0n) < event.amount) throw new Error('INSUFFICIENT_LENDING_CLAIM');
+        if (this.pool(token).available < event.amount) throw new Error('INSUFFICIENT_LENDING_LIQUIDITY');
+      }
+    }
+    return true;
+  }
+
+  apply(event: MarginFundingEvent): void {
+    if (!this.validate(event)) return;
+    if (event.t === 'MARGIN_OPEN_RELEASED') {
+      this.ledger.release(collateralRef(event.opId));
+      this.holds.get(event.opId)!.status = 'released';
+      return;
+    }
+    const owner = getAddress(event.owner);
+    if (event.t === 'MARGIN_OPEN_RESERVED') {
+      const collateral = { token: getAddress(event.collateral.token), amount: event.collateral.amount };
+      this.ledger.reserve(owner, collateral.token, collateral.amount, collateralRef(event.opId));
+      this.holds.set(event.opId, { opId: event.opId, owner, collateral,
+        borrow: { token: getAddress(event.borrow.token), amount: event.borrow.amount }, status: 'reserved' });
+    } else {
+      const token = getAddress(event.token), key = claimKey(owner, token);
+      const previous = this.claims.get(key);
+      const amount = (previous?.amount ?? 0n) + (event.t === 'MARGIN_SUPPLIED' ? event.amount : -event.amount);
+      // Replace the aggregate hold synchronously; partial redemption needs no new base-ledger API.
+      if (previous) this.ledger.release(previous.ref);
+      if (amount > 0n) {
+        const ref = fundingRef(event.opId);
+        this.ledger.reserve(owner, token, amount, ref);
+        this.claims.set(key, { owner, token, amount, ref });
+      } else this.claims.delete(key);
+    }
+    this.commands.set(event.opId, structuredClone(event));
+  }
+
+  assertInvariants(): void {
+    for (const claim of this.claims.values()) {
+      positive(claim.amount);
+      this.checkHold(claim.ref, claim.owner, claim.token, claim.amount);
+    }
+    for (const hold of this.holds.values()) {
+      if (hold.status !== 'reserved') continue;
+      this.checkHold(collateralRef(hold.opId), hold.owner, hold.collateral.token, hold.collateral.amount);
+      if (this.pool(hold.borrow.token).available < 0n) throw new Error('MARGIN_LIQUIDITY_MISMATCH');
+    }
+  }
+}
+
+export interface MarginFundingDeps {
+  ledger: InMemoryLedger;
+  journal: Pick<Journal, 'append'>;
+  queue: SerialQueue;
+  usdc: Address;
+}
+
+/** Funding only. Use the same queue as withdrawals and spot orders. */
+export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem' | 'lendingBalances'> {
+  private readonly usdc: Address;
+  private faulted = false;
+
+  constructor(private readonly deps: MarginFundingDeps) {
+    this.usdc = getAddress(deps.usdc);
+    if (this.usdc === NATIVE) throw new Error('MARGIN_TOKEN_INVALID');
+  }
+
+  private token(token: Address): Address {
+    const normalized = getAddress(token);
+    if (normalized !== NATIVE && normalized !== this.usdc) throw new Error('MARGIN_TOKEN_INVALID');
+    return normalized;
+  }
+
+  private async commit(event: MarginFundingEvent): Promise<void> {
+    const snapshot = structuredClone(event);
+    await this.deps.queue.run(async () => {
+      if (this.faulted) throw new Error('MARGIN_FUNDING_UNAVAILABLE');
+      if (!this.deps.ledger.margin.validate(snapshot)) return;
+      try {
+        await this.deps.journal.append(snapshot);
+        this.deps.ledger.apply(snapshot);
+      } catch (error) {
+        // An uncertain write must be replayed before any further funding changes.
+        this.faulted = true;
+        throw error;
+      }
+    });
+  }
+
+  async supply(command: MarginLendingCommand): Promise<MarginLendingBalance> {
+    const event = { t: 'MARGIN_SUPPLIED', opId: command.opId, owner: getAddress(command.owner),
+      token: this.token(command.token), amount: command.amount } as const;
+    await this.commit(event);
+    return this.deps.ledger.margin.balance(event.owner, event.token);
+  }
+
+  async redeem(command: MarginLendingCommand): Promise<MarginLendingBalance> {
+    const event = { t: 'MARGIN_REDEEMED', opId: command.opId, owner: getAddress(command.owner),
+      token: this.token(command.token), amount: command.amount } as const;
+    await this.commit(event);
+    return this.deps.ledger.margin.balance(event.owner, event.token);
+  }
+
+  async reserveOpen(request: MarginFundingRequest): Promise<MarginFundingReservation> {
+    const event = { t: 'MARGIN_OPEN_RESERVED', opId: request.opId, owner: getAddress(request.owner),
+      collateral: { token: this.usdc, amount: request.collateralUSDC },
+      borrow: { token: this.token(request.borrow.token), amount: request.borrow.amount } } as const;
+    await this.commit(event);
+    return this.deps.ledger.margin.reservation(event.opId)!;
+  }
+
+  /** Release only a funding reservation that has not been authorized for execution. */
+  async releaseOpen(opId: string): Promise<void> {
+    await this.commit({ t: 'MARGIN_OPEN_RELEASED', opId });
+  }
+
+  lendingBalances(owner: Address): readonly MarginLendingBalance[] {
+    return this.deps.ledger.margin.balances(owner);
+  }
+}
