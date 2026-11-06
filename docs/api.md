@@ -116,6 +116,7 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 | Method and path | Inner request | Response body after opening |
 | --- | --- | --- |
 | `GET /attestation` | none | `{ quote, enclavePubKey, buildHash, chainId }` |
+| `GET /sim/enclave-key` | none | `{ enclavePubKey, chainId, simulated: true }`. Only when `SIM_MODE=true`. The key is not attested, so show the TEE-simulated banner |
 | `POST /session` | `SessionGrant` + wallet signature | `{ ok: true, expiresAt }` |
 | `POST /deposit-session` | `DepositRequest` + signature | `{ sessionId, depositAddress, expiresAt }` |
 | `POST /balance` | `SessionQuery` + session signature | `{ balances: Balance[] }` |

@@ -108,6 +108,14 @@ export async function buildApp(options: {
     }
   });
 
+  // Simulation has no quote to prove this key, so clients must not treat it as attested.
+  if (config.SIM_MODE) {
+    app.get('/sim/enclave-key', async (_request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      return { enclavePubKey: keys.transportPublicKey(), chainId: config.CHAIN_ID, simulated: true };
+    });
+  }
+
   await app.register(custodyRoutes, {
     keys,
     adminAddress: config.ADMIN_ADDRESS,

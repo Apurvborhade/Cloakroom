@@ -282,6 +282,20 @@ describe('routes', () => {
     expect(response.json()).toEqual({ error: 'INTERNAL_ERROR' });
   });
 
+  it('offers the unattested key only in simulation mode', async () => {
+    const simulated = await boot();
+    const response = await simulated.app.inject({ url: '/sim/enclave-key' });
+    expect(response.json()).toEqual({
+      enclavePubKey: simulated.parts.keys.transportPublicKey(),
+      chainId: foundry.id,
+      simulated: true,
+    });
+    await simulated.stop();
+
+    const real = await boot({ config: env({ SIM_MODE: 'false' }) });
+    expect((await real.app.inject({ url: '/sim/enclave-key' })).statusCode).toBe(404);
+  });
+
   it('registers the custody route only while seeding is on', async () => {
     const seeding = await boot();
     expect((await seeding.app.inject({ method: 'POST', url: '/admin/eoas', payload: {} })).statusCode).toBe(400);
