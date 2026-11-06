@@ -162,4 +162,15 @@ describe('action eligibility', () => {
     expect(screen.getAllByRole('button', { name: 'Add collateral' })).toHaveLength(1);
     expect(screen.getAllByText('Unavailable').length).toBeGreaterThanOrEqual(4);
   });
+
+  it('shows why a close failed on the row, and still lets the user retry', () => {
+    const base = { side: 'long', collateral: '100000000', sizeUsd: '200000000', debtToken: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', debt: '100000000', assetToken: '0x0000000000000000000000000000000000000000', asset: '1' };
+    positions.value = { ...positions.value, data: { positions: [
+      { ...base, id: `0x${'0c'.repeat(32)}`, status: 'open', reason: 'NO_INVENTORY' },
+    ] } };
+    wrap(<PositionsTable />);
+    expect(screen.getByText(/Last close didn't go through: No pool address can run this swap/)).toBeTruthy();
+    expect(screen.getByText(/\(NO_INVENTORY\)/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+  });
 });

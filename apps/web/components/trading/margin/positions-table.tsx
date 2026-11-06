@@ -175,6 +175,15 @@ export function PositionsTable() {
                         </div>
                       </td>
                     </tr>
+                    {position.status === 'open' && position.reason && (
+                      <tr>
+                        <td colSpan={9} className="px-5 pb-3">
+                          <Notice tone="error" title={`Last close didn't go through: ${explainAttempt(position.reason)?.title ?? position.reason}`}>
+                            {explainAttempt(position.reason)?.detail} The position is still open and nothing was lost. You can press Close to try again. <span className="font-mono text-xs">({position.reason})</span>
+                          </Notice>
+                        </td>
+                      </tr>
+                    )}
                     {expanded === position.id && (
                       <tr><td colSpan={9} className="bg-ink-900/50 px-5 py-4"><PositionDetail position={position} /></td></tr>
                     )}
