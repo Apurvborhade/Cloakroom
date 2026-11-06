@@ -1,9 +1,14 @@
 /**
  * Runs a real swap on Sepolia through the live Trading API and Universal Router, using the real
- * executor, inventory, ledger and queue. The journal and signer are stand-ins.
+ * executor, inventory, journal, ledger and queue. The signer is a stand-in, and the journal is a
+ * temporary file with a throwaway key.
  *
  * Refuses to run anywhere except Sepolia. Spends test ETH only. See scripts/README.md.
  */
+import { randomBytes } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { NATIVE } from '@cloakroom/shared';
 import type { CustodyEOA, IntentStatus, StoredIntent } from '@cloakroom/shared';
 import {
@@ -24,7 +29,8 @@ import { sepolia } from 'viem/chains';
 import { Executor } from '../src/executor.js';
 import type { ExpectedTransaction, TransactionSigner } from '../src/executor.js';
 import { Inventory } from '../src/inventory.js';
-import { InMemoryLedger } from '../src/ledger.js';
+import { EncryptedJournal } from '../src/journal.js';
+import { InMemoryLedger, replayLedger } from '../src/ledger.js';
 import { FifoSerialQueue } from '../src/queue.js';
 import { UniswapClient } from '../src/uniswap.js';
 
@@ -148,19 +154,15 @@ async function main(): Promise<void> {
     gasReserveWei: GAS_RESERVE,
   });
   const ledger = new InMemoryLedger();
-  const events: string[] = [];
+  const journalDirectory = await mkdtemp(join(tmpdir(), 'cloakroom-smoke-'));
+  const journal = new EncryptedJournal({ filePath: join(journalDirectory, 'smoke.journal'), key: randomBytes(32) });
   const marks: IntentStatus[] = [];
   const executor = new Executor({
     chain: client,
     chainId,
     signer: new GuardedSigner(new Map([[inventoryEoa, inventoryKey]])),
     inventory,
-    journal: {
-      append: async (event) => {
-        events.push(event.t);
-        return {} as never;
-      },
-    },
+    journal,
     ledger,
     queue: new FifoSerialQueue(),
     confirmations: CONFIRMATIONS,
@@ -196,10 +198,17 @@ async function main(): Promise<void> {
     expiry: BigInt(Math.floor(Date.now() / 1000) + 3600),
   };
   const stored: StoredIntent = { id: `smoke-${Date.now()}`, owner, intent, status: 'pending', createdAt: 0 };
-  ledger.apply({ t: 'DEPOSIT_CREDITED', id: 'smoke-deposit', owner, amount: SWAP_AMOUNT, block: 1n });
-  ledger.apply({ t: 'INTENT_CREATED', id: stored.id, owner, intent });
 
   try {
+    const setupEvents = [
+      { t: 'DEPOSIT_CREDITED', id: 'smoke-deposit', owner, amount: SWAP_AMOUNT, block: 1n },
+      { t: 'INTENT_CREATED', id: stored.id, owner, intent },
+    ] as const;
+    for (const event of setupEvents) {
+      await journal.append(event);
+      ledger.apply(event);
+    }
+
     console.log('\n1. Seed the swap address');
     const wallet = createWalletClient({ account: funder, chain: sepolia, transport });
     const seedHash = await wallet.sendTransaction({ to: inventoryEoa, value: SEED_AMOUNT });
@@ -233,10 +242,22 @@ async function main(): Promise<void> {
       check('owner credited the output minus the fee', ledger.getBalance(owner, tokenOut).available === outcome.amountOut - outcome.fee);
       check('reserved ETH consumed', ledger.getBalance(owner, NATIVE).reserved === 0n);
       check('fee booked as revenue', ledger.getProtocolRevenue(tokenOut) === outcome.fee);
-      check('journaled broadcast, settled, gas', events.join() === 'EXEC_BROADCAST,EXEC_SETTLED,FEE_BOOKED');
+      const events: string[] = [];
+      for await (const entry of journal.replay()) events.push(entry.event.t);
+      check(
+        'journaled funding, order, broadcast, settled, gas',
+        events.join() === 'DEPOSIT_CREDITED,INTENT_CREATED,EXEC_BROADCAST,EXEC_SETTLED,FEE_BOOKED',
+      );
+      const rebuilt = await replayLedger(journal);
+      check(
+        'replaying the journal rebuilds the owner balance',
+        rebuilt.getBalance(owner, tokenOut).available === ledger.getBalance(owner, tokenOut).available,
+      );
       check('status went executing, then done', marks.join() === 'executing,done');
     }
   } finally {
+    await journal.close();
+    await rm(journalDirectory, { recursive: true, force: true });
     console.log('\n3. Return test ETH');
     await returnFunds();
     const endBalance = await client.getBalance({ address: funder.address });
