@@ -52,6 +52,7 @@ export class KeyManager implements TransactionSigner {
   readonly #journal: Pick<Journal, 'append' | 'replay'>;
   readonly #policy: Readonly<SigningPolicy>;
   readonly #allowCreate: boolean;
+  readonly #onFault?: () => void;
   readonly #queue = new FifoSerialQueue();
   readonly #registered = new Map<string, ExpectedTransaction>();
   #state: State | undefined;
@@ -64,7 +65,7 @@ export class KeyManager implements TransactionSigner {
 
   constructor(options: {
     vault: StateVault; journal: Pick<Journal, 'append' | 'replay'>;
-    policy: SigningPolicy; simMode?: boolean; allowCreate?: boolean;
+    policy: SigningPolicy; simMode?: boolean; allowCreate?: boolean; onFault?: () => void;
   }) {
     if (options.vault.protection === 'simulation' && options.simMode !== true) throw new Error('SIM_MODE_REQUIRED');
     const policy = options.policy;
@@ -75,6 +76,7 @@ export class KeyManager implements TransactionSigner {
     this.#journal = options.journal;
     this.#policy = Object.freeze({ ...policy });
     this.#allowCreate = options.allowCreate === true;
+    this.#onFault = options.onFault;
   }
 
   [inspect.custom](): string { return '[KeyManager]'; }
@@ -84,6 +86,10 @@ export class KeyManager implements TransactionSigner {
     this.#initializing ??= this.#initialize();
     return this.#initializing;
   }
+
+  close(): void { this.#faulted = true; }
+
+  #fault(): void { this.#faulted = true; this.#onFault?.(); }
 
   async #initialize(): Promise<void> {
     try {
@@ -109,7 +115,7 @@ export class KeyManager implements TransactionSigner {
       }
       this.#initialized = true;
     } catch {
-      this.#faulted = true;
+      this.#fault();
       throw new Error('KEY_MANAGER_UNAVAILABLE');
     }
   }
@@ -134,7 +140,7 @@ export class KeyManager implements TransactionSigner {
         }
       }
     } catch {
-      this.#faulted = true;
+      this.#fault();
       throw new Error('KEY_MANAGER_UNAVAILABLE');
     }
   }
@@ -154,7 +160,7 @@ export class KeyManager implements TransactionSigner {
       this.#state = next;
     } catch {
       // A write may have committed before its acknowledgement was lost. Never guess.
-      this.#faulted = true;
+      this.#fault();
       throw new Error('KEY_MANAGER_UNAVAILABLE');
     }
   }

@@ -76,7 +76,7 @@ def main():
             self.wfile.write(data)
 
         def handle_blob(self, writing):
-            match = re.fullmatch(r"/blobs/([a-f0-9]{64})/(custody|wrapping)", self.path)
+            match = re.fullmatch(r"/blobs/([a-f0-9]{64})/(custody|wrapping|journal)", self.path)
             if not match:
                 self.respond(400)
                 return

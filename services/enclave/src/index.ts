@@ -1,4 +1,7 @@
 export { FifoSerialQueue } from './queue.js';
+export { SnapshotJournal } from './snapshot-journal.js';
+export { openCustodyRuntime } from './custody-runtime.js';
+export { openNitroRuntime } from './nitro-custody.js';
 export {
   EncryptedJournal,
   computeEntryHash,

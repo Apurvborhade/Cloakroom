@@ -85,7 +85,7 @@ export interface Journal {
 
 ### EncryptedJournal Implementation
 
-The production journal implementation resides in `services/enclave/src/journal.ts` (`EncryptedJournal`).
+The file-backed journal resides in `services/enclave/src/journal.ts` (`EncryptedJournal`). Nitro uses `SnapshotJournal` over parent storage, described below.
 
 #### Binary Frame Format
 
@@ -232,8 +232,8 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 
 ## Boot order
 
-1. Init keys
-2. Open the journal with `KeyManager.journalCipher()`, replay it into the ledger and intent store, then call `KeyManager.restoreSigningState()`
+1. Call `openNitroRuntime({ keyArn, region, vaultId, policy, buildHash })` to restore keys, verify the journal, rebuild the ledger, restore signing state and obtain an NSM quote.
+2. Replay other application state, including the intent store, from the returned `journal`.
 3. Refresh inventory
 4. Run `Executor.recover()`
 5. Open the server and start the watcher
@@ -249,4 +249,8 @@ Key initialization does not read the journal, so opening an encrypted journal ca
 
 The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; ledger replay ignores this signing metadata. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 
-`journalCipher()` exposes encryption/decryption operations, never the derived key. Pass KeyManager a deferred journal interface, initialize keys, open `EncryptedJournal` with `cipher: keys.journalCipher()`, then replay and restore signing state before serving requests. File-backed restart tests cover identity, balances and cached signatures. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing custody state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. Live IAM/KMS provisioning and external rollback anchoring remain open; rolling back all persisted state together is outside the local check.
+`journalCipher()` exposes encryption/decryption operations, never the derived key. Custody, HPKE and journal material are domain-separated. `openNitroRuntime` returns `{ keys, journal, ledger, attestation, close }` only after recovery and attestation succeed. `openCustodyRuntime` provides the same sequence with injected storage and quote providers for local integration tests; simulation wrapping keys require explicit simulation mode.
+
+`SnapshotJournal` stores the entire encrypted journal in the parent's `journal.blob`, capped at 4 MiB including encryption overhead. Each append atomically replaces it through ciphertext CAS; the parent syncs the file and directory before acknowledging. Apply events to memory only after `append` resolves. `JOURNAL_FULL` rejects before writing. A conflicting or uncertain write disables both signing and journal writes until a fresh runtime reloads storage. The snapshot format is separate from `EncryptedJournal` frames; there is no automatic migration.
+
+Initial creation requires `allowCreate: true` and all three blobs (`wrapping`, `custody`, `journal`) absent. Ordinary restarts require all three; missing or corrupt state is never silently replaced. Local tests cover storage-process restarts, dropped acknowledgements, identity, balances and cached signatures. Live IAM/KMS recovery remains unverified. Rolling back all persisted state together still requires an external trusted checkpoint.

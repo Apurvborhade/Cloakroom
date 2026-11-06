@@ -89,6 +89,26 @@ export function computeEntryHash(
   return keccak256(concat([packedHeader, prevHash, eventHex]));
 }
 
+export function validateJournalEntry(value: unknown, sequence: number, prevHash: Hex): JournalEntry {
+  const entry = value as JournalEntry;
+  if (!entry || !Number.isSafeInteger(entry.sequence) || !Number.isSafeInteger(entry.timestamp)
+      || entry.timestamp < 0 || !/^0x[a-fA-F0-9]{64}$/.test(entry.prevHash)
+      || !/^0x[a-fA-F0-9]{64}$/.test(entry.entryHash) || !entry.event || typeof entry.event.t !== 'string') {
+    throw new Error('JOURNAL_CORRUPT: malformed payload');
+  }
+  if (entry.sequence !== sequence) throw new Error('JOURNAL_CORRUPT: sequence gap');
+  if (entry.prevHash !== prevHash) throw new Error('JOURNAL_CORRUPT: broken hash chain');
+  if (computeEntryHash(entry.sequence, entry.timestamp, entry.prevHash, entry.event) !== entry.entryHash) {
+    throw new Error('JOURNAL_CORRUPT: entry hash mismatch');
+  }
+  return entry;
+}
+
+function parseEntry(plaintext: Buffer): unknown {
+  try { return parseCanonicalJson(plaintext.toString('utf8')); }
+  catch { throw new Error('JOURNAL_CORRUPT: malformed payload'); }
+}
+
 /** AES-GCM records: [length:u32][iv:12][ciphertext:length][tag:16]. Single writer. */
 export class EncryptedJournal implements Journal {
   private readonly filePath: string;
@@ -276,22 +296,7 @@ export class EncryptedJournal implements Journal {
       } catch {
         throw new Error('JOURNAL_CORRUPT: authentication tag verification failed');
       }
-      let entry: JournalEntry;
-      try {
-        entry = parseCanonicalJson<JournalEntry>(plaintext.toString('utf8'));
-        if (!entry || !Number.isSafeInteger(entry.sequence) || !Number.isSafeInteger(entry.timestamp)
-            || entry.timestamp < 0 || !/^0x[a-fA-F0-9]{64}$/.test(entry.prevHash)
-            || !/^0x[a-fA-F0-9]{64}$/.test(entry.entryHash) || !entry.event || typeof entry.event.t !== 'string') {
-          throw new Error();
-        }
-      } catch {
-        throw new Error('JOURNAL_CORRUPT: malformed payload');
-      }
-      if (entry.sequence !== sequence) throw new Error('JOURNAL_CORRUPT: sequence gap');
-      if (entry.prevHash !== prevHash) throw new Error('JOURNAL_CORRUPT: broken hash chain');
-      if (computeEntryHash(entry.sequence, entry.timestamp, entry.prevHash, entry.event) !== entry.entryHash) {
-        throw new Error('JOURNAL_CORRUPT: entry hash mismatch');
-      }
+      const entry = validateJournalEntry(parseEntry(plaintext), sequence, prevHash);
       offset += frameLength;
       sequence++;
       prevHash = entry.entryHash;
