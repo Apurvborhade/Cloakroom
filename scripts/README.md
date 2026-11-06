@@ -3,7 +3,7 @@
 | Script | Purpose |
 | --- | --- |
 | `seed-inventory.ts` | Claim the custody addresses once, then fund them |
-| `demo-fixture.ts` | Two users, scripted run |
+| `demo-fixture.ts` | Two users, scripted run, on a local chain or Sepolia |
 
 **Owner:** Apurva.
 
@@ -85,3 +85,25 @@ pnpm seed:fund --execute
 It swaps ETH for any tokens the wallet is missing, using the same calldata checks as swaps, and checks the wallet can cover everything before sending. Running it again only tops up what is missing.
 
 Afterwards, set `SEEDING_ENABLED=false`. Funding makes these addresses public, and funding them all from one wallet links them on-chain, which is a known leak.
+
+## Two-user demo
+
+`services/enclave/scripts/demo-fixture.ts` runs the whole demo script as one command: two users deposit, one swaps and withdraws, and three attacks fail. It prints each step, and checks it.
+
+**What is real:** auth, journal, ledger, queue, watcher, inventory, price poller and executor.
+
+**What is not yet real:** a stand-in signer and intent store, no API or UI, and nothing runs in a TEE. The output says so. Use it to rehearse and to test the core, not as the finished demo.
+
+On a local chain, with a mock Uniswap router and no setup beyond Foundry:
+
+```bash
+pnpm demo:local
+```
+
+On real Sepolia, with the real Trading API and Universal Router. This spends test ETH, and needs the same `.env` as `pnpm smoke:swap`:
+
+```bash
+pnpm demo:sepolia
+```
+
+The Sepolia run takes several minutes. Unspent ETH goes back to the test wallet at the end, and tokens stay at the test addresses.

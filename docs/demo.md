@@ -13,6 +13,10 @@ For the Anon-RPC prize, the video must also show chain reads going through Anon-
 7. Run the replay, wrong-destination and double-spend attacks. All are rejected.
 8. Close on the known-leaks slide: amounts and timing, the visible payout edge, gas funding, and the enclave's own RPC reads.
 
+## Rehearsing
+
+`pnpm demo:local` and `pnpm demo:sepolia` run these steps from the command line, with real core components but a stand-in signer and intent store, and no API or UI. See [scripts/README.md](../scripts/README.md).
+
 ## Say out loud
 
 - The inventory was operator-seeded before the demo.
