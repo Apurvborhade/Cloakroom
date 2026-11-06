@@ -65,7 +65,7 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 
 ## Seeding
 
-Mount `custodyRoutes` during initial funding. A signed, encrypted admin call returns inventory EOA addresses once through an authenticated encrypted response. Funding tooling is a separate executor handoff. Set `SEEDING_ENABLED=false` after setup. The one-time disclosure flag also survives restart. Funding exposes these inventory addresses on-chain.
+Mount `custodyRoutes` during initial funding. A signed, encrypted admin call returns inventory EOA addresses once through an authenticated encrypted response. Use `pnpm seed:claim` and `pnpm seed:fund`, as described in [scripts/README.md](../scripts/README.md). Set `SEEDING_ENABLED=false` after setup. The one-time disclosure flag also survives restart. Funding exposes these inventory addresses on-chain.
 
 ## Release steps
 

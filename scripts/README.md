@@ -2,7 +2,7 @@
 
 | Script | Purpose |
 | --- | --- |
-| `seed-inventory.ts` | Fund and label the custody EOAs |
+| `seed-inventory.ts` | Claim the custody addresses once, then fund them |
 | `demo-fixture.ts` | Two users, scripted run |
 
 **Owner:** Apurva.
@@ -49,3 +49,39 @@ pnpm smoke:swap
 ```
 
 Unspent ETH goes back to the test wallet at the end. The swapped tokens stay at the swap address.
+
+## Seeding the inventory
+
+`services/enclave/scripts/seed-inventory.ts` has two steps. It refuses to run anywhere except Sepolia or a local Anvil chain.
+
+### 1. Claim the addresses
+
+**The enclave discloses these only once, and a lost response does not reopen it.** The script saves them straight away to `.seed-addresses.json`, which git ignores, and refuses to claim again while that file exists. Keep the file until funding is finished.
+
+Take `ENCLAVE_PUB_KEY` from an attestation you have verified. The enclave must have `SEEDING_ENABLED=true`.
+
+Add to `.env`: `ENCLAVE_URL`, `ENCLAVE_PUB_KEY`, `CHAIN_ID` and `ADMIN_PRIVATE_KEY`.
+
+```bash
+pnpm seed:claim
+```
+
+### 2. Fund them
+
+Add to `.env`, alongside the Uniswap settings above: `RPC_URL`, `SEED_FUNDER_PRIVATE_KEY`, `GAS_RESERVE_WEI`, `SEED_ETH_PER_EOA_WEI` (ETH each address should hold, above its gas reserve) and `SEED_TOKEN_PER_EOA` (output token each address should hold, in base units).
+
+Preview what it would do. This sends nothing:
+
+```bash
+pnpm seed:fund
+```
+
+Then fund them:
+
+```bash
+pnpm seed:fund --execute
+```
+
+It swaps ETH for any tokens the wallet is missing, using the same calldata checks as swaps, and checks the wallet can cover everything before sending. Running it again only tops up what is missing.
+
+Afterwards, set `SEEDING_ENABLED=false`. Funding makes these addresses public, and funding them all from one wallet links them on-chain, which is a known leak.
