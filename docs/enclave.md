@@ -98,8 +98,8 @@ Each journal entry on disk is framed as:
 +-----------------------+-------------------+----------------------+--------------------+
 ```
 
-- **Encryption:** AES-256-GCM using a 32-byte key (passed directly or derived). A fresh cryptographic 12-byte IV is generated per record.
-- **Payload:** Serialized JSON payload containing `{ seq, ts, prevHash, hash, event }`.
+- **Encryption:** Pass `cipher: keys.journalCipher()` to `EncryptedJournal.open({ filePath, cipher })`. The existing `key` option remains supported; supply exactly one. Each record uses a fresh 12-byte IV.
+- **Payload:** Serialized JSON containing `{ sequence, timestamp, prevHash, entryHash, event }`.
 - **Deterministic Serialization:** Canonical JSON sorting keys alphabetically and formatting `bigint` values as `"123n"`.
 - **Entry Hash Calculation:**
   ```ts
@@ -114,12 +114,12 @@ Each journal entry on disk is framed as:
 - **Hash-Chain:** Genesis hash is `0x0000000000000000000000000000000000000000000000000000000000000000`. Every entry stores the `prevHash` of the preceding entry.
 - **Append Durability:**
   - Concurrent appends serialize via internal Promise chaining.
-  - Payload encrypted and framed, written to file handle, followed immediately by `handle.sync()` (`fsync`).
+  - Short writes are completed before `handle.sync()` (`fsync`). Oversized records are rejected before writing.
   - Sequence number and hash chain advance in memory only after durable write succeeds.
-  - If a write or sync fails, the file is truncated back to its pre-write position to avoid corrupted tails.
+  - Failed appends roll back to the known pre-write offset. If truncation or its `fsync` fails, the journal refuses further operations.
 - **Replay & Crash Recovery:**
   - Iterates frames sequentially, validating frame size, IV, auth tag, decryption, JSON schema, sequence continuity (`seq === lastSeq + 1`), previous hash pointer (`prevHash === lastHash`), and cryptographic entry hash.
-  - Crash recovery at EOF: If an incomplete frame is encountered at EOF (process terminated during write before sync completed), the corrupted or partial trailing bytes are truncated, the journal restores to the last valid frame, and subsequent appends succeed cleanly.
+  - Incomplete records, including EOF tails, stop startup or replay without changing the file. A partial append cannot be distinguished safely from a damaged committed record; automatic tail truncation is disabled.
   - Mid-file corruptions, sequence gaps, broken hash links, or oversized frames throw fatal errors and halt replay.
 - **Lifecycle:**
   - `close()` flushes and closes file handles idempotently. Operations after close reject immediately.
@@ -249,4 +249,4 @@ Key initialization does not read the journal, so opening an encrypted journal ca
 
 The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; ledger replay ignores this signing metadata. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 
-`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` currently accepts raw key bytes; connecting the two still requires a cipher adapter. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.
+`journalCipher()` exposes encryption/decryption operations, never the derived key. Pass KeyManager a deferred journal interface, initialize keys, open `EncryptedJournal` with `cipher: keys.journalCipher()`, then replay and restore signing state before serving requests. File-backed restart tests cover identity, balances and cached signatures. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing custody state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. Live IAM/KMS provisioning and external rollback anchoring remain open; rolling back all persisted state together is outside the local check.

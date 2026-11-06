@@ -381,33 +381,18 @@ describe('EncryptedJournal', () => {
     await journal.close();
   });
 
-  it('14. recovers from truncated final frames at EOF and allows future appends', async () => {
-    let journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
-    const e1 = await journal.append(sampleEvent1);
+  it.each([
+    Buffer.from([0x00, 0x00]),
+    Buffer.from([0x00, 0x00, 0x01, 0x00, 0xaa, 0xbb]),
+  ])('preserves an incomplete tail and refuses startup', async (tail) => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
     await journal.close();
-
-    // Append partial trailing bytes simulating crash during second write
-    const partialHeader = Buffer.from([0x00, 0x00, 0x01, 0x00, 0xaa, 0xbb]); // incomplete frame
-    await fs.appendFile(journalPath, partialHeader);
-
-    // Reopen journal
-    journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
-    expect(journal.sequence()).toBe(1);
-    expect(journal.lastEntryHash()).toBe(e1.entryHash);
-
-    const entries = await collectEntries(journal);
-    expect(entries).toHaveLength(1);
-
-    // Subsequent append succeeds normally
-    const e2 = await journal.append(sampleEvent2);
-    expect(e2.sequence).toBe(2);
-    expect(e2.prevHash).toBe(e1.entryHash);
-    await journal.close();
-
-    const reopened = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
-    const finalEntries = await collectEntries(reopened);
-    expect(finalEntries).toHaveLength(2);
-    await reopened.close();
+    await fs.appendFile(journalPath, tail);
+    const damaged = await fs.readFile(journalPath);
+    await expect(EncryptedJournal.open({ filePath: journalPath, key: testKey }))
+      .rejects.toThrow(/JOURNAL_CORRUPT: incomplete/);
+    expect(await fs.readFile(journalPath)).toEqual(damaged);
   });
 
   it('15. rejects corrupted authentication tag with fatal error', async () => {
@@ -443,6 +428,7 @@ describe('EncryptedJournal', () => {
 
     const broken = new EncryptedJournal({ filePath: journalPath, key: testKey });
     await expect(collectEntries(broken)).rejects.toThrow(/JOURNAL_CORRUPT/);
+    expect(await fs.readFile(journalPath)).toEqual(data);
   });
 
   it('17. rejects sequence-gap injection with fatal error', async () => {
@@ -541,31 +527,16 @@ describe('EncryptedJournal', () => {
     await expect(collectEntries(broken)).rejects.toThrow(/malformed payload/);
   });
 
-  it('20. rejects oversized frames exceeding maxRecordBytes', async () => {
-    const journal = await EncryptedJournal.open({
-      filePath: journalPath,
-      key: testKey,
-      maxRecordBytes: 100, // Small limit
-    });
-
-    const hugeEvent: JournalEvent = {
-      t: 'EXEC_FAILED',
-      opId: 'op-1',
-      intentId: 'i-1',
-      owner: '0x1111111111111111111111111111111111111111',
-      reason: 'A'.repeat(200), // Exceeds 100 bytes
-    };
-
-    // Append will write it, but replay with small maxRecordBytes will reject
-    await journal.append(hugeEvent);
+  it('rejects oversized records before writing and on reopening', async () => {
+    const smallJournal = await EncryptedJournal.open({ filePath: journalPath, key: testKey, maxRecordBytes: 50 });
+    await expect(smallJournal.append(sampleEvent1)).rejects.toThrow('JOURNAL_RECORD_TOO_LARGE');
+    expect((await fs.stat(journalPath)).size).toBe(0);
+    await smallJournal.close();
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
     await journal.close();
-
-    const smallJournal = new EncryptedJournal({
-      filePath: journalPath,
-      key: testKey,
-      maxRecordBytes: 50,
-    });
-    await expect(collectEntries(smallJournal)).rejects.toThrow(/exceeds maximum allowed size/);
+    await expect(EncryptedJournal.open({ filePath: journalPath, key: testKey, maxRecordBytes: 50 }))
+      .rejects.toThrow(/exceeds maximum allowed size/);
   });
 
   it('21. immediately rejects append calls after close', async () => {
@@ -584,4 +555,116 @@ describe('EncryptedJournal', () => {
     await journal.close();
     expect(true).toBe(true);
   });
+
+  it('completes short writes before acknowledging and survives reopening', async () => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    const handle = (journal as unknown as { fileHandle: fs.FileHandle }).fileHandle;
+    const write = handle.write.bind(handle);
+    const writes = vi.spyOn(handle, 'write').mockImplementation(((buffer: Buffer, offset: number, length: number, position: number) =>
+      write(buffer, offset, Math.min(7, length), position)) as typeof handle.write);
+    await journal.append(sampleEvent2);
+    expect(writes.mock.calls.length).toBeGreaterThan(1);
+    await journal.close();
+    const reopened = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    expect((await collectEntries(reopened)).map(({ event }) => event)).toEqual([sampleEvent1, sampleEvent2]);
+    await reopened.close();
+  });
+
+  it('rejects zero-byte writes without acknowledging or losing earlier records', async () => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    const handle = (journal as unknown as { fileHandle: fs.FileHandle }).fileHandle;
+    vi.spyOn(handle, 'write').mockResolvedValueOnce({ bytesWritten: 0, buffer: Buffer.alloc(0) });
+    await expect(journal.append(sampleEvent2)).rejects.toThrow('JOURNAL_WRITE_FAILED');
+    expect(journal.sequence()).toBe(1);
+    await journal.append(sampleEvent2);
+    await journal.close();
+    const reopened = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    expect((await collectEntries(reopened)).map(({ event }) => event)).toEqual([sampleEvent1, sampleEvent2]);
+    await reopened.close();
+  });
+
+  it('rolls back a partial failed append before admitting another write', async () => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    const original = await fs.readFile(journalPath);
+    const handle = (journal as unknown as { fileHandle: fs.FileHandle }).fileHandle;
+    const write = handle.write.bind(handle);
+    vi.spyOn(handle, 'write')
+      .mockImplementationOnce(((buffer: Buffer, offset: number, length: number, position: number) =>
+        write(buffer, offset, 7, position)) as typeof handle.write)
+      .mockRejectedValueOnce(new Error('DISK_FULL'));
+    await expect(journal.append(sampleEvent2)).rejects.toThrow('DISK_FULL');
+    expect(await fs.readFile(journalPath)).toEqual(original);
+    expect(journal.sequence()).toBe(1);
+    await journal.append(sampleEvent2);
+    expect((await collectEntries(journal)).map(({ event }) => event)).toEqual([sampleEvent1, sampleEvent2]);
+    await journal.close();
+  });
+
+  it.each(['truncate', 'sync'] as const)('refuses further operations after rollback %s fails', async (failure) => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    const handle = (journal as unknown as { fileHandle: fs.FileHandle }).fileHandle;
+    vi.spyOn(handle, 'write').mockRejectedValueOnce(new Error('WRITE_FAILED'));
+    vi.spyOn(handle, failure).mockRejectedValueOnce(new Error('ROLLBACK_FAILED'));
+    await expect(journal.append(sampleEvent2)).rejects.toThrow('WRITE_FAILED');
+    await expect(journal.append(sampleEvent2)).rejects.toThrow('JOURNAL_UNAVAILABLE');
+    await expect(collectEntries(journal)).rejects.toThrow('JOURNAL_UNAVAILABLE');
+    await journal.close();
+  });
+
+  it('does not acknowledge a failed fsync', async () => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    const original = await fs.readFile(journalPath);
+    const handle = (journal as unknown as { fileHandle: fs.FileHandle }).fileHandle;
+    vi.spyOn(handle, 'sync').mockRejectedValueOnce(new Error('SYNC_FAILED'));
+    await expect(journal.append(sampleEvent2)).rejects.toThrow('SYNC_FAILED');
+    expect(journal.sequence()).toBe(1);
+    expect(await fs.readFile(journalPath)).toEqual(original);
+    await journal.close();
+    const reopened = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    expect((await collectEntries(reopened)).map(({ event }) => event)).toEqual([sampleEvent1]);
+    await reopened.close();
+  });
+
+  it('reads complete records despite short reads', async () => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    await journal.append(sampleEvent2);
+    const handle = (journal as unknown as { fileHandle: fs.FileHandle }).fileHandle;
+    const read = handle.read.bind(handle);
+    vi.spyOn(handle, 'read').mockImplementation(((buffer: Buffer, offset: number, length: number, position: number) =>
+      read(buffer, offset, Math.min(length, 7), position)) as typeof handle.read);
+    expect((await collectEntries(journal)).map(({ event }) => event)).toEqual([sampleEvent1, sampleEvent2]);
+    await journal.close();
+  });
+
+  it.each([0, 1024 * 1024, 0xffffffff])('rejects a corrupt length %i without truncating on replay or restart', async (length) => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    await journal.append(sampleEvent2);
+    await journal.append({ ...sampleEvent1, nonce: 3n });
+    const damaged = await fs.readFile(journalPath);
+    const secondOffset = 4 + 12 + damaged.readUInt32BE(0) + 16;
+    damaged.writeUInt32BE(length, secondOffset);
+    await fs.writeFile(journalPath, damaged);
+    await expect(collectEntries(journal)).rejects.toThrow('JOURNAL_CORRUPT');
+    await expect(journal.append(sampleEvent2)).rejects.toThrow('JOURNAL_UNAVAILABLE');
+    await journal.close();
+    await expect(EncryptedJournal.open({ filePath: journalPath, key: testKey })).rejects.toThrow('JOURNAL_CORRUPT');
+    expect(await fs.readFile(journalPath)).toEqual(damaged);
+  });
+
+  it('refuses replay and append if the open file is truncated', async () => {
+    const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
+    await journal.append(sampleEvent1);
+    await fs.truncate(journalPath, 0);
+    await expect(collectEntries(journal)).rejects.toThrow('JOURNAL_CORRUPT');
+    await expect(journal.append(sampleEvent2)).rejects.toThrow('JOURNAL_UNAVAILABLE');
+    await journal.close();
+  });
+
 });
