@@ -25,7 +25,9 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 - [x] `packages/shared` with types, constants, schemas, and EIP-712 definitions. Unblocks Pradnyesh and Apurva (Task 2)
 - [x] Publish `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces so Apurva can code against them (Task 2)
 - [x] Fastify server and boot lifecycle: `server.ts`, `main.ts`
-- [ ] Route handlers and envelope decryption for the private API
+- [x] Session, deposit-session and balance routes, with envelope decryption: `routes.ts`
+- [x] Intent create, status and cancel routes, with the pipeline started at boot
+- [x] Withdrawal and withdrawal status routes
 
 ### Phase 1 (hours 3 to 12)
 
@@ -45,16 +47,16 @@ Then build:
 - [x] FifoSerialQueue with strict FIFO ordering and error isolation (Task 3)
 - [x] Journal, then ledger. Journal before state change, always (Task 4 & Task 5)
 - [x] Auth rules: signer, expiry (at most 5 minutes ahead for requests, strictly future for session grants, 60 seconds of skew for requests), nonce inside the queue, chain and salt (Task 6A integrated with Felix TEE PR #8)
-- [ ] `POST /session`, `/deposit-session`, `/balance`, `/withdrawals` (Task 6B)
-- [ ] In `POST /withdrawals`, reserve under the withdrawal ID and journal `WITHDRAWAL_LOCKED`, then call `Executor.runWithdrawal`
-- [ ] [Withdrawal status endpoint](../decisions/2026-11-06-0331-withdrawal-status-endpoint.md), with Pradnyesh
+- [x] `POST /session`, `/deposit-session`, `/balance`, `/withdrawals` (Task 6B)
+- [x] In `POST /withdrawals`, reserve under the withdrawal ID and journal `WITHDRAWAL_LOCKED`, then call `Executor.runWithdrawal`
+- [x] [Withdrawal status endpoint](../decisions/2026-11-06-0331-withdrawal-status-endpoint.md), with Pradnyesh
 - [x] Replay the journal on boot (deterministic replay implemented via `replayLedger`)
 - [ ] Read limits from `loadConfig` in `services/enclave/src/config.ts`, not the duplicates in `packages/shared/src/constants.ts`
 - [ ] `reconcile()`, using on-chain totals from Apurva's inventory
 
 ### Phase 2 (hours 12 to 22)
 
-- [ ] `POST /intents`, `/intents/status`, `/intents/cancel`
+- [x] `POST /intents`, `/intents/status`, `/intents/cancel`
 - [x] `IntentStore`: in-memory implementation (`add`, `cancel`, `expire`, `mark`, `get`, `listByOwner`, `due`) and deterministic journal recovery (`replayIntents`)
 - [x] Provide `IntentStore.due` for price poller / executor integration
 - [x] `IntentExecutionPipeline`: connects price poller lifecycle to conditional intent execution with concurrency guards, error isolation, and recovery compatibility
