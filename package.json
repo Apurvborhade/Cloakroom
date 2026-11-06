@@ -14,7 +14,8 @@
     "test": "pnpm --filter @cloakroom/shared run build && vitest run --test-timeout=15000",
     "test:watch": "pnpm --filter @cloakroom/shared run build && vitest --test-timeout=15000",
     "test:hpke:browser": "pnpm --filter @cloakroom/shared build && pnpm --filter @cloakroom/enclave build && node scripts/check-hpke-browser.mjs",
-    "smoke:sepolia": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/sepolia-smoke.ts"
+    "smoke:sepolia": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/sepolia-smoke.ts",
+    "smoke:quote": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/quote-check.ts"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
