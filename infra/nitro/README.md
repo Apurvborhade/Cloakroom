@@ -74,7 +74,7 @@ AWS_REGION=REGION
 RPC_HOST=rpc-provider.example
 ```
 
-From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/release REGION` verifies the EIF digest and installs the helpers, release and units. It preserves an existing parent configuration and does not stop or start an enclave. Confirm allocator settings, then stop any previous manual instance and start the services. Enable storage/KMS relays before the custody application. The enclave unit starts a non-debug enclave; verify health and a fresh quote after each restart. It is a oneshot launch unit, so enclave process failure also needs external health monitoring.
+From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/release REGION` verifies the EIF digest and installs the helpers, release and units. It preserves an existing parent configuration and does not stop or start an enclave. Confirm allocator settings, then stop any previous manual instance and start the services. Enable storage/KMS relays before the custody application. Starting the enclave also starts its ingress proxy, including after a stop/start deployment. Verify a fresh quote after each restart. It is a oneshot launch unit, so enclave process failure also needs external health monitoring.
 
 `Caddyfile` prepares HTTPS forwarding to the loopback ingress. Set `ENCLAVE_DOMAIN` to a controlled DNS name pointing to the parent and allow TCP 80/443 in the security group. Then validate and run Caddy. DNS, certificate issuance and public reachability are still pending. Caddy access logging is disabled by default; do not add request/response body logs.
 
