@@ -254,11 +254,16 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 
 ## Boot order
 
-1. Init keys
-2. Open the journal with `KeyManager.journalCipher()`, replay it into the ledger and intent store, then call `KeyManager.restoreSigningState()`
-3. Refresh inventory
-4. Run `Executor.recover()`
-5. Open the server and start the watcher
+`bootEnclave` in `server.ts` runs these in order, and `main.ts` is the entrypoint. If a step fails, it stops what already started and exits with `BOOT_FAILED:<step>`, and never prints the cause, which can contain the RPC URL.
+
+1. Check the RPC is on `CHAIN_ID`
+2. Init keys, and allocate up to `INVENTORY_EOA_COUNT` inventory addresses
+3. Open the journal with `KeyManager.journalCipher()`, replay it into the ledger, intent store, inventory and watcher, then call `KeyManager.restoreSigningState()`
+4. Refresh inventory
+5. Run `Executor.recover()`. Operations it can't settle stay locked, and the boot continues
+6. Start the watcher and price poller, then open the server
+
+Shutdown stops the watcher and poller, closes the server, waits briefly for running swaps, then closes the journal. A swap still running at that point finishes on-chain, and recovery settles it at the next boot.
 
 
 ## Custody implementation handoff
@@ -271,4 +276,4 @@ Key initialization does not read the journal, so opening an encrypted journal ca
 
 The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; ledger replay ignores this signing metadata. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 
-`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` currently accepts raw key bytes; connecting the two still requires a cipher adapter. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.
+`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` accepts it through its `cipher` option. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.

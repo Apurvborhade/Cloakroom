@@ -245,9 +245,9 @@ This is a work in progress. The core works end to end from the command line, but
 | Signed requests, replay protection, ledger, encrypted journal | Working, tested |
 | Attestation and custody signer | Deployed Nitro service serves attestation and runs an unfunded self-test |
 | Signer allowing swaps | Not built. Swap runs so far use a stand-in signer |
-| Intent store, and pipeline from price checks to swaps | Working, tested with a stand-in executor. Not yet started by a running service |
-| API routes | Not built |
-| Boot file joining everything | Not built |
+| Intent store, and pipeline from price checks to swaps | Working. The pipeline's own tests use a stand-in executor |
+| Server and boot lifecycle | Working in simulation mode, tested on a local chain. Not yet deployed to Nitro |
+| API routes | Only attestation and operator seeding. Session, deposit, intent, withdrawal and reconcile routes are not built |
 | Frontend | In progress, not yet connected |
 | Anon-RPC | Not built |
 | Live KMS provisioning, public HTTPS | Not done |
