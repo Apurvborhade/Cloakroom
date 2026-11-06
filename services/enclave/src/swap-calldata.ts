@@ -33,12 +33,23 @@ function unsafe(reason: string): Error {
   return new Error(`UNSAFE_SWAP_CALLDATA:${reason}`);
 }
 
+/** The token a swap ends in: the last 20 bytes of a V3 path, or the last entry of a V2 path. */
+function finalToken(path: Hex | readonly Address[]): Address {
+  if (typeof path === 'string') return getAddress(`0x${path.slice(-40)}`);
+  return getAddress(path[path.length - 1] as Address);
+}
+
 /**
  * Refuses Trading API calldata unless it is a pattern we can prove pays the EOA at least minOut.
  *
  * The API is untrusted, and a simulation cannot show where the output goes, so this reads the
- * router commands. Swaps must leave their output in the router, and exactly one SWEEP must then
- * pay it to the EOA with a minimum of at least minOut, which the router enforces on-chain.
+ * router commands. The router enforces each minimum on-chain. Two patterns are allowed:
+ *
+ * - Split route: every swap leaves its output in the router, and exactly one SWEEP pays it to
+ *   the EOA with a minimum of at least minOut.
+ * - Single route: exactly one swap pays the EOA directly, ends in the output token, and has a
+ *   minimum of at least minOut.
+ *
  * Any command not listed here is refused, including ones that could send funds elsewhere.
  */
 export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
@@ -63,6 +74,8 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
   };
 
   let outputSweeps = 0;
+  let swapsToRouter = 0;
+  let swapsToEoa = 0;
   try {
     bytes.forEach((command, index) => {
       const input = inputs[index] as Hex;
@@ -74,12 +87,20 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
         }
         case COMMAND_V3_SWAP_EXACT_IN:
         case COMMAND_V2_SWAP_EXACT_IN: {
-          const [recipient, , , , payerIsUser] = decodeAbiParameters(
+          const [recipient, , minimum, path, payerIsUser] = decodeAbiParameters(
             command === COMMAND_V3_SWAP_EXACT_IN ? SWAP_V3 : SWAP_V2,
             input,
           );
-          if (getAddress(recipient) !== ADDRESS_THIS) throw unsafe('SWAP_RECIPIENT');
           if (payerIsUser) throw unsafe('SWAP_PAYER');
+          if (getAddress(recipient) === ADDRESS_THIS) {
+            swapsToRouter += 1;
+          } else if (isEoa(recipient)) {
+            if (finalToken(path) !== tokenOut) throw unsafe('SWAP_TOKEN');
+            if (minimum < rules.minOut) throw unsafe('SWAP_MINIMUM');
+            swapsToEoa += 1;
+          } else {
+            throw unsafe('SWAP_RECIPIENT');
+          }
           break;
         }
         case COMMAND_SWEEP: {
@@ -103,5 +124,7 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
     throw unsafe('MALFORMED');
   }
 
-  if (outputSweeps !== 1) throw unsafe('OUTPUT_SWEEP_COUNT');
+  const splitRoute = swapsToEoa === 0 && outputSweeps === 1;
+  const singleRoute = swapsToEoa === 1 && swapsToRouter === 0 && outputSweeps === 0;
+  if (!splitRoute && !singleRoute) throw unsafe('OUTPUT_PATTERN');
 }
