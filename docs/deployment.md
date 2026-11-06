@@ -44,6 +44,10 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 | `MAX_BODY_SIZE_BYTES` | `16384` | Largest request body accepted |
 | `PRICE_POLL_INTERVAL_SEC` | `60` | How often the enclave checks the price |
 | `PRICE_REFERENCE_AMOUNT_WEI` | `100000000000000000` | Input amount for each price check |
+| `SIGNING_MAX_GAS` | `1000000` | Largest gas limit the signer accepts. Must fit a swap, about 900,000 |
+| `SIGNING_MAX_FEE_PER_GAS` | `100000000000` | Largest max fee per gas the signer accepts |
+| `SIGNING_MAX_PRIORITY_FEE_PER_GAS` | `10000000000` | Largest priority fee the signer accepts. Cannot exceed the max fee limit |
+| `SIGNING_MAX_NATIVE_VALUE_WEI` | `1000000000000000000` | Largest ETH value the signer accepts. Cannot be below `MAX_AMOUNT_NATIVE_WEI` |
 | `ADMIN_ADDRESS`, `SEEDING_ENABLED` | wallet, `true` then `false` | Operator seeding endpoint, turned off after setup |
 | `MAX_AMOUNT_NATIVE_WEI` | `1000000000000000000` | Demo cap that limits exposure |
 | `SIM_MODE` | `false` | Shows the TEE-simulated banner when `true` |
