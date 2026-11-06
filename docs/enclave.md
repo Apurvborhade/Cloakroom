@@ -229,13 +229,15 @@ The signer is a `TransactionSigner`: `KeyManager.sign` plus `await registerOp(op
 
 ## Price poller (Apurva)
 
-Gets a Uniswap Trading API quote every `PRICE_POLL_INTERVAL_SEC`, and passes it to `IntentStore.due` as a `PriceReport`. A failed poll triggers nothing.
+Gets a Uniswap Trading API quote through `UniswapClient` in `uniswap.ts` every `PRICE_POLL_INTERVAL_SEC`, and hands each `PriceReport` to `onReport`, which calls `IntentStore.due`. A failed poll reports nothing, polls never overlap, and `latest` returns null once a price is more than two intervals old.
+
+`onReport` must not wait for a swap to finish. Polls use a throwaway `swapper` address, so custody addresses are not sent to Uniswap every interval. `UniswapClient` treats responses as untrusted: it checks the chain, tokens and amounts, and rejects anything but a classic route, because custody EOAs sign ordinary transactions.
 
 ```ts
 // price-poller.ts
 export interface PricePoller {
   start(): () => void; // returns a function that stops polling
-  latest(): PriceReport | null;
+  latest(): PriceReport | null; // null if no recent price
 }
 ```
 
