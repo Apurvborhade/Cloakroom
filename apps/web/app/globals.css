@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #0a0a0b;
+  color: #ededf0;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-image: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(92, 200, 240, 0.06), transparent 70%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(92, 200, 240, 0.3);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@cloakroom/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@anon-rpc/browser-harness": "0.4.0",
+    "@cloakroom/shared": "workspace:*",
+    "@rainbow-me/rainbowkit": "2.2.11",
+    "@tanstack/react-query": "5.106.1",
+    "next": "14.2.35",
+    "qrcode": "1.5.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "viem": "^2.57.16",
+    "wagmi": "2.19.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "^20.17.0",
+    "@types/qrcode": "1.5.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "25.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "3.4.19",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
