@@ -5,11 +5,12 @@ import { createRecipientKms, NitroKmsSealingKey } from './kms-sealing.js';
 import { AesGcmStateVault, RemoteCipherBlobStore } from './sealed-state.js';
 import { parentRoleCredentials } from './parent-credentials.js';
 import { openCustodyRuntime } from './custody-runtime.js';
+import { loadConfig, toSigningPolicy } from './config.js';
 
 type NitroOptions = {
   keyArn: string; region: string; vaultId: string;
   credentials?: () => Promise<{ accessKeyId: string; secretAccessKey: string; sessionToken?: string; expiration?: Date }>;
-  policy: SigningPolicy; allowCreate?: boolean;
+  allowCreate?: boolean;
 };
 
 function stores(options: NitroOptions) {
@@ -30,7 +31,8 @@ function vault(options: NitroOptions, blobs: ReturnType<typeof stores>, allowCre
 }
 
 /** Returns only after custody, journal, ledger and NSM attestation are ready. */
-export async function openNitroRuntime(options: NitroOptions & { buildHash: string }) {
+export async function openNitroRuntime(options: NitroOptions & { buildHash: string; policy?: SigningPolicy }) {
+  const policy = options.policy ?? toSigningPolicy(loadConfig(process.env));
   const blobs = stores(options);
   const saved = await Promise.all([blobs.wrapping.read(), blobs.custody.read(), blobs.journal.read()]);
   const fresh = saved.every((value) => value === undefined);
@@ -39,12 +41,12 @@ export async function openNitroRuntime(options: NitroOptions & { buildHash: stri
   }
   const allowCreate = fresh && options.allowCreate === true;
   return openCustodyRuntime({ vault: vault(options, blobs, allowCreate), journalStore: blobs.journal,
-    policy: options.policy, buildHash: options.buildHash, allowCreate });
+    policy, buildHash: options.buildHash, allowCreate });
 }
 
 /** Real NSM + authenticated KMS TLS + external ciphertext. There is no simulation fallback. */
 export async function openNitroCustody(options: NitroOptions & {
-  journal: Pick<Journal, 'append' | 'replay'>;
+  journal: Pick<Journal, 'append' | 'replay'>; policy: SigningPolicy;
 }): Promise<KeyManager> {
   const keys = new KeyManager({ vault: vault(options, stores(options), options.allowCreate === true), journal: options.journal,
     policy: options.policy, allowCreate: options.allowCreate });

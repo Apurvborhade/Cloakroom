@@ -142,8 +142,10 @@ describe('loadConfig', () => {
     });
   });
 
-  it('allows swap-sized gas with the example values', () => {
-    expect(loadConfig(validEnv()).SIGNING_MAX_GAS).toBeGreaterThanOrEqual(900_000n);
+  it('allows swap-sized gas including the executor margin with the example values', () => {
+    const config = loadConfig(validEnv());
+    const gasLimit = (900_000n * BigInt(config.GAS_MARGIN_PERCENT)) / 100n;
+    expect(config.SIGNING_MAX_GAS).toBeGreaterThanOrEqual(gasLimit);
   });
 
   it('builds a policy the real KeyManager accepts', () => {

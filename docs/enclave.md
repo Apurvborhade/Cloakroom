@@ -254,7 +254,7 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 
 ## Boot order
 
-1. Call `openNitroRuntime({ keyArn, region, vaultId, policy, buildHash })` to restore keys, verify the journal, rebuild the ledger, restore signing state and obtain an NSM quote.
+1. Call `openNitroRuntime({ keyArn, region, vaultId, buildHash })` to load signing limits from the enclave environment, restore keys, verify the journal, rebuild the ledger, restore signing state and obtain an NSM quote. An explicit `policy` remains supported for isolated tests.
 2. Replay other application state, including the intent store, from the returned `journal`.
 3. Refresh inventory
 4. Run `Executor.recover()`
