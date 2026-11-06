@@ -82,4 +82,4 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ## Swap integration
 
-The signer enforces journaled limit swaps and the minimum credited after fees; see [the custody handoff](../enclave.md#custody-implementation-handoff). Executor integration is covered on Anvil with the real `KeyManager`. Uniswap uses the [in-enclave HTTPS transport](../../infra/nitro/README.md#uniswap-egress); the Sepolia smoke test with the real signer remains open.
+The signer enforces journaled limit swaps and the minimum credited after fees; see [the custody handoff](../enclave.md#custody-implementation-handoff). Executor integration is covered on Anvil with the real `KeyManager`. [In-enclave HTTPS](../../infra/nitro/README.md#uniswap-egress) is verified with an authenticated Uniswap quote and Sepolia RPC reads; the Sepolia smoke test with the real signer remains open.

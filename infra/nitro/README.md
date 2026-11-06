@@ -13,7 +13,7 @@ nitro-cli run-enclave --cpu-count 1 --memory 2048 --enclave-cid 16 \
 python3 services/enclave/nitro/bridge.py parent --cid 16
 ```
 
-Reserve one CPU and 2048 MiB in `/etc/nitro_enclaves/allocator.yaml`. Keep the YAML `---` marker: the AWS allocator parser requires it. Stop existing enclaves before restarting the allocator. On a small parent, image creation may need temporary swap and disk scratch space instead of `/tmp` on tmpfs. Build failures must not trigger replacement of an existing good release.
+Reserve one CPU and 2048 MiB in `/etc/nitro_enclaves/allocator.yaml`. Keep the YAML `---` marker: the AWS allocator parser requires it. Stop existing enclaves before restarting the allocator. On a small parent, use disk scratch space instead of `/tmp` on tmpfs and bound packaging memory: the 4 GiB parent completed `nitro-cli build-enclave` under systemd with `MemoryMax=1G`, `MemorySwapMax=2G` and 3 GiB temporary swap available. Remove temporary swap after the build. Build failures must not trigger replacement of an existing good release.
 
 Verify a fresh quote with `scripts/verify-attestation.py`, trusted `measurements.json` and `build-hash`. `release.json` records the Docker image ID, EIF SHA-256 and PCRs. These are different digests. Never select expected measurements from an untrusted response.
 
@@ -40,7 +40,7 @@ Revision CAS and the signing journal catch stale concurrent writers and vault ro
 
 TLS certificate and hostname checks run inside the enclave. Redirects are refused, responses are capped at 1 MiB, and the quote timeout covers the response body. A missing relay fails the quote; there is no direct-network fallback.
 
-Live verification used a non-debug Nitro test image with independently verified AWS attestation. Uniswap returned HTTP 401 for an intentionally invalid API key. An authenticated quote still requires valid credentials.
+An independently attested, non-debug Nitro test image completed an authenticated Sepolia quote and RPC reads. No transaction was broadcast.
 
 ## RPC egress
 
