@@ -1,5 +1,5 @@
 import { getAddress, isAddress } from 'viem';
-import type { Address } from 'viem';
+import type { Address, Hex } from 'viem';
 import { z } from 'zod';
 
 const baseUnits = z.string().regex(/^\d+$/).transform(BigInt);
@@ -8,8 +8,17 @@ const addressField = z
   .refine((value) => isAddress(value, { strict: false }))
   .transform((value): Address => getAddress(value));
 
+const SWAP_TRANSACTION = z.object({
+  to: addressField,
+  from: addressField,
+  data: z.string().regex(/^0x[0-9a-fA-F]*$/).transform((value) => value as Hex),
+  value: z.string().regex(/^(0x[0-9a-fA-F]+|\d+)$/).transform(BigInt),
+});
+
 const QUOTE_RESPONSE = z.object({
   routing: z.string(),
+  // Price polls do not need it, so a surprising shape must not fail them. Swaps require it.
+  swapTransaction: SWAP_TRANSACTION.optional().catch(undefined),
   quote: z.object({
     chainId: z.number(),
     input: z.object({ amount: baseUnits, token: addressField }),
@@ -32,12 +41,22 @@ export interface QuoteRequest {
   swapper: Address;
   /** Percent, so 0.5 means 0.5%. */
   slippagePercent?: number;
+  /** Limits routing, for example to protocols whose router commands we can check. */
+  protocols?: readonly string[];
+}
+
+export interface SwapTransaction {
+  to: Address;
+  from: Address;
+  data: Hex;
+  value: bigint;
 }
 
 export interface Quote {
   amountIn: bigint;
   amountOut: bigint;
   minAmountOut: bigint;
+  transaction?: SwapTransaction;
 }
 
 /**
@@ -69,6 +88,7 @@ export class UniswapClient {
           ...(request.slippagePercent === undefined
             ? {}
             : { slippageTolerance: request.slippagePercent }),
+          ...(request.protocols === undefined ? {} : { protocols: request.protocols }),
         }),
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -85,7 +105,7 @@ export class UniswapClient {
     }
     const parsed = QUOTE_RESPONSE.safeParse(body);
     if (!parsed.success) throw new Error('UNISWAP_BAD_RESPONSE');
-    const { quote, routing } = parsed.data;
+    const { quote, routing, swapTransaction } = parsed.data;
 
     // Custody EOAs sign ordinary transactions, so only a classic on-chain route can run.
     if (routing !== 'CLASSIC') throw new Error('UNISWAP_UNSUPPORTED_ROUTE');
@@ -104,6 +124,7 @@ export class UniswapClient {
       amountIn: quote.input.amount,
       amountOut: quote.output.amount,
       minAmountOut: quote.output.minimumAmount,
+      ...(swapTransaction ? { transaction: swapTransaction } : {}),
     };
   }
 }
