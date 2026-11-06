@@ -10,6 +10,7 @@ import type { ExpectedTransaction, TransactionSigner } from './executor.js';
 import { openEnvelopeWithResponse } from './envelope.js';
 import { FifoSerialQueue } from './queue.js';
 import type { StateVault } from './sealed-state.js';
+import { assertSafeSwapCalldata, limitFloor } from './swap-calldata.js';
 
 const HEX = z.string().regex(/^0x(?:[a-fA-F0-9]{2})*$/);
 const STATE_SCHEMA = z.object({
@@ -39,6 +40,12 @@ export interface SigningPolicy {
   maxFeePerGas: bigint;
   maxPriorityFeePerGas: bigint;
   maxNativeValue: bigint;
+  swaps?: {
+    routerAddress: Address;
+    tokenOut: Address;
+    tokenOutDecimals: number;
+    feeBps: number;
+  };
 }
 
 export interface JournalCipher {
@@ -52,6 +59,7 @@ export class KeyManager implements TransactionSigner {
   readonly #journal: Pick<Journal, 'append' | 'replay'>;
   readonly #policy: Readonly<SigningPolicy>;
   readonly #allowCreate: boolean;
+  readonly #onFault?: () => void;
   readonly #queue = new FifoSerialQueue();
   readonly #registered = new Map<string, ExpectedTransaction>();
   #state: State | undefined;
@@ -64,7 +72,7 @@ export class KeyManager implements TransactionSigner {
 
   constructor(options: {
     vault: StateVault; journal: Pick<Journal, 'append' | 'replay'>;
-    policy: SigningPolicy; simMode?: boolean; allowCreate?: boolean;
+    policy: SigningPolicy; simMode?: boolean; allowCreate?: boolean; onFault?: () => void;
   }) {
     if (options.vault.protection === 'simulation' && options.simMode !== true) throw new Error('SIM_MODE_REQUIRED');
     const policy = options.policy;
@@ -73,8 +81,18 @@ export class KeyManager implements TransactionSigner {
           .some((value) => typeof value !== 'bigint' || value <= 0n)) throw new Error('INVALID_SIGNING_POLICY');
     this.#vault = options.vault;
     this.#journal = options.journal;
-    this.#policy = Object.freeze({ ...policy });
+    try {
+      const swaps = policy.swaps;
+      if (swaps && (!Number.isInteger(swaps.tokenOutDecimals)
+          || swaps.tokenOutDecimals < 0 || swaps.tokenOutDecimals > 255
+          || !Number.isInteger(swaps.feeBps) || swaps.feeBps < 0 || swaps.feeBps >= 10_000)) throw new Error();
+      this.#policy = Object.freeze({ ...policy, ...(swaps ? { swaps: Object.freeze({
+        routerAddress: getAddress(swaps.routerAddress), tokenOut: getAddress(swaps.tokenOut),
+        tokenOutDecimals: swaps.tokenOutDecimals, feeBps: swaps.feeBps,
+      }) } : {}) });
+    } catch { throw new Error('INVALID_SIGNING_POLICY'); }
     this.#allowCreate = options.allowCreate === true;
+    this.#onFault = options.onFault;
   }
 
   [inspect.custom](): string { return '[KeyManager]'; }
@@ -84,6 +102,10 @@ export class KeyManager implements TransactionSigner {
     this.#initializing ??= this.#initialize();
     return this.#initializing;
   }
+
+  close(): void { this.#faulted = true; }
+
+  #fault(): void { this.#faulted = true; this.#onFault?.(); }
 
   async #initialize(): Promise<void> {
     try {
@@ -109,7 +131,7 @@ export class KeyManager implements TransactionSigner {
       }
       this.#initialized = true;
     } catch {
-      this.#faulted = true;
+      this.#fault();
       throw new Error('KEY_MANAGER_UNAVAILABLE');
     }
   }
@@ -134,7 +156,7 @@ export class KeyManager implements TransactionSigner {
         }
       }
     } catch {
-      this.#faulted = true;
+      this.#fault();
       throw new Error('KEY_MANAGER_UNAVAILABLE');
     }
   }
@@ -154,7 +176,7 @@ export class KeyManager implements TransactionSigner {
       this.#state = next;
     } catch {
       // A write may have committed before its acknowledgement was lost. Never guess.
-      this.#faulted = true;
+      this.#fault();
       throw new Error('KEY_MANAGER_UNAVAILABLE');
     }
   }
@@ -242,15 +264,19 @@ export class KeyManager implements TransactionSigner {
   #normalize(expected: ExpectedTransaction): ExpectedTransaction {
     try {
       if (typeof expected.value !== 'bigint' || expected.value < 0n || !/^0x[a-fA-F0-9]{64}$/.test(expected.dataHash)) throw new Error();
+      if (expected.data !== undefined && (!HEX.safeParse(expected.data).success
+          || keccak256(expected.data) !== expected.dataHash.toLowerCase())) throw new Error();
       return Object.freeze({
         eoa: getAddress(expected.eoa), to: getAddress(expected.to), value: expected.value,
         dataHash: expected.dataHash.toLowerCase() as Hex,
+        ...(expected.data === undefined ? {} : { data: expected.data.toLowerCase() as Hex }),
       });
     } catch { throw denied(); }
   }
 
   async #authorize(opId: string, expected: ExpectedTransaction): Promise<void> {
     if (!/^[A-Za-z0-9:_-]{1,128}$/.test(opId)) throw denied();
+    if (opId.startsWith('exec:')) return this.#authorizeSwap(opId, expected);
     let locked: Extract<JournalEvent, { t: 'WITHDRAWAL_LOCKED' }> | undefined;
     const deposits: Extract<JournalEvent, { t: 'DEPOSIT_SESSION_OPENED' }>[] = [];
     for await (const { event } of this.#journal.replay()) {
@@ -273,6 +299,55 @@ export class KeyManager implements TransactionSigner {
       }) };
     if (getAddress(payment.to) !== expected.to || payment.value !== expected.value
         || keccak256(payment.data) !== expected.dataHash) throw denied();
+  }
+
+  async #authorizeSwap(opId: string, expected: ExpectedTransaction): Promise<void> {
+    try {
+      const swaps = this.#policy.swaps;
+      if (!swaps || expected.data === undefined || keccak256(expected.data) !== expected.dataHash) throw denied();
+      const id = opId.slice('exec:'.length);
+      if (!id) throw denied();
+      let created: Extract<JournalEvent, { t: 'INTENT_CREATED' }> | undefined;
+      const owners = new Map<string, Address>();
+      const deposits: Extract<JournalEvent, { t: 'DEPOSIT_SESSION_OPENED' }>[] = [];
+      const broadcasts: Extract<JournalEvent, { t: 'EXEC_BROADCAST' }>[] = [];
+      for await (const { event } of this.#journal.replay()) {
+        if (event.t === 'INTENT_CREATED') {
+          owners.set(`exec:${event.id}`, event.owner);
+          if (event.id === id) {
+            if (created) throw denied();
+            created = event;
+          }
+        }
+        if (event.t === 'INTENT_CANCELLED' || event.t === 'INTENT_EXPIRED') {
+          if (event.id === id) throw denied();
+        }
+        if (event.t === 'EXEC_BROADCAST' || event.t === 'EXEC_SETTLED' || event.t === 'EXEC_FAILED') {
+          if (event.opId === opId || event.intentId === id) throw denied();
+          if (event.t === 'EXEC_BROADCAST') broadcasts.push(event);
+          else owners.set(event.opId, event.owner);
+        }
+        if (event.t === 'DEPOSIT_SESSION_OPENED') deposits.push(event);
+      }
+      if (!created) throw denied();
+      const { intent } = created;
+      const nowSec = BigInt(Math.floor(Date.now() / 1000));
+      const owner = getAddress(created.owner);
+      if (getAddress(intent.owner) !== owner || intent.comparator !== 0
+          || typeof intent.expiry !== 'bigint' || intent.expiry <= nowSec
+          || typeof intent.amountIn !== 'bigint' || intent.amountIn <= 0n
+          || intent.amountIn > this.#policy.maxNativeValue
+          || typeof intent.triggerPrice !== 'bigint' || intent.triggerPrice <= 0n
+          || getAddress(intent.tokenIn) !== getAddress(NATIVE) || getAddress(intent.tokenOut) !== swaps.tokenOut
+          || expected.to !== swaps.routerAddress || expected.value !== intent.amountIn) throw denied();
+      if (deposits.some((event) => getAddress(event.owner) === owner && getAddress(event.eoa) === expected.eoa)
+          || broadcasts.some((event) => getAddress(event.eoa) === expected.eoa
+            && [owners.get(event.opId), event.intentId ? owners.get(`exec:${event.intentId}`) : undefined]
+              .some((previous) => previous !== undefined && getAddress(previous) === owner))) throw denied();
+      const floor = limitFloor(intent.amountIn, intent.triggerPrice, swaps.tokenOutDecimals, swaps.feeBps);
+      assertSafeSwapCalldata({ data: expected.data, eoa: expected.eoa, tokenOut: swaps.tokenOut,
+        minOut: floor, floor, nowSec });
+    } catch { throw denied(); }
   }
 
   registerOp(opId: string, input: ExpectedTransaction): Promise<void> {

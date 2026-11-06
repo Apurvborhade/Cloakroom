@@ -46,7 +46,7 @@ describe('sealed state', () => {
     await expect(vault.write(Buffer.from('stale'), 1)).rejects.toThrow('SEALED_STATE_CONFLICT');
   });
 
-  it('uses durable, private files and fails on corruption instead of replacing state', async () => {
+  it.skipIf(process.platform !== 'linux')('uses durable, private files and fails on corruption instead of replacing state (Linux flock)', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'cloakroom-vault-'));
     const path = join(directory, 'state');
     try {

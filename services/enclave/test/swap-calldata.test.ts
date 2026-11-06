@@ -69,6 +69,23 @@ const check = (data: Hex) =>
   assertSafeSwapCalldata({ data, eoa: EOA, tokenOut: TOKEN, minOut: MIN_OUT, floor: 0n, nowSec: NOW });
 
 describe('limitFloor', () => {
+  it('raises gross output enough to preserve the limit after protocol fees', () => {
+    const gross = limitFloor(10n ** 17n, 3_000n * 10n ** 18n, 6, 10);
+    expect(gross).toBe(300_300_301n);
+    expect(gross - (gross * 10n) / 10_000n).toBeGreaterThanOrEqual(300_000_000n);
+  });
+
+  it('keeps the net floor for small outputs and fees close to 100 percent', () => {
+    for (const amount of [1n, 10n ** 17n, 10n ** 18n + 1n]) {
+      for (const fee of [0, 1, 10, 9999]) {
+        const net = limitFloor(amount, 3_000n * 10n ** 18n, 6);
+        const gross = limitFloor(amount, 3_000n * 10n ** 18n, 6, fee);
+        expect(gross - (gross * BigInt(fee)) / 10_000n).toBeGreaterThanOrEqual(net);
+      }
+    }
+    expect(() => limitFloor(1n, 1n, 6, 10_000)).toThrow('INVALID_SWAP_LIMIT');
+  });
+
   it('is the amount times the limit price, with no slippage taken off', () => {
     expect(limitFloor(10n ** 17n, 3_000n * 10n ** 18n, 6)).toBe(300_000_000n);
   });

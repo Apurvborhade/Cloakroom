@@ -595,18 +595,25 @@ describe('Executor.runIntent', () => {
       const outcome = await mineUntilDone(context.executor.runIntent(stored));
 
       expect(outcome.status).toBe('settled');
-      // The room is just under 25 bps, and rounding down keeps the minimum above the limit.
-      expect(context.requests.map((request) => request.slippagePercent)).toEqual([0.5, 0.24]);
+      // The 10 bps fee leaves only 15 bps of room above the net limit.
+      expect(context.requests.map((request) => request.slippagePercent)).toEqual([0.5, 0.15]);
     });
 
-    it('waits when the quote is at the limit, leaving no room for slippage', async () => {
+    it('waits when the gross quote meets the limit but the net output does not', async () => {
       const context = await setup();
       const stored = await makeIntent(context, { triggerPrice: PRICE, maxSlippageBps: 50 });
 
       const outcome = await context.executor.runIntent(stored);
 
-      expect(outcome).toEqual({ status: 'pending', reason: 'NO_ROOM_ABOVE_LIMIT' });
+      expect(outcome).toEqual({ status: 'pending', reason: 'CONDITION_NOT_MET' });
       expect(context.requests).toHaveLength(1);
+      expect(context.signer.signed).toEqual([]);
+    });
+
+    it('waits at the fee-adjusted floor when there is no room for slippage', async () => {
+      const context = await setup({ hook: (_request, quote) => ({ ...quote, amountOut: 3_000_000_000n }) });
+      const stored = await makeIntent(context, { triggerPrice: 29_970n * PRICE_PRECISION, maxSlippageBps: 50 });
+      expect(await context.executor.runIntent(stored)).toEqual({ status: 'pending', reason: 'NO_ROOM_ABOVE_LIMIT' });
       expect(context.signer.signed).toEqual([]);
     });
 

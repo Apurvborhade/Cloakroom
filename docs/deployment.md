@@ -12,7 +12,7 @@ The [Dockerfile](../services/enclave/Dockerfile) builds a self-contained runtime
 docker build -f services/enclave/Dockerfile -t cloakroom-attestation .
 ```
 
-See the [enclave README](../services/enclave/README.md) for Nitro image creation, vsock forwarding and verification. Public HTTPS, live KMS provisioning and final reproducible builds remain open. The recipient adapter, external ciphertext storage and reviewed-parameter infrastructure template are available in [the Nitro runbook](../infra/nitro/README.md).
+See the [enclave README](../services/enclave/README.md) for Nitro image creation, vsock forwarding and verification. Public HTTPS and final reproducible builds remain open. The recipient adapter, external ciphertext storage, live recovery verification and infrastructure template are covered in [the Nitro runbook](../infra/nitro/README.md).
 
 ## Configuration
 
@@ -47,7 +47,7 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 | `PRICE_POLL_INTERVAL_SEC` | `60` | How often the enclave checks the price |
 | `PRICE_REFERENCE_AMOUNT_WEI` | `100000000000000000` | Input amount for each price check |
 | `PRICE_QUOTE_TIMEOUT_MS` | `10000` | How long to wait for a quote before the poll counts as failed |
-| `SIGNING_MAX_GAS` | `1200000` | Largest gas limit the signer accepts. Must fit a swap of about 900,000 gas plus the 20% margin |
+| `SIGNING_MAX_GAS` | `1200000` | Largest gas limit the signer accepts, including `GAS_MARGIN_PERCENT` |
 | `SIGNING_MAX_FEE_PER_GAS` | `100000000000` | Largest max fee per gas the signer accepts |
 | `SIGNING_MAX_PRIORITY_FEE_PER_GAS` | `10000000000` | Largest priority fee the signer accepts. Cannot exceed the max fee limit |
 | `SIGNING_MAX_NATIVE_VALUE_WEI` | `1000000000000000000` | Largest ETH value the signer accepts. Cannot be below `MAX_AMOUNT_NATIVE_WEI` |
@@ -64,10 +64,10 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 
 ## Boot and attestation
 
-1. Open the sealed custody state with `openNitroCustody`. Fresh provisioning requires explicit `allowCreate: true`; ordinary restarts refuse missing state. The HPKE identity is derived from the restored seed.
+1. Call `openNitroRuntime({ keyArn, region, vaultId, buildHash })`. It loads `toSigningPolicy(loadConfig(process.env))`, restores custody and replays the journal before returning. Fresh provisioning requires explicit `allowCreate: true`; ordinary restarts refuse missing state. The HPKE identity is derived from the restored seed.
 2. It requests a platform quote whose report data commits to `sha256(enclavePubKey || buildHash)`.
 3. `GET /attestation` returns the quote, the public key, the build hash and the chain ID. The frontend uses the key hash as the EIP-712 `salt`.
-4. Open the journal with `keys.journalCipher()`, replay application state, then call `keys.restoreSigningState()`. The parent stores ciphertext only. KMS delivers its wrapping key encrypted to an attested RSA recipient; TLS to KMS terminates inside the enclave. Simulation wrapping keys require an explicit simulation-only vault.
+4. Replay remaining application state from the returned journal and run executor recovery before mounting routes. The parent stores ciphertext only. KMS delivers its wrapping key encrypted to an attested RSA recipient; TLS to KMS terminates inside the enclave. Simulation wrapping keys require an explicit simulation-only vault.
 
 ## Seeding
 

@@ -87,7 +87,7 @@ export interface Journal {
 
 ### EncryptedJournal Implementation
 
-The production journal implementation resides in `services/enclave/src/journal.ts` (`EncryptedJournal`).
+The file-backed journal resides in `services/enclave/src/journal.ts` (`EncryptedJournal`). Nitro uses `SnapshotJournal` over parent storage, described below.
 
 #### Binary Frame Format
 
@@ -100,8 +100,8 @@ Each journal entry on disk is framed as:
 +-----------------------+-------------------+----------------------+--------------------+
 ```
 
-- **Encryption:** AES-256-GCM using a 32-byte key (passed directly or derived). A fresh cryptographic 12-byte IV is generated per record.
-- **Payload:** Serialized JSON payload containing `{ seq, ts, prevHash, hash, event }`.
+- **Encryption:** Pass `cipher: keys.journalCipher()` to `EncryptedJournal.open({ filePath, cipher })`. The existing `key` option remains supported; supply exactly one. Each record uses a fresh 12-byte IV.
+- **Payload:** Serialized JSON containing `{ sequence, timestamp, prevHash, entryHash, event }`.
 - **Deterministic Serialization:** Canonical JSON sorting keys alphabetically and formatting `bigint` values as `"123n"`.
 - **Entry Hash Calculation:**
   ```ts
@@ -116,12 +116,12 @@ Each journal entry on disk is framed as:
 - **Hash-Chain:** Genesis hash is `0x0000000000000000000000000000000000000000000000000000000000000000`. Every entry stores the `prevHash` of the preceding entry.
 - **Append Durability:**
   - Concurrent appends serialize via internal Promise chaining.
-  - Payload encrypted and framed, written to file handle, followed immediately by `handle.sync()` (`fsync`).
+  - Short writes are completed before `handle.sync()` (`fsync`). Oversized records are rejected before writing.
   - Sequence number and hash chain advance in memory only after durable write succeeds.
-  - If a write or sync fails, the file is truncated back to its pre-write position to avoid corrupted tails.
+  - Failed appends roll back to the known pre-write offset. If truncation or its `fsync` fails, the journal refuses further operations.
 - **Replay & Crash Recovery:**
   - Iterates frames sequentially, validating frame size, IV, auth tag, decryption, JSON schema, sequence continuity (`seq === lastSeq + 1`), previous hash pointer (`prevHash === lastHash`), and cryptographic entry hash.
-  - Crash recovery at EOF: If an incomplete frame is encountered at EOF (process terminated during write before sync completed), the corrupted or partial trailing bytes are truncated, the journal restores to the last valid frame, and subsequent appends succeed cleanly.
+  - Incomplete records, including EOF tails, stop startup or replay without changing the file. A partial append cannot be distinguished safely from a damaged committed record; automatic tail truncation is disabled.
   - Mid-file corruptions, sequence gaps, broken hash links, or oversized frames throw fatal errors and halt replay.
 - **Lifecycle:**
   - `close()` flushes and closes file handles idempotently. Operations after close reject immediately.
@@ -182,7 +182,7 @@ export interface KeyManager {
 }
 ```
 
-**Signing guard:** before an operation starts, the executor registers `opId` with the expected destination, value and calldata hash. `KeyManager.sign` refuses any transaction that does not match a registered, journaled operation, and each opId signs once. There is no endpoint that returns a key or a seed.
+**Signing guard:** before an operation starts, the executor registers `opId` with the expected destination, value and calldata hash; swaps also supply the full calldata. `KeyManager.sign` refuses any transaction that does not match a registered, journaled operation, and each opId signs once. There is no endpoint that returns a key or a seed.
 
 ## Intents (Shreyas)
 
@@ -265,15 +265,23 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 
 Shutdown stops the watcher and poller, closes the server, waits briefly for running swaps, then closes the journal. A swap still running at that point finishes on-chain, and recovery settles it at the next boot.
 
+Nitro persistent storage uses `openNitroRuntime({ keyArn, region, vaultId, buildHash })`; wiring its snapshot journal into this server bootstrap remains pending.
+
 
 ## Custody implementation handoff
 
 `KeyManager` in `keys.ts` implements `TransactionSigner`. Allocation is asynchronous because persistence completes before an address is returned. Registration now permits a promise; the executor awaits it while synchronous test adapters remain compatible.
 
-The current guard supports journaled native and ERC-20 withdrawals. It checks the locked payout, chain, signer, destination, value, calldata and gas/fee caps, and refuses source-linked EOAs. Swap authorization remains blocked until the swap executor supplies a corresponding authorization contract.
+The guard supports journaled native/ERC-20 withdrawals and native-input limit swaps. Swaps require an open, unexpired `INTENT_CREATED`, comparator 0, the configured router/token, exact input value and an EOA not linked to the owner's deposits or prior swaps. Calldata is checked at registration and signing, independently of the executor. The signer trusts journaled intent provenance.
+
+For swaps, call `registerOp(opId, { eoa, to, value, dataHash, data })` with `opId = exec:<intentId>`. `data` is optional only for withdrawals and is persisted with `SIGNING_REGISTERED`. `SigningPolicy.swaps` contains `{ routerAddress, tokenOut, tokenOutDecimals, feeBps }`; `toSigningPolicy` loads these from the existing environment variables. Omitting `swaps` disables swap signing. Both executor and signer use `limitFloor(amountIn, triggerPrice, tokenOutDecimals, feeBps)` to protect the amount credited after fees, with no slippage deduction from the limit.
 
 Key initialization does not read the journal, so opening an encrypted journal cannot cause a circular dependency. Signing and registration validate replayed signing state before proceeding.
 
 The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; ledger replay ignores this signing metadata. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 
-`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` accepts it through its `cipher` option. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.
+`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` accepts it through its `cipher` option. Custody, HPKE and journal material are domain-separated. `openNitroRuntime` returns `{ keys, journal, ledger, attestation, close }` only after recovery and attestation succeed. `openCustodyRuntime` provides the same sequence with injected storage and quote providers for local integration tests; simulation wrapping keys require explicit simulation mode.
+
+`SnapshotJournal` stores the entire encrypted journal in the parent's `journal.blob`, capped at 4 MiB including encryption overhead. Each append atomically replaces it through ciphertext CAS; the parent syncs the file and directory before acknowledging. Apply events to memory only after `append` resolves. `JOURNAL_FULL` rejects before writing. A conflicting or uncertain write disables both signing and journal writes until a fresh runtime reloads storage. The snapshot format is separate from `EncryptedJournal` frames; there is no automatic migration.
+
+Initial creation requires `allowCreate: true` and all three blobs (`wrapping`, `custody`, `journal`) absent. Ordinary restarts require all three; missing or corrupt state is never silently replaced. Local tests cover storage-process restarts and dropped acknowledgements. An unfunded live Nitro/KMS test also verified recovery of identity, balances and cached signatures; see [the Nitro runbook](../infra/nitro/README.md#persistent-custody). Rolling back all persisted state together still requires an external trusted checkpoint.

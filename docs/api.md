@@ -165,7 +165,7 @@ For freshness, supply `?nonce=<hex>` with 32–64 random bytes encoded as lowerc
 }
 ```
 
-This reads as: swap 0.1 ETH for USDC once ETH is at or above 3,000 USDC, accept at most 0.5% slippage.
+This authorizes selling 0.1 ETH for at least 300 USDC credited after the protocol fee. Slippage may reduce the current quote by at most 0.5%, but cannot reduce that net minimum. Only comparator 0 is executable in the demo. Close to the limit, the public transaction minimum can reveal the limit price.
 
 ## Error codes
 
