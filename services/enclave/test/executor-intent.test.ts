@@ -377,6 +377,40 @@ describe('Executor.runIntent', () => {
       expect(rebuilt.getBalance(stored.owner, NATIVE)).toEqual(context.ledger.getBalance(stored.owner, NATIVE));
     });
 
+    it('settles a single route, where the swap pays the EOA directly', async () => {
+      const context = await setup({
+        hook: (request, quote) => ({
+          ...quote,
+          transaction: {
+            ...quote.transaction!,
+            data: encodeFunctionData({
+              abi: ROUTER_EXECUTE,
+              functionName: 'execute',
+              args: [
+                '0x0b00',
+                [
+                  encodeAbiParameters(parseAbiParameters('address, uint256'), [THIS, AMOUNT_IN]),
+                  encodeAbiParameters(parseAbiParameters('address, uint256, uint256, bytes, bool'), [
+                    request.swapper,
+                    AMOUNT_IN,
+                    quote.minAmountOut,
+                    `0xfff9976782d46cc05630d1f6ebab18b2324d6b14000bb8${token.slice(2)}`,
+                    false,
+                  ]),
+                ],
+                99_999_999_999n,
+              ],
+            }),
+          },
+        }),
+      });
+      const stored = await makeIntent(context);
+
+      const outcome = await mineUntilDone(context.executor.runIntent(stored));
+
+      expect(outcome).toMatchObject({ status: 'settled', amountOut: AMOUNT_OUT });
+    });
+
     it('counts only Transfer logs from the output token to the EOA', async () => {
       const context = await setup();
       await configureRouter(1234n);
