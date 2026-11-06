@@ -22,6 +22,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] Compare TEE platforms and select AWS Nitro Enclaves
 - [x] Set up the parent instance, Docker, Nitro CLI and enclave allocator
 - [x] Build and run the AWS hello-world enclave without debug mode
+- [x] Install persistent parent services and verify automatic non-debug startup after a full host reboot
 - [x] Deploy an enclave returning a real quote from `GET /attestation`; verified through an SSH tunnel
 - [x] Document the `/attestation` response shape in [api.md](../api.md)
 - [x] Package all production dependencies with `pnpm deploy`; Docker self-test and non-debug Nitro quote verified ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md))
@@ -50,7 +51,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 4 (hours 29 to 36)
 
-- [ ] Build the final image, record its digest in the README
+- [x] Publish the verified bootstrap image digest, EIF digest and PCRs; application release remains pending
+- [ ] Build the final application image after API integration
 - [ ] Deploy, verify the quote, hand the EOA list to Apurva for seeding, then disable seeding
 - [ ] Give Pradnyesh the final enclave URL
 

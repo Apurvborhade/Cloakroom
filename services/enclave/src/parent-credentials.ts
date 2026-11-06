@@ -9,10 +9,10 @@ const CREDENTIALS = z.object({
 
 /** Parent role credentials are not custody secrets. KMS still requires recipient attestation. */
 export function parentRoleCredentials(socketPath = '\0cloakroom-storage') {
-  let cached: { accessKeyId: string; secretAccessKey: string; sessionToken: string; expiresAt: number } | undefined;
+  let cached: { accessKeyId: string; secretAccessKey: string; sessionToken: string; expiration: Date } | undefined;
   let pending: Promise<NonNullable<typeof cached>> | undefined;
   return async () => {
-    if (cached && cached.expiresAt > Date.now() + 120_000) return cached;
+    if (cached && cached.expiration.getTime() > Date.now() + 120_000) return cached;
     pending ??= new Promise<NonNullable<typeof cached>>((resolve, reject) => {
       const fail = () => reject(new Error('PARENT_CREDENTIALS_UNAVAILABLE'));
       const req = request({ socketPath, path: '/role-credentials', method: 'GET', agent: false }, (res) => {
@@ -29,7 +29,7 @@ export function parentRoleCredentials(socketPath = '\0cloakroom-storage') {
             const expiresAt = Date.parse(value.Expiration);
             if (expiresAt <= Date.now() + 120_000) throw new Error();
             resolve({ accessKeyId: value.AccessKeyId, secretAccessKey: value.SecretAccessKey,
-              sessionToken: value.Token, expiresAt });
+              sessionToken: value.Token, expiration: new Date(expiresAt) });
           } catch { fail(); }
         });
       });

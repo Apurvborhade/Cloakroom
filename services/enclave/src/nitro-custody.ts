@@ -8,7 +8,7 @@ import { parentRoleCredentials } from './parent-credentials.js';
 /** Real NSM + authenticated KMS TLS + external ciphertext. There is no simulation fallback. */
 export async function openNitroCustody(options: {
   keyArn: string; region: string; vaultId: string;
-  credentials?: () => Promise<{ accessKeyId: string; secretAccessKey: string; sessionToken?: string }>;
+  credentials?: () => Promise<{ accessKeyId: string; secretAccessKey: string; sessionToken?: string; expiration?: Date }>;
   journal: Pick<Journal, 'append' | 'replay'>; policy: SigningPolicy;
   allowCreate?: boolean;
 }): Promise<KeyManager> {

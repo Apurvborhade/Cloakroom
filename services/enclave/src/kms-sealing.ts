@@ -43,7 +43,7 @@ export class KmsRelayAgent extends Agent {
 /** Credentials come from the parent role; they never authorize unattested plaintext release. */
 export function createRecipientKms(options: {
   region: string; relaySocket: string;
-  credentials: () => Promise<{ accessKeyId: string; secretAccessKey: string; sessionToken?: string }>;
+  credentials: () => Promise<{ accessKeyId: string; secretAccessKey: string; sessionToken?: string; expiration?: Date }>;
 }): RecipientKms {
   if (!/^[a-z]{2}-[a-z]+-\d$/.test(options.region)) throw unavailable();
   const endpoint = `kms.${options.region}.amazonaws.com`;

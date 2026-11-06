@@ -532,3 +532,18 @@ This document is the canonical, chronological record of all backend and accounti
 - Added a GitHub workflow with pinned action commits for the same checks; it has not run remotely because no push was made.
 
 - Infrastructure validation: `cfn-lint` passed for the KMS template. `actionlint` passed for the GitHub workflow. Shell syntax and Python helper compilation passed. A negative signature regression also checks that invalid curve points return unauthorized rather than a service error.
+
+## T10 — Persistent parent services and release handoff
+
+- Objective: leave a verified, restartable Nitro bootstrap and concrete operations instructions.
+- Added a digest-verifying parent installer, published the bootstrap release manifest, installed and enabled enclave/ingress/storage/KMS systemd units, and verified the final source hash against the local build. The deployed image passes the custody self-test and independent fresh-quote checks with nonzero PCRs and no debug flag.
+- Validation: systemd unit validation passed on the parent; Caddy validated the HTTPS template. No domain or certificate was provisioned. Full host reboot verification follows below.
+- Local commit `8f50264` contains the sealed runtime, recipient KMS and seeding implementation. No pushes.
+
+- Host reboot verification passed: allocator, non-debug enclave, ingress, storage and KMS relays returned automatically. A fresh quote after reboot passed AWS chain, signature, nonce, PCR and build-binding checks. Temporary build swap was removed before reboot.
+
+## T11 — Temporary AWS credential refresh
+
+- Objective: keep KMS available after the first EC2 role credentials expire.
+- The parent credential provider now returns the AWS SDK's `expiration: Date` field. Without it, SDK memoization can treat temporary credentials as static. Updated the KMS/custody provider contracts.
+- Added a regression using the actual AWS KMS client, mocked HTTP responses and controlled time. It proves one cached role fetch followed by a new credential and authorization header near expiry. Typecheck and focused tests passed; the full suite now contains 205 tests. The runtime image is being refreshed with this fix. No pushes.
