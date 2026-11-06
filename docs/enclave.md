@@ -19,6 +19,8 @@ services/enclave/
     watcher.ts    # deposit and receipt tracking              Apurva
     inventory.ts  # per-EOA balances, EOA selection           Apurva
     executor.ts   # swap, payout, tx lifecycle                Apurva
+    swap-calldata.ts # checks router calldata before signing  Apurva
+    uniswap.ts    # Trading API client                        Apurva
     price-poller.ts # price checks from Uniswap quotes        Apurva
   Dockerfile                                                  Felix
 ```
@@ -152,6 +154,22 @@ The in-memory ledger resides in `services/enclave/src/ledger.ts` (`InMemoryLedge
 - **Replay projection:** `apply(event: JournalEvent)` projects all 15 canonical events in chronological sequence, reconstructing identical ledger snapshots on enclave restart.
 - **Invariant verification:** `assertInvariants()` verifies non-negativity, exact reservation conservation, and aggregate totals consistency.
 
+## Authentication and Session Authorization (Shreyas)
+
+The authentication service resides in `services/enclave/src/auth.ts` (`AuthService`).
+
+### Responsibilities
+1. **EIP-712 Verification:** Verifies owner signatures using viem's typed-data recovery bound to the enclave's expected domain (`chainId` and `salt = keccak256(enclavePubKey)`).
+2. **Session Grants:** Maintains an ephemeral in-memory registry of owner-granted session keys. Validates owner-signed `SessionGrant` up to `SESSION_GRANT_TTL_SEC` (30 minutes). Session keys only authorize read-only operations (`SessionQuery`); they cannot authorize state-mutating requests. Session grants are invalidated on enclave restart.
+3. **Expiry & Skew Validation:** Enforces integer-second timestamp boundaries:
+   - Requests and queries: `[now - MAX_CLOCK_SKEW_SEC, now + MAX_EXPIRY_FUTURE_SEC]`.
+   - Session grants: `(now, now + SESSION_GRANT_TTL_SEC]`.
+4. **Replay-Safe Nonce Protection:** Mutating requests (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`) verify signature and expiry outside the queue, then atomically validate and consume nonces inside `FifoSerialQueue`.
+   - Reads `ledger.getLastNonce(owner)`.
+   - Requires `nonce > lastNonce`. First accepted nonce is `1n` (`> 0n`).
+   - Appends `NONCE_USED` to the journal.
+   - Updates `ledger.setNonce(owner, nonce)` only after the journal append durably succeeds.
+
 ## Key manager (TEE)
 
 ```ts
@@ -201,25 +219,29 @@ An EOA runs one operation at a time. `pick` also requires the gas reserve when s
 ```ts
 // executor.ts
 export interface Executor {
-  runIntent(i: StoredIntent): Promise<void>;        // quote, sign, broadcast, settle
+  runIntent(i: StoredIntent): Promise<SwapOutcome>; // quote, check, sign, broadcast, settle
   runWithdrawal(w: LockedWithdrawal): Promise<{ finished: Promise<WithdrawalOutcome> }>; // transfer, confirm, finalize
-  recover(): Promise<void>;                          // on boot: settle or fail unfinished ops
+  recover(history: AsyncIterable<{ event: JournalEvent }>): Promise<RecoveredOperation[]>; // on boot: finish what a restart interrupted
 }
 ```
 
 `runWithdrawal` expects the funds to be reserved under the withdrawal ID and journaled as `WITHDRAWAL_LOCKED` already. It resolves once an EOA is assigned, so the API can answer without waiting for confirmations, and rejects with `NO_INVENTORY` after releasing the lock if no EOA can pay.
 
+Call `runIntent` from the price poller's `onReport` without waiting for it. Its dependencies go in the optional `swaps` setting. It settles through `InMemoryLedger.apply`, so live balances match a replay exactly.
+
 The signer is a `TransactionSigner`: `KeyManager.sign` plus `await registerOp(opId, { eoa, to, value, dataHash })`, which durably registers what the signing guard must see.
 
 ## Price poller (Apurva)
 
-Gets a Uniswap Trading API quote every `PRICE_POLL_INTERVAL_SEC`, and passes it to `IntentStore.due` as a `PriceReport`. A failed poll triggers nothing.
+Gets a Uniswap Trading API quote through `UniswapClient` in `uniswap.ts` every `PRICE_POLL_INTERVAL_SEC`, and hands each `PriceReport` to `onReport`, which calls `IntentStore.due`. A failed poll reports nothing, polls never overlap, and `latest` returns null once a price is more than two intervals old.
+
+`onReport` must not wait for a swap to finish. Polls use a throwaway `swapper` address, so custody addresses are not sent to Uniswap every interval. `UniswapClient` treats responses as untrusted: it checks the chain, tokens and amounts, and rejects anything but a classic route, because custody EOAs sign ordinary transactions.
 
 ```ts
 // price-poller.ts
 export interface PricePoller {
   start(): () => void; // returns a function that stops polling
-  latest(): PriceReport | null;
+  latest(): PriceReport | null; // null if no recent price
 }
 ```
 

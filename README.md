@@ -46,6 +46,52 @@ cp .env.example .env
 
 Variables are described in [docs/deployment.md](docs/deployment.md).
 
+## Uniswap integration
+
+Swaps run through the Uniswap Trading API and Universal Router, from custody addresses not linked to the user. Feedback is in [FEEDBACK.md](FEEDBACK.md).
+
+**Proof it works:** a real swap on Sepolia, 0.001 ETH to 26.172175 USDC ([transaction](https://sepolia.etherscan.io/tx/0x350ea3b0af02aeb7cb56c9bc7a00c2e8f210e0f7d9193734a6a6dd62e88ea557)). It used a stand-in signer and journal, because the enclave's signing guard does not allow swaps yet.
+
+### Contracts used (Sepolia)
+
+We deploy no contracts of our own.
+
+| Contract | Address |
+| --- | --- |
+| Universal Router 2.1.2 | [`0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3`](https://sepolia.etherscan.io/address/0x7E4f6c5e954Da5c61B3423D81E2277431Ac043f3) |
+| WETH | [`0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14`](https://sepolia.etherscan.io/address/0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14) |
+| USDC, the output token | [`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`](https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) |
+
+### Where the integration is
+
+| What | Code |
+| --- | --- |
+| Calling the Trading API | [`uniswap.ts:73`](services/enclave/src/uniswap.ts#L73) |
+| Checking prices from quotes | [`price-poller.ts:86`](services/enclave/src/price-poller.ts#L86) |
+| Running a swap | [`executor.ts:371`](services/enclave/src/executor.ts#L371) |
+| Requesting a quote for a swap | [`executor.ts:422`](services/enclave/src/executor.ts#L422) |
+| Checking the router calldata before signing | [`executor.ts:452`](services/enclave/src/executor.ts#L452), [`swap-calldata.ts:55`](services/enclave/src/swap-calldata.ts#L55) |
+| Simulating the swap | [`executor.ts:469`](services/enclave/src/executor.ts#L469) |
+| Sending the swap | [`executor.ts:531`](services/enclave/src/executor.ts#L531) |
+| Reading the output from the receipt | [`executor.ts:568`](services/enclave/src/executor.ts#L568) |
+| Tests, including real Sepolia responses | [`executor-intent.test.ts`](services/enclave/test/executor-intent.test.ts), [`swap-calldata.test.ts`](services/enclave/test/swap-calldata.test.ts) |
+
+### Check it yourself
+
+Needs Foundry, and `.env` set up as in [scripts/README.md](scripts/README.md) for the last two commands.
+
+```bash
+pnpm test
+```
+
+```bash
+pnpm smoke:quote
+```
+
+```bash
+pnpm smoke:swap
+```
+
 ## Trust assumptions
 
 The operator, KMS policy administrator and TEE hardware are trusted. There is one node, with no key handover, threshold custody or slashing. External encrypted state is implemented; live KMS recovery remains unverified. Complete rollback of custody and journal storage requires an external trusted checkpoint. Journal loss still loses accounting state.

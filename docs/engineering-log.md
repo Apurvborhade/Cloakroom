@@ -622,3 +622,284 @@ This document is the canonical, chronological record of all backend and accounti
 ### Integration Handoffs
 - **Shreyas (Auth & Server):** Use `InMemoryLedger` in Fastify route handlers and `auth.ts` inside `FifoSerialQueue` transaction boundaries.
 - **Apurva (Executor):** Confirmed existing calls (`ledger.consume(withdrawal.id)` and `ledger.release(withdrawal.id)`) align with reservation reference semantics.
+
+## Task A6: Live Chain Test Script
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A6 (Apurva's workstream) — Live Chain Test Script
+- **Status:** Committed on branch `test/sepolia-smoke`. Run on Sepolia with all checks passing. Not pushed by this entry.
+- **Objective:** Exercise the real watcher, inventory and executor on a live chain.
+
+### Files Created
+- `services/enclave/scripts/sepolia-smoke.ts`
+
+### Files Modified
+- `package.json` and `pnpm-lock.yaml` (added `tsx` and the `smoke:sepolia` command)
+- `scripts/README.md`
+- `docs/roles/apurva-onchain.md`
+
+### Dependencies Added or Changed
+- `tsx` as a root development dependency.
+
+### Architectural Decisions
+- Only Sepolia and local Anvil are allowed, so it cannot spend real funds on mainnet.
+- Addresses are derived from the test key, so a later run can recover funds from a failed one.
+- The RPC URL and test key are removed from any error output.
+
+### Exact Verification Commands & Results
+- Local Anvil rehearsal with `--block-time 1`: exited with code 0, all checks passed.
+- `pnpm smoke:sepolia` on Sepolia: all 10 printed checks passed, with a payout from the address the owner did not fund (transaction `0xcb7f4ee185ea9f360b4fc905865ae99dc366795cbd7bae77d3fe28999d2895ef`). Run by Apurva, before `main` was merged into this branch. The closing lines of its output were not captured.
+- Chain ID 1: refused, exit code 1.
+- Missing `RPC_URL` and `TEST_PRIVATE_KEY`: refused, exit code 1.
+- `pnpm test` after merging `main`, on macOS: 272 passed and 3 failed in `kms-sealing.test.ts` and `sealed-state.test.ts`. The same 3 fail on a clean `origin/main` on this machine, so this branch did not cause them.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Covers native ETH only, not ERC-20 payouts or swaps.
+- The journal, ledger and signer are stand-ins.
+
+### Commit Reference
+- **Commit:** `e20bb3ff01ad2a3ad41698f0e968c5c3ccbee054` (`test(enclave): add a live chain test script`)
+- **Pushed to Remote:** No
+
+---
+
+## Task A7: Watcher With the Real Journal
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A7 (Apurva's workstream) — Watcher With the Real Journal
+- **Status:** Committed on branch `fix/watcher-real-journal`. Not pushed by this entry.
+- **Objective:** Make `DepositWatcher` work with the real `EncryptedJournal`, `InMemoryLedger` and `FifoSerialQueue`, and replay from `JournalEvent`.
+
+### Files Created
+- `services/enclave/test/watcher-journal.test.ts`
+
+### Files Modified
+- `services/enclave/src/watcher.ts`
+- `docs/decisions/2026-11-06-0258-deposit-journal-events.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Implementation Details
+- `WatcherJournal.append` now returns `Promise<unknown>`, so the real `Journal` fits.
+- `DepositWatcher.replay` accepts any `JournalEvent` and ignores events that are not about deposits.
+
+### Architectural Decisions
+- An opened session with no `baseline` or `baselineBlock` throws `MISSING_BASELINE`. Assuming zero could credit funds the address already held. The watcher always writes both.
+
+### Tests Added
+- `services/enclave/test/watcher-journal.test.ts`: 9 tests on a local Anvil chain with the real journal, ledger and queue, covering restarts and a failure between the journal write and the ledger.
+- Six deliberate bugs were introduced, and each one made a test fail. Undoing the type change produced a type error.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 317 passed and 3 failed in `kms-sealing.test.ts` and `sealed-state.test.ts`. These are the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Nothing starts the watcher at boot yet. This task only makes the parts fit.
+- Not run on Sepolia since this change.
+
+### Integration Handoffs
+- **Shreyas:** boot must replay the journal into the ledger, the watcher and inventory before calling `tick`.
+
+### Commit Reference
+- **Commit:** `a92fd18dbd5b6e4c8c949658e0704d9ab79a0881` (`fix(enclave): make the watcher fit the real journal`)
+- **Pushed to Remote:** No
+
+---
+
+## Task A8: Signing Limits in Configuration
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A8 (Apurva's workstream) — Signing Limits in Configuration
+- **Status:** Committed on branch `feat/signing-limits`. Not pushed by this entry.
+- **Objective:** Read the limits `KeyManager` enforces from environment variables.
+
+### Files Modified
+- `services/enclave/src/config.ts` (added four `SIGNING_MAX_*` variables, two cross-checks and `toSigningPolicy`)
+- `.env.example`
+- `services/enclave/test/config.test.ts`
+- `docs/deployment.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- Boot fails if the priority fee limit exceeds the max fee limit, because the signer would refuse those transactions.
+- Boot fails if `MAX_AMOUNT_NATIVE_WEI` exceeds `SIGNING_MAX_NATIVE_VALUE_WEI`, because the API would accept amounts the signer can never sign.
+- `SIGNING_MAX_GAS` is 1,000,000 in `.env.example`, because Sepolia Trading API quotes estimated about 816,000 to 891,000 gas for a swap.
+- The fee limits in `.env.example` follow the values in Felix's custody test.
+
+### Tests Added
+- `services/enclave/test/config.test.ts`: covers the limits, both cross-checks, the policy mapping, and acceptance by the real `KeyManager` constructor.
+- Seven deliberate bugs were introduced, and each one made a test fail.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 332 passed and 3 failed in `kms-sealing.test.ts` and `sealed-state.test.ts`. These are the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Nothing calls `toSigningPolicy` yet, because the enclave has no custody boot code using `loadConfig`.
+- `custody-selftest.ts` keeps its own limits, including a gas limit too low for swaps. That file is Felix's.
+- Existing local `.env` files need the new variables.
+
+### Integration Handoffs
+- **Felix:** pass `toSigningPolicy(loadConfig(process.env))` to `KeyManager` at boot, and inject the new variables into the TEE.
+
+### Commit Reference
+- **Commit:** `8a2a01ab17a027331b0c5fb92a4d73f4b94c075d` (`feat(enclave): add signing limits to the environment config`)
+- **Pushed to Remote:** No
+
+---
+
+## Task A9: Price Poller
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A9 (Apurva's workstream) — Price Poller
+- **Status:** Committed on branch `feat/price-poller`. Live quote check passed. Not pushed by this entry.
+- **Objective:** Check the price from the enclave's own Uniswap quote, replacing the dropped CRE workflow as the trigger for intents.
+
+### Files Created
+- `services/enclave/src/uniswap.ts`
+- `services/enclave/src/price-poller.ts`
+- `services/enclave/test/price-poller.test.ts`
+- `services/enclave/scripts/quote-check.ts`
+
+### Files Modified
+- `services/enclave/src/config.ts` and `.env.example` (added `UNISWAP_API_URL`, `TOKEN_OUT_DECIMALS`, `PRICE_QUOTE_TIMEOUT_MS`)
+- `package.json` (added `smoke:quote`)
+- `docs/deployment.md`, `docs/enclave.md`, `docs/roles/apurva-onchain.md`, `docs/decisions/README.md`, `scripts/README.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- Polls use a throwaway `swapper`, so custody addresses are not sent to Uniswap every interval. `pnpm smoke:quote` confirmed the live API accepts this.
+- A failed poll reports nothing, and `latest` returns null once a price is over two intervals old.
+- Polls never overlap, and `onReport` is not awaited, so a slow swap cannot stop price checks.
+- `UniswapClient` treats responses as untrusted, and rejects anything but a `CLASSIC` route.
+- Errors carry a code and an HTTP status only.
+
+### Tests Added
+- `services/enclave/test/price-poller.test.ts`: 37 tests with a fake API, using the values from a real Sepolia quote.
+- Twenty-two deliberate bugs were introduced, and each one made a test fail.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 372 passed (375). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- `pnpm smoke:quote`, run by Apurva: all 6 live quotes passed from new throwaway addresses, in about 0.7 to 1.4 seconds each. The polling timer itself has only run in tests.
+- Trading API rate limits are unchecked beyond that short burst.
+- Nothing starts the poller at boot, and `IntentStore` does not exist yet.
+
+### Integration Handoffs
+- **Shreyas:** `onReport` will call `IntentStore.due`. The report's `pair` is `<NATIVE>/<TOKEN_OUT_ADDRESS>` in checksummed form, and `source` is `uniswap`.
+
+### Commit Reference
+- **Commits:** `82cc823430c350a88b7d0ab6734a2c0fae4327b5` (`feat(enclave): add a Uniswap Trading API client`), `49b20bc9075cc2269fdaf1ab65249c586a009723` (`feat(enclave): add the price poller`)
+- **Pushed to Remote:** No
+
+---
+
+## Task A10: Swap Execution
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A10 (Apurva's workstream) — Swap Execution
+- **Status:** Committed on branch `feat/run-intent`. A real swap passed on Sepolia with a stand-in journal and signer. Not pushed by this entry.
+- **Objective:** Swap an intent's reserved ETH from an EOA not linked to its owner, and settle from the receipt.
+
+### Files Created
+- `services/enclave/src/swap-calldata.ts`
+- `services/enclave/test/swap-calldata.test.ts`, `services/enclave/test/executor-intent.test.ts`
+- `services/enclave/test/fixtures/sepolia-quote.ts`, `test-swap-router.sol`, `test-swap-router.ts`
+- `services/enclave/scripts/swap-smoke.ts`
+- `docs/decisions/2026-11-06-1304-swap-safety-rules.md`
+
+### Files Modified
+- `services/enclave/src/executor.ts`, `services/enclave/src/uniswap.ts`
+- `package.json` (added `smoke:swap`)
+- `docs/chain-logic.md`, `docs/enclave.md`, `docs/decisions/README.md`, `docs/roles/apurva-onchain.md`, `docs/roles/felix-tee.md`, `scripts/README.md`, `FEEDBACK.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- See `docs/decisions/2026-11-06-1304-swap-safety-rules.md`.
+- Settlement goes through `InMemoryLedger.apply`, the same code replay uses.
+
+### Bugs Fixed
+- `runWithdrawal` journaled `FEE_BOOKED` but never booked the gas in the live ledger, so gas totals changed after a restart.
+
+### Tests Added
+- 29 calldata tests, including a real Sepolia Trading API response.
+- 41 executor tests on a local Anvil chain, with the real journal, ledger and queue, and a mock router.
+- Thirty-one deliberate bugs were introduced. Two escaped at first, which led to two new tests, and all are now caught.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 442 passed (445). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+- A live quote confirmed `protocols` with `V2` and `V3` returns a decodable route. Without it, a small swap routed through V4.
+- `pnpm smoke:swap`, first run: the validator refused the live calldata (`UNSAFE_CALLDATA`), and nothing was signed. Single-pool quotes pay the EOA directly rather than through `SWEEP`, a shape the mock router and earlier split-route quote had not shown. The validator now allows it under strict rules, and a real response of that shape is a test fixture.
+- `pnpm smoke:swap`, second run, by Apurva: all 9 checks passed. 0.001 ETH swapped for 26.172175 USDC through the live Trading API and Universal Router (transaction `0x350ea3b0af02aeb7cb56c9bc7a00c2e8f210e0f7d9193734a6a6dd62e88ea557`), in 60 RPC requests.
+- `pnpm test` after that fix, on macOS: 3 failed | 458 passed (461). The same 3 sealing tests fail.
+
+### Known Limitations & Unresolved Questions
+- `KeyManager` refuses swaps until Felix adds an authorization path, so the tests and `smoke:swap` use a stand-in signer.
+- `IntentStore` does not exist yet, and nothing connects the price poller to `runIntent` at boot.
+- `Executor.recover` is not built, so an `unresolved` swap stays reserved until it exists.
+
+### Integration Handoffs
+- **Felix:** see "Needed for swaps" in `docs/roles/felix-tee.md`.
+- **Shreyas:** `IntentStore.due` should only return pending intents, and `mark` must accept `executing`, `pending`, `done` and `failed`. `runIntent` already refuses to run an intent twice at once.
+
+### Commit Reference
+- **Commits:** `9445d3751e43f5d951fa8933b8943ee12d73e7f1` (`feat(enclave): check Universal Router calldata before signing`), `1814aed8768fa97eb3ac7910774b63bbf0399fca` (`feat(enclave): add swap execution, and book withdrawal gas live`)
+- **Pushed to Remote:** No
+
+---
+
+## Task A11: Recovery on Boot
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A11 (Apurva's workstream) — Recovery on Boot
+- **Status:** Committed on branch `feat/executor-recover`. Not pushed by this entry.
+- **Objective:** Finish what a restart interrupted, without ever sending a payment twice.
+
+### Files Created
+- `services/enclave/test/executor-recover.test.ts`
+- `docs/decisions/2026-11-06-1330-recovery-rules.md`
+
+### Files Modified
+- `services/enclave/src/executor.ts` (added `recover`, and moved settlement into `settleIntent` and `settleWithdrawal` so recovery uses the same code)
+- `services/enclave/src/inventory.ts` (added `restoreHold`)
+- `docs/chain-logic.md`, `docs/enclave.md`, `docs/testing.md`, `docs/decisions/README.md`, `docs/roles/apurva-onchain.md`, `README.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- See `docs/decisions/2026-11-06-1330-recovery-rules.md`. A moved nonce with no receipt is flagged for review with funds reserved, which departs from the spec, because releasing could pay twice.
+
+### Tests Added
+- `services/enclave/test/executor-recover.test.ts`: 29 tests on a local Anvil chain. Each restart closes the journal, reopens it from disk, and rebuilds the ledger and inventory.
+- Twenty-three deliberate bugs were introduced. Four escaped at first, which led to new tests, and all are now caught.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 487 passed (490). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Tests simulate a crash by stopping the process's work and reopening the journal. No test kills a real process with `kill -9`, and this has not run on Sepolia.
+- Tests use the stand-in signer. Recovery signs nothing, so Felix's signer is only involved through the normal run before a crash.
+- Nothing calls `recover` at boot yet, because no boot file exists.
+- There is no tool for working through operations flagged for review.
+
+### Integration Handoffs
+- **Boot file owner:** journal, then `replayLedger`, then `IntentStore` and `inventory.replay`, then `watcher.replay`, then `executor.recover(journal.replay())`, and only then start the server, watcher and price poller.
+- **Felix:** `recover` does not use `recoverSigned`. A transaction signed but not journaled was never sent, so its withdrawal fails and the user asks again.
+
+### Commit Reference
+- **Commit:** `657e7e05227878be119bfd2362876f357387a03f` (`feat(enclave): add Executor.recover`)
+- **Pushed to Remote:** No

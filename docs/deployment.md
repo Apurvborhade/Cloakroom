@@ -35,6 +35,8 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 | `WETH_ADDRESS` | `0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14` | Pair for the demo |
 | `TOKEN_OUT_ADDRESS` | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | Circle USDC on Sepolia |
 | `UNISWAP_API_KEY` | from the developer platform | Quotes and swap calldata |
+| `UNISWAP_API_URL` | `https://trade-api.gateway.uniswap.org/v1` | Trading API address |
+| `TOKEN_OUT_DECIMALS` | `6` | Decimals of `TOKEN_OUT_ADDRESS`, used to calculate prices |
 | `MAX_SLIPPAGE_BPS_CAP` | `100` | Upper limit on a user's slippage setting |
 | `FEE_BPS` | `10` | Fee: see [fee model](decisions/2026-11-06-0151-fee-model.md) |
 | `DEPOSIT_SESSION_TTL_SEC` | `900` | Lifetime of a deposit address |
@@ -44,6 +46,11 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 | `MAX_BODY_SIZE_BYTES` | `16384` | Largest request body accepted |
 | `PRICE_POLL_INTERVAL_SEC` | `60` | How often the enclave checks the price |
 | `PRICE_REFERENCE_AMOUNT_WEI` | `100000000000000000` | Input amount for each price check |
+| `PRICE_QUOTE_TIMEOUT_MS` | `10000` | How long to wait for a quote before the poll counts as failed |
+| `SIGNING_MAX_GAS` | `1000000` | Largest gas limit the signer accepts. Must fit a swap, about 900,000 |
+| `SIGNING_MAX_FEE_PER_GAS` | `100000000000` | Largest max fee per gas the signer accepts |
+| `SIGNING_MAX_PRIORITY_FEE_PER_GAS` | `10000000000` | Largest priority fee the signer accepts. Cannot exceed the max fee limit |
+| `SIGNING_MAX_NATIVE_VALUE_WEI` | `1000000000000000000` | Largest ETH value the signer accepts. Cannot be below `MAX_AMOUNT_NATIVE_WEI` |
 | `ADMIN_ADDRESS`, `SEEDING_ENABLED` | wallet, `true` then `false` | Operator seeding endpoint, turned off after setup |
 | `MAX_AMOUNT_NATIVE_WEI` | `1000000000000000000` | Demo cap that limits exposure |
 | `SIM_MODE` | `false` | Shows the TEE-simulated banner when `true` |

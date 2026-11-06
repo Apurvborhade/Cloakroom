@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0C0C0C;
+  --bg-secondary: #141418;
+  --bg-surface: #18181D;
+  --bg-elevated: #1E1E26;
+  --text-primary: #F5F5F7;
+  --text-secondary: #92929B;
+  --text-muted: #666670;
+  --border-color: #292930;
+  --accent-color: #A6DCF8;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+    background-color: #0C0C0C;
+    color: #F5F5F7;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body {
+    background-color: #0C0C0C;
+    color: #F5F5F7;
+    min-height: 100vh;
+    overflow-x: hidden;
+    selection-background-color: #A6DCF8;
+    selection-color: #0C0C0C;
+  }
+
+  ::selection {
+    background-color: rgba(166, 220, 248, 0.25);
+    color: #F5F5F7;
+  }
+}
+
+/* Subtle custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0C0C0C;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #292930;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3A3A46;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

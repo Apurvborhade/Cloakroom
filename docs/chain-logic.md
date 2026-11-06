@@ -43,19 +43,20 @@ function pick(token: Address, amt: bigint, exclude: Set<Address>): CustodyEOA | 
 
 ## Swap execution (`executor.ts`)
 
-The enclave checks the price every `PRICE_POLL_INTERVAL_SEC` from its own Uniswap quote, and evaluates pending intents against it. When a condition is met:
+The enclave checks the price every `PRICE_POLL_INTERVAL_SEC` from its own Uniswap quote, and evaluates pending intents against it. When a condition is met, `Executor.runIntent`:
 
-1. Create an `opId`, call `inventory.hold`, and register the expected destination with the signing guard.
-2. Get a quote for exactly `amountIn` from the Uniswap Trading API, with the chosen EOA as recipient. Set `minOut = quote.out * (1 - maxSlippageBps / 10000)`.
-3. Recheck the intent's condition using this quote's implied price, because a larger amount can get a worse price than the poll did. If the condition no longer holds, stop and leave the intent pending. See [Drop Chainlink CRE](decisions/2026-11-06-0358-drop-chainlink-cre.md).
-4. Treat the API's transaction as untrusted data. Require `to === UNIVERSAL_ROUTER_ADDRESS`, run it through `eth_call`, and require the simulated output to be at least `minOut`.
-5. Take the next nonce from a local per-EOA counter, sign, compute the hash from the serialized transaction, journal `EXEC_BROADCAST`, then send the raw transaction.
-6. After `CONFIRMATIONS` blocks, sum the ERC-20 Transfer logs to the EOA in the receipt. That sum is `amountOut`.
-7. Journal `EXEC_SETTLED`, then `ledger.consume` the reserved input and credit the owner's output minus the fee. Free the hold. Book the gas used to the fee ledger.
+1. Refreshes inventory, picks an EOA not linked to the owner, and calls `inventory.hold`.
+2. Gets a quote for exactly `amountIn` from the Trading API, limited to V2 and V3 routes, with the chosen EOA as `swapper`. Sets `minOut = quote.out * (1 - slippageBps / 10000)`, where the owner's slippage is capped by `MAX_SLIPPAGE_BPS_CAP`.
+3. Rechecks the intent's condition using this quote's implied price, because a larger amount can get a worse price than the poll did.
+4. Treats the API's transaction as untrusted. Requires `to === UNIVERSAL_ROUTER_ADDRESS`, `from` to be the EOA and `value` to equal `amountIn`, then decodes the router commands to prove the EOA receives at least `minOut`. See [Swap safety rules](decisions/2026-11-06-1304-swap-safety-rules.md).
+5. Runs the transaction through `eth_call`.
+6. Registers it with the signing guard, signs, computes the hash from the serialized transaction, journals `EXEC_BROADCAST`, then sends the raw transaction.
+7. After `CONFIRMATIONS` blocks, sums the output token's Transfer logs to the EOA in the receipt. That sum is `amountOut`.
+8. Journals `EXEC_SETTLED` and `FEE_BOOKED` and applies them to the ledger, which consumes the reserved input, credits the output minus `FEE_BPS`, and books the gas. Then refreshes inventory and frees the hold.
 
-If the receipt shows a revert, journal `EXEC_FAILED` and release the reservation. Gas spent is the pool's cost.
+A problem before step 6 leaves the intent pending, with nothing sent. If the signer refuses, the intent fails and the funds are released. If the receipt shows a revert, `EXEC_FAILED` releases the funds, and the gas spent is the pool's cost. If the result is unknown, the funds stay reserved and the EOA stays busy until recovery settles it.
 
-**Token handling:** a swap that starts from ETH needs a wrap step. A swap that starts from an ERC-20 needs an approval, through Permit2 if using the Universal Router. Confirm the exact flow in the Uniswap docs before coding the executor.
+**Token handling:** v1 only swaps ETH to the configured output token. The router wraps the ETH itself, and no approval is needed. An ERC-20 input would need a Permit2 signature.
 
 ## Withdrawal
 
@@ -76,13 +77,14 @@ Before the demo, fund 4 to 6 EOAs with ETH and the output token so withdrawals n
 
 ## Recovery on boot (`executor.recover`)
 
-For each broadcast without a terminal event, look up the receipt by hash.
+Runs once on boot, after replay and before anything else starts. Unfinished operations get their holds back before any network call. For each broadcast without a final event:
 
-- **Found:** settle or fail it.
-- **Not found and the EOA nonce has not moved:** rebroadcast the identical raw transaction.
-- **The nonce moved:** mark the operation failed for manual review.
+- **Receipt found:** settle or fail it, through the same code as a normal run.
+- **No receipt, and the EOA nonce has not moved:** send the identical raw transaction again, then settle.
+- **No receipt, and the nonce moved:** flag it for review, and keep the funds reserved.
+- **The chain cannot be reached:** leave it unresolved, and try again on the next boot.
 
-This is why the raw signed transaction is stored in the BROADCAST journal events.
+A withdrawal locked but never broadcast has its funds released, because the broadcast is journaled before sending. This is why the raw signed transaction is stored in the BROADCAST journal events. See [Recovery rules](decisions/2026-11-06-1330-recovery-rules.md).
 
 ## Known gaps
 

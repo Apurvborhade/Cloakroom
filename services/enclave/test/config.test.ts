@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { ENV_VARIABLES, loadConfig } from '../src/config.js';
+import { ENV_VARIABLES, loadConfig, toSigningPolicy } from '../src/config.js';
+import { KeyManager } from '../src/keys.js';
+import type { StateVault } from '../src/sealed-state.js';
 
 const EXAMPLE_PATH = new URL('../../../.env.example', import.meta.url);
 
@@ -53,9 +55,9 @@ describe('loadConfig', () => {
   });
 
   it('keeps wei values exact above the safe integer range', () => {
-    const config = loadConfig(validEnv({ MAX_AMOUNT_NATIVE_WEI: '123456789012345678901234567890' }));
+    const config = loadConfig(validEnv({ GAS_RESERVE_WEI: '123456789012345678901234567890' }));
 
-    expect(config.MAX_AMOUNT_NATIVE_WEI).toBe(123456789012345678901234567890n);
+    expect(config.GAS_RESERVE_WEI).toBe(123456789012345678901234567890n);
   });
 
   it('allows zero confirmations and zero fees, which are valid settings', () => {
@@ -84,11 +86,85 @@ describe('loadConfig', () => {
     ['MAX_SLIPPAGE_BPS_CAP', '10001'],
     ['FEE_BPS', '10001'],
     ['PRICE_REFERENCE_AMOUNT_WEI', '0'],
+    ['SIGNING_MAX_GAS', '0'],
+    ['SIGNING_MAX_FEE_PER_GAS', '0'],
+    ['SIGNING_MAX_PRIORITY_FEE_PER_GAS', '0'],
+    ['SIGNING_MAX_NATIVE_VALUE_WEI', '0'],
     ['SEEDING_ENABLED', 'yes'],
     ['SIM_MODE', '1'],
     ['CHAIN_ID', '99999999999999999999'],
   ])('rejects %s=%s', (name, value) => {
     expect(() => loadConfig(validEnv({ [name]: value }))).toThrow(name);
+  });
+
+  it('rejects a priority fee limit above the max fee limit', () => {
+    expect(() =>
+      loadConfig(validEnv({ SIGNING_MAX_FEE_PER_GAS: '10', SIGNING_MAX_PRIORITY_FEE_PER_GAS: '11' })),
+    ).toThrow('Environment variables exceed their limits: SIGNING_MAX_PRIORITY_FEE_PER_GAS');
+  });
+
+  it('allows a priority fee limit equal to the max fee limit', () => {
+    expect(() =>
+      loadConfig(validEnv({ SIGNING_MAX_FEE_PER_GAS: '10', SIGNING_MAX_PRIORITY_FEE_PER_GAS: '10' })),
+    ).not.toThrow();
+  });
+
+  it('rejects a demo cap the signer could never sign', () => {
+    expect(() =>
+      loadConfig(validEnv({ MAX_AMOUNT_NATIVE_WEI: '101', SIGNING_MAX_NATIVE_VALUE_WEI: '100' })),
+    ).toThrow('Environment variables exceed their limits: MAX_AMOUNT_NATIVE_WEI');
+  });
+
+  it('allows a demo cap equal to the signing limit', () => {
+    expect(() =>
+      loadConfig(validEnv({ MAX_AMOUNT_NATIVE_WEI: '100', SIGNING_MAX_NATIVE_VALUE_WEI: '100' })),
+    ).not.toThrow();
+  });
+
+  it('builds the signing policy from the right variables', () => {
+    const config = loadConfig(
+      validEnv({
+        CHAIN_ID: '11155111',
+        SIGNING_MAX_GAS: '1',
+        SIGNING_MAX_FEE_PER_GAS: '4',
+        SIGNING_MAX_PRIORITY_FEE_PER_GAS: '3',
+        MAX_AMOUNT_NATIVE_WEI: '2',
+        SIGNING_MAX_NATIVE_VALUE_WEI: '5',
+      }),
+    );
+
+    expect(toSigningPolicy(config)).toEqual({
+      chainId: 11155111,
+      maxGas: 1n,
+      maxFeePerGas: 4n,
+      maxPriorityFeePerGas: 3n,
+      maxNativeValue: 5n,
+    });
+  });
+
+  it('allows swap-sized gas with the example values', () => {
+    expect(loadConfig(validEnv()).SIGNING_MAX_GAS).toBeGreaterThanOrEqual(900_000n);
+  });
+
+  it('builds a policy the real KeyManager accepts', () => {
+    // The constructor only needs to know this is a simulation vault, and never opens it.
+    const vault = { protection: 'simulation' } as unknown as StateVault;
+    const journal = {
+      append: async () => {
+        throw new Error('not used');
+      },
+      replay: async function* () {},
+    };
+
+    expect(
+      () =>
+        new KeyManager({
+          vault,
+          journal,
+          simMode: true,
+          policy: toSigningPolicy(loadConfig(validEnv())),
+        }),
+    ).not.toThrow();
   });
 
   it('reports every bad variable at once', () => {

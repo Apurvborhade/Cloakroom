@@ -101,6 +101,21 @@ export class Inventory implements InventoryReader {
     this.holds.set(opId, { eoa: address, token: tokenAddress, amount });
   }
 
+  /**
+   * Puts back the hold of an operation already broadcast before a restart. Unlike hold, this does
+   * not check the balance, because the funds may have left once the transaction landed.
+   */
+  restoreHold(eoa: Address, token: Address, amount: bigint, opId: string): void {
+    this.syncEoas();
+    const address = getAddress(eoa);
+    const custody = this.eoas.get(address);
+    if (!custody) throw new Error('UNKNOWN_EOA');
+    if (this.holds.has(opId)) return;
+
+    custody.inFlight = true;
+    this.holds.set(opId, { eoa: address, token: getAddress(token), amount });
+  }
+
   /** Releases an operation's hold. Freeing an unknown or already freed operation does nothing. */
   free(opId: string): void {
     const hold = this.holds.get(opId);

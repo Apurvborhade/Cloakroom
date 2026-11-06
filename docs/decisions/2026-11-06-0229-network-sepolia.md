@@ -2,7 +2,7 @@
 
 | Status | Owner | Needed by |
 | --- | --- | --- |
-| Accepted, pending a Trading API quote test | Apurva | Phase 0 |
+| Accepted | Apurva | Phase 0 |
 
 ## Decision
 
@@ -20,6 +20,10 @@ Read on-chain and from the Uniswap and Anon-RPC docs on 2026-11-06. Quotes below
 | Liquidity | The WETH/USDC 0.05% pool holds about 128 WETH and 3.2M USDC |
 | Quote | About 2,630 USDC for 0.1 WETH |
 | Anon-RPC | Browser-only, so enclave reads are a known leak. It takes a target URL, so a Sepolia RPC should work through any worker (not yet tested). Nox is published on Sepolia. Tor and Nym bootstrap with one non-anonymized mainnet read |
+
+## Confirmed live
+
+A real swap settled on Sepolia through the Trading API and Universal Router 2.1.2 ([transaction](https://sepolia.etherscan.io/tx/0x350ea3b0af02aeb7cb56c9bc7a00c2e8f210e0f7d9193734a6a6dd62e88ea557)).
 
 ## Consequences
 

@@ -19,3 +19,15 @@ export {
   type CreditRecord,
   type OperationalGasRecord,
 } from './ledger.js';
+export {
+  AuthService,
+  AuthError,
+  type AuthConfig,
+  type AuthConfigInput,
+  type AuthServiceDeps,
+  type SessionGrantRecord,
+  type OwnerPrimaryType,
+  type MutatingPrimaryType,
+  type OwnerMessageMap,
+  type MutatingMessageMap,
+} from './auth.js';

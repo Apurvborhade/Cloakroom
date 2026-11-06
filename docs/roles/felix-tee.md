@@ -79,3 +79,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] Attestation format, retrieval through NSM, and independent verification
 - [x] KMS recipient adapter, in-enclave TLS, external ciphertext CAS store and PCR-restricted policy template; live IAM/KMS provisioning remains open
 - [x] Custody seed, HPKE identity, allocations and seeding flag survive external storage process restart in integration tests; journal cipher is stable. Live Nitro/KMS recovery and external rollback checkpoint remain open
+
+## Needed for swaps
+
+`KeyManager.#authorize` only accepts `WITHDRAWAL_LOCKED`, so it refuses every swap. `Executor.runIntent` calls `registerOp` with the opId `exec:<intentId>`, `to` set to `UNIVERSAL_ROUTER_ADDRESS` and `value` set to `amountIn`. Authorizing it needs the matching `INTENT_CREATED`, and should refuse the EOAs linked to the owner. The calldata comes from Uniswap, so it cannot be recomputed the way a payout is: `assertSafeSwapCalldata` in `swap-calldata.ts` is the check to reuse. `SIGNING_MAX_GAS` must fit a swap, about 900,000.
