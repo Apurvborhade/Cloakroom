@@ -15,10 +15,14 @@ import { AesGcmStateVault, MemoryCipherBlobStore, simulationSealingKey } from '.
 import { bootEnclave } from '../../src/server.js';
 import type { BootOptions, RunningEnclave } from '../../src/server.js';
 import type { Quote, QuoteRequest } from '../../src/uniswap.js';
+import { deployLocalUniswap } from '../../scripts/demo-local.js';
+import { TEST_SWAP_ROUTER_ABI } from '../fixtures/test-swap-router.js';
 import { TEST_TOKEN_ABI, TEST_TOKEN_BYTECODE } from '../fixtures/test-token.js';
 
 // Anvil's first default account: a public, test-only key.
 const FUNDER = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80');
+// Anvil's second default account, so deploying does not disturb the funder's nonces.
+const DEPLOYER = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d');
 
 /** A real server on a real local chain, with stand-ins only for custody storage and Uniswap. */
 export function enclaveHarness(anvilPort: number, apiPort: number) {
@@ -68,25 +72,50 @@ export function enclaveHarness(anvilPort: number, apiPort: number) {
     }),
   };
 
+  const openKeysWith = (Keys: typeof KeyManager): BootOptions['openKeys'] => async (journal, policy) => {
+    const vault = new AesGcmStateVault(store, simulationSealingKey('aa'.repeat(32), true), true);
+    const keys = new Keys({ vault, journal, policy, simMode: true, allowCreate: true });
+    await keys.init();
+    return keys;
+  };
+
   const boot = async (overrides: Partial<BootOptions> = {}) => {
     const enclave = await bootEnclave({
       config: config(),
       chain,
       quoter,
-      openKeys: async (journal, policy) => {
-        const vault = new AesGcmStateVault(store, simulationSealingKey('aa'.repeat(32), true), true);
-        const keys = new KeyManager({ vault, journal, policy, simMode: true, allowCreate: true });
-        await keys.init();
-        return keys;
-      },
+      openKeys: openKeysWith(KeyManager),
       ...overrides,
     });
     running.push(enclave);
     return enclave;
   };
 
+  /** A mock router paying 2,000 tokens per ETH, in the real calldata shape. */
+  const localUniswap = () => {
+    const deployer = createWalletClient({ account: DEPLOYER, chain: foundry, transport });
+    return deployLocalUniswap({
+      deploy: async (abi, bytecode) => {
+        const hash = await deployer.deployContract({ abi, bytecode });
+        return (await chain.waitForTransactionReceipt({ hash })).contractAddress as Address;
+      },
+      readToken: (router) => chain.readContract({ address: router, abi: TEST_SWAP_ROUTER_ABI, functionName: 'token' }),
+      configure: async (router, amountOut) => {
+        const hash = await deployer.writeContract({
+          address: router,
+          abi: TEST_SWAP_ROUTER_ABI,
+          functionName: 'configure',
+          args: [amountOut, false],
+        });
+        await chain.waitForTransactionReceipt({ hash });
+      },
+    });
+  };
+
   return {
     boot,
+    localUniswap,
+    openKeysWith,
     chain,
     config,
     start: async () => {
@@ -118,7 +147,11 @@ export function apiClient(enclave: RunningEnclave) {
   const enclavePubKey = enclave.parts.keys.transportPublicKey();
   const domain = createDomain(foundry.id, deriveEnclaveSalt(enclavePubKey));
   return {
-    sign: (account: PrivateKeyAccount, primaryType: 'SessionGrant' | 'SessionQuery' | 'DepositRequest', message: never) =>
+    sign: (
+      account: PrivateKeyAccount,
+      primaryType: 'SessionGrant' | 'SessionQuery' | 'DepositRequest' | 'Intent' | 'CancelIntent',
+      message: never,
+    ) =>
       account.signTypedData({ domain, types: EIP712_TYPES, primaryType, message }),
     post: async (path: string, payload: unknown, sealedFor = path) => {
       const { envelope, openResponse } = await sealEnvelopeWithResponse(payload, {

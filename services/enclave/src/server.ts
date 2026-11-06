@@ -9,6 +9,7 @@ import { apiRoutes } from './routes.js';
 import type { ApiDeps } from './routes.js';
 import { Executor } from './executor.js';
 import type { RecoveredOperation, SwapDeps } from './executor.js';
+import { IntentOrders } from './intent-orders.js';
 import { InMemoryIntentStore } from './intents.js';
 import { Inventory } from './inventory.js';
 import { EncryptedJournal } from './journal.js';
@@ -27,6 +28,7 @@ const DEFAULT_DRAIN_TIMEOUT_MS = 10_000;
 const DRAIN_CHECK_MS = 50;
 const ATTESTATION_NONCE = /^(?:[a-f0-9]{2}){32,64}$/;
 const MAX_ATTESTATIONS_IN_FLIGHT = 8;
+const MS_PER_SECOND = 1000;
 
 export type KeyJournal = Pick<Journal, 'append' | 'replay'>;
 
@@ -46,6 +48,7 @@ export interface BootOptions {
 export interface EnclaveParts {
   auth: AuthService;
   executor: Executor;
+  intentOrders: IntentOrders;
   intents: InMemoryIntentStore;
   inventory: Inventory;
   journal: EncryptedJournal;
@@ -236,6 +239,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
       maxSlippageBpsCap: config.MAX_SLIPPAGE_BPS_CAP,
     },
   });
+  const intentOrders = new IntentOrders({ intents, journal: openedJournal, ledger, queue });
   const pipeline = new IntentExecutionPipeline({
     intents,
     executor,
@@ -256,10 +260,11 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   const recovery = await step('recovery', () => executor.recover(openedJournal.replay()));
   const stuck = recovery.filter(({ status }) => status === 'review' || status === 'unresolved').length;
   log(stuck === 0 ? 'RECOVERY_DONE' : 'RECOVERY_DONE_WITH_LOCKED_FUNDS');
+  await step('expiry', () => intentOrders.expireDue());
 
   const app = await step('routes', () =>
     buildApp({
-      api: { auth, config, inventory, keys, ledger, watcher },
+      api: { auth, config, intentOrders, intents, inventory, keys, ledger, watcher },
       attestation: options.attestation
         ? new AttestationService(options.attestation.buildHash, {
             identity: keys,
@@ -274,6 +279,11 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   await step('start', () => {
     cleanups.push(watcher.start(chain, () => log('WATCHER_ERROR')));
     cleanups.push(poller.start());
+    // On its own timer, so orders still expire and release funds when price checks are failing.
+    const expiryTimer = setInterval(() => {
+      intentOrders.expireDue().catch(() => log('INTENT_EXPIRY_ERROR'));
+    }, config.PRICE_POLL_INTERVAL_SEC * MS_PER_SECOND);
+    cleanups.push(() => clearInterval(expiryTimer));
   });
   await step('listen', () => app.listen({ host: config.HOST, port: config.PORT }));
   log('LISTENING');
@@ -301,7 +311,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   return {
     app,
-    parts: { auth, executor, intents, inventory, journal: openedJournal, keys, ledger, pipeline, poller, queue, watcher },
+    parts: { auth, executor, intentOrders, intents, inventory, journal: openedJournal, keys, ledger, pipeline, poller, queue, watcher },
     recovery,
     stop,
   };

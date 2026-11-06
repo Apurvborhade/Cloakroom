@@ -2,20 +2,27 @@ import { randomBytes } from 'node:crypto';
 import {
   ERROR_CODES,
   NATIVE,
+  SignedCancelIntentSchema,
   SignedDepositRequestSchema,
+  SignedIntentSchema,
   SignedSessionGrantSchema,
   SignedSessionQuerySchema,
+  wireToCancelIntentMsg,
   wireToDepositRequestMsg,
+  wireToIntentMsg,
   wireToSessionGrantMsg,
   wireToSessionQueryMsg,
 } from '@cloakroom/shared';
-import type { Envelope, ErrorCode, SessionQueryMsg } from '@cloakroom/shared';
+import type { Envelope, ErrorCode, IntentMsg, SessionQueryMsg } from '@cloakroom/shared';
 import type { FastifyInstance } from 'fastify';
+import { getAddress } from 'viem';
 import type { Address, Hex } from 'viem';
 import type { ZodError, ZodType } from 'zod';
 import { AuthError } from './auth.js';
 import type { AuthService } from './auth.js';
 import type { EnclaveConfig } from './config.js';
+import type { IntentOrders } from './intent-orders.js';
+import type { InMemoryIntentStore } from './intents.js';
 import type { Inventory } from './inventory.js';
 import type { KeyManager } from './keys.js';
 import type { InMemoryLedger } from './ledger.js';
@@ -34,11 +41,15 @@ const ERROR_STATUS: Partial<Record<ErrorCode, number>> = {
   EXPIRED: 400,
   UNSUPPORTED_ASSET: 400,
   INVALID_PAYLOAD: 400,
+  INSUFFICIENT_BALANCE: 400,
+  INTENT_NOT_FOUND: 404,
 };
 
 export interface ApiDeps {
   auth: AuthService;
   config: EnclaveConfig;
+  intentOrders: IntentOrders;
+  intents: Pick<InMemoryIntentStore, 'listByOwner'>;
   inventory: Pick<Inventory, 'linkOwner'>;
   keys: KeyManager;
   ledger: Pick<InMemoryLedger, 'getBalance'>;
@@ -107,8 +118,22 @@ function depositInvalidCode(error: ZodError): ErrorCode {
   return unsupported ? ERROR_CODES.UNSUPPORTED_ASSET : ERROR_CODES.INVALID_PAYLOAD;
 }
 
+/** Refuses an order the executor could never run, before it spends the owner's nonce. */
+function assertRunnableIntent(intent: IntentMsg, config: EnclaveConfig): void {
+  if (getAddress(intent.tokenIn) !== NATIVE || getAddress(intent.tokenOut) !== config.TOKEN_OUT_ADDRESS) {
+    throw new AuthError(ERROR_CODES.UNSUPPORTED_ASSET);
+  }
+  // Only "at or above" has a limit to protect the seller: see the binding limit floor decision.
+  const valid =
+    intent.comparator === 0 &&
+    intent.triggerPrice > 0n &&
+    intent.amountIn > 0n &&
+    intent.amountIn <= config.MAX_AMOUNT_NATIVE_WEI;
+  if (!valid) throw new AuthError(ERROR_CODES.INVALID_PAYLOAD);
+}
+
 export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
-  const { auth, config, inventory, keys, ledger, watcher } = deps;
+  const { auth, config, intentOrders, intents, inventory, keys, ledger, watcher } = deps;
 
   privateRoute(app, keys, '/session', SignedSessionGrantSchema, async ({ message, signature }) => {
     const grant = await auth.createSessionGrant(wireToSessionGrantMsg(message), signature as Hex);
@@ -152,5 +177,30 @@ export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
       };
     });
     return { balances };
+  });
+
+  privateRoute(app, keys, '/intents', SignedIntentSchema, async ({ message, signature }) => {
+    const intent = wireToIntentMsg(message);
+    assertRunnableIntent(intent, config);
+    const { owner } = await auth.verifyAndAuthorizeMutation('Intent', intent, signature as Hex);
+    return { intentId: await intentOrders.create(owner, intent), status: 'pending' };
+  });
+
+  privateRoute(app, keys, '/intents/status', SignedSessionQuerySchema, async ({ message, signature }) => {
+    const owner = await authorizeRead(auth, wireToSessionQueryMsg(message), signature as Hex);
+    return {
+      intents: intents.listByOwner(owner).map(({ id, status, settledAmountOut }) => ({
+        id,
+        status,
+        ...(settledAmountOut === undefined ? {} : { amountOut: settledAmountOut.toString() }),
+      })),
+    };
+  });
+
+  privateRoute(app, keys, '/intents/cancel', SignedCancelIntentSchema, async ({ message, signature }) => {
+    const cancel = wireToCancelIntentMsg(message);
+    const { owner } = await auth.verifyAndAuthorizeMutation('CancelIntent', cancel, signature as Hex);
+    await intentOrders.cancel(owner, cancel.intentId);
+    return { status: 'cancelled' };
   });
 }
