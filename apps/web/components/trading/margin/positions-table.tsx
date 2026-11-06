@@ -1,5 +1,8 @@
 'use client';
 
+import { usePoolPrice } from '@/hooks/use-pool-price';
+import { marketLimitPrice } from '@/lib/margin/quote';
+import { explainAttempt } from '@/lib/swap/attempts';
 import type { PositionItem } from '@cloakroom/shared';
 import { Fragment, useMemo, useState } from 'react';
 import type { Hex } from 'viem';
@@ -43,6 +46,7 @@ function PositionDetail({ position }: { position: PositionItem }) {
       <KeyValue label="Liquidation price">{optionalPrice(position.liquidationPrice)}</KeyValue>
       <KeyValue label="Equity">{position.equity === undefined ? <Unavailable /> : <Amount value={position.equity} token={usdc} signed />}</KeyValue>
       <KeyValue label="Payout">{position.payout === undefined ? <Unavailable /> : <Amount value={position.payout} token={usdc} />}</KeyValue>
+      {position.reason && <KeyValue label="Last failure">{explainAttempt(position.reason)?.title ?? position.reason} ({position.reason})</KeyValue>}
       <KeyValue label="Shortfall" >{position.shortfall === undefined ? <Unavailable /> : <Amount value={position.shortfall} token={position.debtToken} maxFraction={8} />}</KeyValue>
     </KeyValueList>
   );
@@ -52,6 +56,7 @@ type Dialog = { kind: 'collateral' | 'close'; position: PositionItem } | null;
 
 export function PositionsTable() {
   const positions = useMarginPositions();
+  const poolPrice = usePoolPrice();
   const { owner } = useOwner();
   const toast = useToast();
   const addCollateral = useMarginAddCollateral();
@@ -83,7 +88,9 @@ export function PositionsTable() {
     addCollateral.reset();
     close.reset();
     setAmountText('');
-    setLimitText('');
+    // A market close: the worst price is 3% from the pool price, in the direction that hurts.
+    const closeSide = position.side === 'long' ? 'short' : 'long';
+    setLimitText(kind === 'close' && poolPrice.data !== undefined ? formatPrice(marketLimitPrice(closeSide, poolPrice.data), 2).replace(/,/g, '') : '');
     setDialog({ kind, position });
   };
 

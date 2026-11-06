@@ -13,10 +13,13 @@ const state = vi.hoisted(() => ({
   positions: [] as Array<Record<string, unknown>>,
   mutate: vi.fn(),
   error: null as unknown,
+  shorts: true,
+  lend: vi.fn(),
 }));
 
 vi.mock('@/hooks/use-actions', () => ({
   useMarginOpen: () => ({ mutate: state.mutate, reset: vi.fn(), isPending: false, error: state.error }),
+  useMarginLendingAction: () => ({ mutate: state.lend, isPending: false, error: null }),
 }));
 vi.mock('@/hooks/use-pool-price', () => ({ usePoolPrice: () => ({ data: state.price, isLoading: false }) }));
 vi.mock('@/hooks/use-private-data', () => ({
@@ -29,6 +32,7 @@ vi.mock('@/lib/config', () => ({
     tokenOut: { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', symbol: 'USDC', decimals: 6 },
     marginMaxLeverageBps: 40_000,
     maxSlippageBpsCap: 100,
+    get marginShortsEnabled() { return state.shorts; },
   },
 }));
 vi.mock('@/components/ui/address', () => ({ Address: ({ value }: { value: string }) => <span>{value}</span> }));
@@ -90,6 +94,8 @@ describe('margin trade card', () => {
     state.positions = [];
     state.mutate = vi.fn();
     state.error = null;
+    state.shorts = true;
+    state.lend = vi.fn();
   });
 
   it('opens a long at market, with the worst price set above the market price', () => {
@@ -161,6 +167,48 @@ describe('margin trade card', () => {
     render(<MarginTrade />);
     fireEvent.click(screen.getByRole('tab', { name: 'short' }));
     expect(screen.getByText(/Shorts aren't live on this server yet/)).toBeTruthy();
+  });
+
+  it('keeps shorts off when the setting is off', () => {
+    state.shorts = false;
+    render(<MarginTrade />);
+    const short = screen.getByRole('tab', { name: 'short · Coming soon' }) as HTMLButtonElement;
+    expect(short.disabled).toBe(true);
+    fireEvent.click(short);
+    expect(screen.getByRole('tab', { name: 'long' }).getAttribute('aria-selected')).toBe('true');
+    setCollateral('100');
+    expect(main().textContent).toBe('Open Long');
+  });
+
+  it('offers to fund the pool only when the pool is short, and only with money the user has', async () => {
+    const { ApiError } = await import('@/lib/api/errors');
+    state.error = new ApiError('INSUFFICIENT_LIQUIDITY');
+    render(<MarginTrade />);
+    setCollateral('100');
+    expect(state.lend).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Lend 100 USDC to the pool' }));
+    expect(state.lend.mock.calls[0]![0]).toEqual({ token: USDC, amount: usd(100n) });
+  });
+
+  it('suggests lower leverage when the balance cannot cover the loan and the collateral', async () => {
+    const { ApiError } = await import('@/lib/api/errors');
+    state.error = new ApiError('INSUFFICIENT_LIQUIDITY');
+    state.available = usd(150n);
+    render(<MarginTrade />);
+    setCollateral('100');
+    expect(screen.getByText(/Lower the leverage, or use 1x/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /to the pool/ })).toBeNull();
+  });
+
+  it('explains why a position failed, using the reason from the server', async () => {
+    state.mutate = vi.fn((_input, options) => options.onSuccess({ positionId: '0xabc', status: 'opening' }));
+    const { rerender } = render(<MarginTrade />);
+    setCollateral('100');
+    fireEvent.click(main());
+    state.positions = [{ id: '0xabc', status: 'failed', reason: 'NO_INVENTORY' }];
+    rerender(<MarginTrade />);
+    expect(await screen.findByText('No pool address can run this swap')).toBeTruthy();
+    expect(screen.getByText('NO_INVENTORY')).toBeTruthy();
   });
 
   it('follows the position until it is open', async () => {

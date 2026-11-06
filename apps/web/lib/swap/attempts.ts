@@ -7,9 +7,29 @@ export interface AttemptExplanation {
 }
 
 const EXPLANATIONS: Record<string, AttemptExplanation> = {
+  APPROVAL_FAILED: {
+    title: "The pool address couldn't approve USDC",
+    detail: 'An address approves Permit2 and the router the first time it sells USDC, and this failed. Nothing was swapped.',
+    action: 'Try again. If this repeats, check that the address has ETH for gas.',
+  },
+  LIMIT_NOT_MET: {
+    title: 'The price moved past your worst acceptable price',
+    detail: 'The swap would have filled too far from the price shown, so nothing was sent.',
+    action: 'Try again.',
+  },
+  EXPIRED: {
+    title: 'The operation ran out of time',
+    detail: 'It took too long to start, so nothing was sent.',
+    action: 'Try again.',
+  },
+  INTERRUPTED: {
+    title: 'The server restarted before sending this',
+    detail: 'Nothing was sent, and your funds were returned.',
+    action: 'Try again.',
+  },
   NO_INVENTORY: {
     title: 'No pool address can run this swap',
-    detail: 'It must come from an address you did not deposit to or use before, holding the swap amount plus its gas reserve.',
+    detail: 'It must come from one address that you did not deposit to, holding the whole swap amount plus its gas reserve.',
     action: 'Fund the pool, or try a smaller amount.',
   },
   INVENTORY_UNAVAILABLE: {
@@ -54,12 +74,12 @@ const EXPLANATIONS: Record<string, AttemptExplanation> = {
   },
   PREPARE_FAILED: {
     title: "The swap couldn't be signed",
-    detail: 'Nothing was sent, and your ETH was returned.',
+    detail: 'Nothing was sent, and your funds were returned.',
     action: 'Try again. If this repeats, check the server logs.',
   },
   REVERTED: {
     title: 'The swap reverted on-chain',
-    detail: 'The price likely moved past your minimum. Gas was spent, and your ETH was returned.',
+    detail: 'The price likely moved past your minimum. Gas was spent, and your funds were returned.',
     action: 'Try again.',
   },
 };

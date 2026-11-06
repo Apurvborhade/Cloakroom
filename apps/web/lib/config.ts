@@ -33,6 +33,8 @@ export interface AppConfig {
   allowSimulatedEnclave: boolean;
   marginUi: MarginUiMode;
   marginMaxLeverageBps: number;
+  /** Shorts are refused by the live enclave until they are merged and tested. */
+  marginShortsEnabled: boolean;
   uniswapPool: Address | null;
   chainRead: {
     mode: ChainReadMode;
@@ -61,6 +63,7 @@ export interface RawEnv {
   NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE?: string;
   NEXT_PUBLIC_MARGIN_UI?: string;
   NEXT_PUBLIC_MARGIN_MAX_LEVERAGE_BPS?: string;
+  NEXT_PUBLIC_MARGIN_SHORTS?: string;
   NEXT_PUBLIC_UNISWAP_POOL_ADDRESS?: string;
   NEXT_PUBLIC_CHAIN_READ_MODE?: string;
   NEXT_PUBLIC_ANON_RPC_SPECIFIER_ADDRESS?: string;
@@ -96,6 +99,7 @@ function readEnv(): RawEnv {
     NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE: process.env.NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE,
     NEXT_PUBLIC_MARGIN_UI: process.env.NEXT_PUBLIC_MARGIN_UI,
     NEXT_PUBLIC_MARGIN_MAX_LEVERAGE_BPS: process.env.NEXT_PUBLIC_MARGIN_MAX_LEVERAGE_BPS,
+    NEXT_PUBLIC_MARGIN_SHORTS: process.env.NEXT_PUBLIC_MARGIN_SHORTS,
     NEXT_PUBLIC_UNISWAP_POOL_ADDRESS: process.env.NEXT_PUBLIC_UNISWAP_POOL_ADDRESS,
     NEXT_PUBLIC_CHAIN_READ_MODE: process.env.NEXT_PUBLIC_CHAIN_READ_MODE,
     NEXT_PUBLIC_ANON_RPC_SPECIFIER_ADDRESS: process.env.NEXT_PUBLIC_ANON_RPC_SPECIFIER_ADDRESS,
@@ -224,6 +228,7 @@ export function parseConfig(env: RawEnv): AppConfig {
     allowSimulatedEnclave: trimmed(env.NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE) === 'true',
     marginUi,
     marginMaxLeverageBps: Math.max(10_000, marginMaxLeverageBps),
+    marginShortsEnabled: trimmed(env.NEXT_PUBLIC_MARGIN_SHORTS) === 'true',
     uniswapPool: address(env.NEXT_PUBLIC_UNISWAP_POOL_ADDRESS, 'NEXT_PUBLIC_UNISWAP_POOL_ADDRESS', issues)
       ?? (chainId === sepolia.id && tokenOutAddress === SEPOLIA_USDC ? SEPOLIA_REFERENCE_POOL : null),
     chainRead: {
