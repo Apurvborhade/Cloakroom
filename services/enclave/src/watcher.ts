@@ -1,9 +1,10 @@
 import { NATIVE } from '@cloakroom/shared';
+import type { JournalEvent } from '@cloakroom/shared';
 import type { Address, PublicClient } from 'viem';
 
 /**
- * The journal events the watcher reads and writes. This extends the spec's list:
- * see docs/decisions/2026-11-06-0258-deposit-journal-events.md.
+ * The journal events the watcher writes. Every field it needs is required here, while
+ * JournalEvent makes some optional: see docs/decisions/2026-11-06-0258-deposit-journal-events.md.
  */
 export type DepositEvent =
   | {
@@ -20,7 +21,7 @@ export type DepositEvent =
 
 /** The parts of Shreyas's Journal, Ledger and SerialQueue that the watcher uses. */
 export interface WatcherJournal {
-  append(event: DepositEvent): Promise<void>;
+  append(event: DepositEvent): Promise<unknown>;
 }
 export interface WatcherLedger {
   credit(owner: Address, token: Address, amount: bigint, ref: string): void;
@@ -109,31 +110,44 @@ export class DepositWatcher {
   /**
    * Rebuilds session state from one journal event on boot. Rebuilding the ledger's balances
    * from the same events is the ledger's job, so this never calls ledger.credit.
+   * Events that are not about deposits are ignored.
    */
-  replay(event: DepositEvent): void {
-    if (event.t === 'DEPOSIT_SESSION_OPENED') {
-      this.sessions.set(event.id, {
-        id: event.id,
-        owner: event.owner,
-        eoa: event.eoa,
-        expiry: event.expiry,
-        baseline: event.baseline,
-        credited: 0n,
-        lastCheckedBlock: event.baselineBlock,
-        open: true,
-      });
-      return;
+  replay(event: JournalEvent): void {
+    switch (event.t) {
+      case 'DEPOSIT_SESSION_OPENED':
+        // Assuming a missing baseline is zero would credit funds the address already held.
+        if (event.baseline === undefined || event.baselineBlock === undefined) {
+          throw new Error('MISSING_BASELINE');
+        }
+        this.sessions.set(event.id, {
+          id: event.id,
+          owner: event.owner,
+          eoa: event.eoa,
+          expiry: event.expiry,
+          baseline: event.baseline,
+          credited: 0n,
+          lastCheckedBlock: event.baselineBlock,
+          open: true,
+        });
+        break;
+      case 'DEPOSIT_CREDITED': {
+        const session = this.requireSession(event.id);
+        session.credited += event.amount;
+        session.lastCheckedBlock = event.block;
+        break;
+      }
+      case 'DEPOSIT_SESSION_CLOSED':
+        this.requireSession(event.id).open = false;
+        break;
+      default:
+        break;
     }
+  }
 
-    const session = this.sessions.get(event.id);
+  private requireSession(id: string): DepositSession {
+    const session = this.sessions.get(id);
     if (!session) throw new Error('UNKNOWN_SESSION');
-
-    if (event.t === 'DEPOSIT_CREDITED') {
-      session.credited += event.amount;
-      session.lastCheckedBlock = event.block;
-    } else {
-      session.open = false;
-    }
+    return session;
   }
 
   /** Checks every open session once. Overlapping calls share the same run. */
