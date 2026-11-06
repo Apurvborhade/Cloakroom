@@ -354,9 +354,104 @@ describe('AuthService', () => {
 
       try {
         await authService.createSessionGrant(grantMessage, signature);
-      } catch (err: any) {
-        expect(err.code).toBe(ERROR_CODES.EXPIRED);
+      } catch (err: unknown) {
+        expect((err as AuthError).code).toBe(ERROR_CODES.EXPIRED);
       }
+    });
+
+    it('grant expiry exactly equal to now is rejected', async () => {
+      const grantMessage: SessionGrantMsg = {
+        owner: alice.address,
+        sessionKey: sessionUser1.address,
+        expiry: BigInt(currentTimestamp),
+      };
+
+      const signature = await alice.signTypedData({
+        domain: authService.getDomain(),
+        types: EIP712_TYPES,
+        primaryType: 'SessionGrant',
+        message: grantMessage,
+      });
+
+      await expect(authService.createSessionGrant(grantMessage, signature)).rejects.toThrow(
+        AuthError,
+      );
+
+      try {
+        await authService.createSessionGrant(grantMessage, signature);
+      } catch (err: unknown) {
+        expect((err as AuthError).code).toBe(ERROR_CODES.EXPIRED);
+      }
+    });
+
+    it('grant expiry one second in the past is rejected', async () => {
+      const grantMessage: SessionGrantMsg = {
+        owner: alice.address,
+        sessionKey: sessionUser1.address,
+        expiry: BigInt(currentTimestamp - 1),
+      };
+
+      const signature = await alice.signTypedData({
+        domain: authService.getDomain(),
+        types: EIP712_TYPES,
+        primaryType: 'SessionGrant',
+        message: grantMessage,
+      });
+
+      await expect(authService.createSessionGrant(grantMessage, signature)).rejects.toThrow(
+        AuthError,
+      );
+
+      try {
+        await authService.createSessionGrant(grantMessage, signature);
+      } catch (err: unknown) {
+        expect((err as AuthError).code).toBe(ERROR_CODES.EXPIRED);
+      }
+    });
+
+    it('grant expiry 30 seconds in the past is rejected, even though ordinary requests allow 60 seconds of skew', async () => {
+      const grantMessage: SessionGrantMsg = {
+        owner: alice.address,
+        sessionKey: sessionUser1.address,
+        expiry: BigInt(currentTimestamp - 30),
+      };
+
+      const signature = await alice.signTypedData({
+        domain: authService.getDomain(),
+        types: EIP712_TYPES,
+        primaryType: 'SessionGrant',
+        message: grantMessage,
+      });
+
+      await expect(authService.createSessionGrant(grantMessage, signature)).rejects.toThrow(
+        AuthError,
+      );
+
+      try {
+        await authService.createSessionGrant(grantMessage, signature);
+      } catch (err: unknown) {
+        expect((err as AuthError).code).toBe(ERROR_CODES.EXPIRED);
+      }
+    });
+
+    it('a valid future grant still succeeds', async () => {
+      const grantMessage: SessionGrantMsg = {
+        owner: alice.address,
+        sessionKey: sessionUser1.address,
+        expiry: BigInt(currentTimestamp + 600),
+      };
+
+      const signature = await alice.signTypedData({
+        domain: authService.getDomain(),
+        types: EIP712_TYPES,
+        primaryType: 'SessionGrant',
+        message: grantMessage,
+      });
+
+      const grant = await authService.createSessionGrant(grantMessage, signature);
+      expect(grant.owner).toBe(getAddress(alice.address));
+      expect(grant.sessionKey).toBe(getAddress(sessionUser1.address));
+      expect(grant.expiry).toBe(grantMessage.expiry);
     });
   });
 
@@ -608,6 +703,41 @@ describe('AuthService', () => {
       });
       const res = await authService.verifySessionQuery(queryMessage, sig2);
       expect(res.sessionKey).toBe(getAddress(sessionUser2.address));
+    });
+
+    it('a rejected replacement grant does not invalidate or overwrite the existing valid grant', async () => {
+      // Alice attempts to replace sessionUser1 with sessionUser2 using an expired grant
+      const invalidGrantMessage: SessionGrantMsg = {
+        owner: alice.address,
+        sessionKey: sessionUser2.address,
+        expiry: BigInt(currentTimestamp - 1),
+      };
+      const invalidGrantSig = await alice.signTypedData({
+        domain: authService.getDomain(),
+        types: EIP712_TYPES,
+        primaryType: 'SessionGrant',
+        message: invalidGrantMessage,
+      });
+
+      await expect(
+        authService.createSessionGrant(invalidGrantMessage, invalidGrantSig),
+      ).rejects.toThrow(AuthError);
+
+      // Existing valid grant for sessionUser1 must remain intact and functional
+      const queryMessage: SessionQueryMsg = {
+        owner: alice.address,
+        expiry: BigInt(currentTimestamp + 100),
+      };
+      const sig1 = await sessionUser1.signTypedData({
+        domain: authService.getDomain(),
+        types: EIP712_TYPES,
+        primaryType: 'SessionQuery',
+        message: queryMessage,
+      });
+
+      const res = await authService.verifySessionQuery(queryMessage, sig1);
+      expect(res.owner).toBe(getAddress(alice.address));
+      expect(res.sessionKey).toBe(getAddress(sessionUser1.address));
     });
   });
 
