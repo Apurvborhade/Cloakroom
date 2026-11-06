@@ -1,6 +1,6 @@
 # Nitro operations
 
-The deployed [application release](application-release.json) serves the private API with KMS-backed custody. Live attestation, encrypted requests and recovery after enclave, storage and config-service restarts are verified. Seeding and state creation are disabled; public HTTPS and funding remain pending. Images built without configuration serve the attestation bootstrap.
+The deployed [application release](application-release.json) serves the private API at the configured HTTPS endpoint with KMS-backed custody. Live attestation, encrypted browser requests over public HTTPS and recovery after enclave, storage and config-service restarts are verified. Seeding and state creation are disabled; frontend deployment and funding remain pending. Images built without configuration serve the attestation bootstrap.
 
 ## Build and launch
 
@@ -76,10 +76,12 @@ RPC_HOST=rpc-provider.example
 
 From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/release REGION` verifies the EIF digest and installs the helpers, release and units. It preserves an existing parent configuration and does not stop or start an enclave. Confirm allocator settings, then stop any previous manual instance and start the services. Enable storage/KMS relays before the custody application. Starting the enclave also starts its ingress proxy, including after a stop/start deployment. Verify a fresh quote after each restart. It is a oneshot launch unit, so enclave process failure also needs external health monitoring.
 
-`Caddyfile` prepares HTTPS forwarding to the loopback ingress. Set `ENCLAVE_DOMAIN` to a controlled DNS name pointing to the parent and allow TCP 80/443 in the security group. Then validate and run Caddy. DNS, certificate issuance and public reachability are still pending. Caddy access logging is disabled by default; do not add request/response body logs.
+`Caddyfile` forwards HTTPS to the loopback ingress. Set `ENCLAVE_DOMAIN` to a controlled DNS name pointing to the parent and allow TCP 80/443 in the security group. Configure automatic certificates, persistent certificate storage and a restart policy for the HTTPS proxy. Caddy access logging is disabled; do not add request/response body logs.
+
+Use the configured API base URL; attestation is available at `/attestation`. Before connecting the hosted frontend, set `ALLOWED_ORIGIN` to its origin, rebuild the application and authorize the new KMS measurements as described above. Share deployment-specific endpoints and identifiers through the deployment handoff.
 
 ## Remaining integration
 
-- Public domain, HTTPS and frontend URL handoff.
+- Frontend deployment and its allowed browser origin.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Fund unlinked inventory after verified deployment. Operator seeding is optional and remains disabled in the current application configuration.
