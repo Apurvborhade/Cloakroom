@@ -245,6 +245,7 @@ export const PositionItemSchema = z.object({
   equity: z.string().regex(/^-?\d+$/).optional(),
   payout: decimalStringSchema.optional(),
   shortfall: decimalStringSchema.optional(),
+  reason: z.string().optional(),
 });
 export type PositionItem = z.infer<typeof PositionItemSchema>;
 

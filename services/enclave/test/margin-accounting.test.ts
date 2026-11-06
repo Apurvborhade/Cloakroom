@@ -156,16 +156,19 @@ describe('long margin accounting', () => {
     expect(runtime.ledger.getOperationalGasSpent(NATIVE)).toBe(reason === 'REVERTED' ? 3n : 0n);
     await restart();
     expect(runtime.ledger.getBalance(TRADER, USDC).available).toBe(250n * USD);
+    expect(accounting.positions(TRADER, null)[0]).toMatchObject({ status: 'failed', reason });
   });
 
   it('retains the loan and assets after a failed close, then permits a new close', async () => {
     const opened = await open(), first = await close(opened.positionId);
     await broadcast(first);
     await accounting.fail(first.opId, { reason: 'REVERTED', txHash: hash(first), gasCost: 1n });
-    expect(accounting.positions(TRADER, price())[0]).toMatchObject({ status: 'open', debt: 750n * USD, asset: ETH / 2n });
+    expect(accounting.positions(TRADER, price())[0]).toMatchObject({ status: 'open', debt: 750n * USD, asset: ETH / 2n, reason: 'REVERTED' });
     expect(accounting.lending(LENDER)[0]?.available).toBe(250n * USD);
     await restart();
+    expect(accounting.positions(TRADER, null)[0]?.reason).toBe('REVERTED');
     const second = await close(opened.positionId);
+    expect(accounting.positions(TRADER, null)[0]?.reason).toBeUndefined();
     await broadcast(second); await accounting.settle(second.opId, result(second, 1_000n * USD));
     expect(runtime.ledger.getBalance(TRADER, USDC).available).toBe(250n * USD);
     runtime.ledger.assertInvariants();
