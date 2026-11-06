@@ -172,6 +172,7 @@ export class Inventory implements InventoryReader {
         this.linkDeposit(event.owner, event.eoa);
         break;
       case 'DEPOSIT_SESSION_CLOSED':
+      case 'DEPOSIT_COMPLETED':
         this.markInventory(event.eoa);
         break;
       case 'EXEC_BROADCAST':

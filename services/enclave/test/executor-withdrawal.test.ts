@@ -369,7 +369,7 @@ describe('Executor.runWithdrawal', () => {
   });
 
   describe('choosing the EOA', () => {
-    it('never pays from an EOA linked to the owner', async () => {
+    it('prefers an EOA without the owner’s swap history', async () => {
       const { executor, inventory, addresses } = setup(2);
       await fund(addresses[0]!, parseEther('1'));
       await fund(addresses[1]!, parseEther('1'));
@@ -384,14 +384,34 @@ describe('Executor.runWithdrawal', () => {
       expect(receipt.from.toLowerCase()).toBe(addresses[1]!.toLowerCase());
     });
 
-    it('rejects when the only funded EOA is linked to the owner', async () => {
+    it('rejects when the only funded EOA received the owner’s deposit', async () => {
       const { executor, inventory, released, addresses } = setup(1);
       await fund(addresses[0]!, parseEther('1'));
       const request = withdrawal();
-      inventory.linkOwner(request.owner, addresses[0]!);
+      inventory.linkDeposit(request.owner, addresses[0]!);
 
       await expect(executor.runWithdrawal(request)).rejects.toThrow('NO_INVENTORY');
       expect(released).toEqual([request.id]);
+    });
+
+    it('pays USDC from unrelated deposits before falling back to the owner’s swap address', async () => {
+      const { executor, inventory, addresses } = setup(3);
+      const [own, swapped, unrelated] = addresses as [Address, Address, Address];
+      await fund(own, parseEther('1'), 100_000_000n);
+      await fund(swapped, parseEther('1'), 100_000_000n);
+      await fund(unrelated, parseEther('1'), 10_000_000n);
+      const first = withdrawal({ token, amount: 10_000_000n });
+      inventory.linkDeposit(first.owner, own);
+      inventory.linkOwner(first.owner, swapped);
+
+      const paid = await mineUntilDone((await executor.runWithdrawal(first)).finished);
+      if (paid.status !== 'confirmed') throw new Error('expected confirmed');
+      expect((await chain.getTransactionReceipt({ hash: paid.txHash })).from.toLowerCase()).toBe(unrelated.toLowerCase());
+
+      const second = withdrawal({ owner: first.owner, token, amount: 10_000_000n });
+      const fallback = await mineUntilDone((await executor.runWithdrawal(second)).finished);
+      if (fallback.status !== 'confirmed') throw new Error('expected confirmed');
+      expect((await chain.getTransactionReceipt({ hash: fallback.txHash })).from.toLowerCase()).toBe(swapped.toLowerCase());
     });
 
     it('rejects cleanly and releases the lock when no single EOA holds enough', async () => {

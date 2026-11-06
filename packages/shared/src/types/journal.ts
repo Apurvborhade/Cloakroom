@@ -8,7 +8,7 @@ import type { MarginFundingEvent } from './margin-funding.js';
  * Open decisions:
  * - Session Grant Persistence: Session grants are currently handled ephemerally in-memory.
  *   If persistence across restarts is required, a SESSION_GRANTED event should be added.
- * - EOA Relabeling: Relabeling from 'deposit' to 'inventory' occurs upon DEPOSIT_SESSION_CLOSED.
+ * - EOA Relabeling: DEPOSIT_COMPLETED or DEPOSIT_SESSION_CLOSED makes an address inventory.
  */
 export type JournalEvent =
   | MarginFundingEvent
@@ -23,6 +23,7 @@ export type JournalEvent =
       expiry: number;
       baseline: bigint;
       baselineBlock: bigint;
+      funding?: { asset: Address; tokenBaseline: bigint; gasReserveWei: bigint };
     }
   | {
       t: 'DEPOSIT_CREDITED';
@@ -33,6 +34,17 @@ export type JournalEvent =
       txHash?: Hex;
     }
   | { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address }
+  | {
+      t: 'DEPOSIT_COMPLETED';
+      id: string;
+      owner: Address;
+      eoa: Address;
+      asset: Address;
+      nativeAmount: bigint;
+      tokenAmount: bigint;
+      gasReserveWei: bigint;
+      block: bigint;
+    }
   | { t: 'INTENT_CREATED'; id: string; owner: Address; intent: IntentMsg }
   | { t: 'INTENT_CANCELLED'; id: string; owner: Address }
   | { t: 'INTENT_EXPIRED'; id: string; owner: Address }

@@ -236,8 +236,10 @@ describe('restarting', () => {
     expect(second.parts.intents.get('intent-1')?.status).toBe('pending');
 
     await send(depositEoa, 7n);
-    await second.parts.watcher.tick();
-    expect(second.parts.ledger.getBalance(OWNER, NATIVE).available).toBe(parseEther('0.9') + 7n);
+    await vi.waitFor(async () => {
+      await second.parts.watcher.tick();
+      expect(second.parts.ledger.getBalance(OWNER, NATIVE).available).toBe(parseEther('0.9') + 7n);
+    });
   });
 
   it('releases a withdrawal that was locked but never sent', async () => {
@@ -313,8 +315,10 @@ describe('persistent runtime boot', () => {
       enclavePubKey: identity, quote: Buffer.from('runtime-quote').toString('base64'),
     });
     await send(eoa, 7n);
-    await second.parts.watcher.tick();
-    expect(second.parts.ledger.getBalance(OWNER, NATIVE).available).toBe(parseEther('0.9') + 7n);
+    await vi.waitFor(async () => {
+      await second.parts.watcher.tick();
+      expect(second.parts.ledger.getBalance(OWNER, NATIVE).available).toBe(parseEther('0.9') + 7n);
+    });
   });
 
   it.each(['missing', 'tampered'])('refuses a %s snapshot without replacing state', async (damage) => {
