@@ -24,6 +24,7 @@ One decision per file. This page is the index, so check here first.
 | [Network: Sepolia](2026-11-06-0229-network-sepolia.md) | Apurva | Phase 0 |
 | [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) | Apurva, Pradnyesh, Shreyas | Phase 2 |
 | [Swap safety rules](2026-11-06-1304-swap-safety-rules.md) | Apurva, Felix | Phase 2 |
+| [Recovery rules](2026-11-06-1330-recovery-rules.md) | Apurva, Felix | Phase 3 |
 | [Open-source licence](2026-11-06-0151-open-source-licence.md) | Team | Before hour 0 |
 | [The spec wins over the plan](2026-11-06-0151-spec-over-plan.md) | Team | Settled |
 | [Files with no owner](2026-11-06-0151-unowned-files.md) | Shreyas | Phase 0 |
