@@ -841,6 +841,8 @@ This document is the canonical, chronological record of all backend and accounti
 - `pnpm test` on macOS: 3 failed | 442 passed (445). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
 - `pnpm typecheck`: Exited with code 0.
 - A live quote confirmed `protocols` with `V2` and `V3` returns a decodable route. Without it, a small swap routed through V4.
+- `pnpm smoke:swap`, first run: the validator refused the live calldata (`UNSAFE_CALLDATA`), and nothing was signed. Single-pool quotes pay the EOA directly rather than through `SWEEP`, a shape the mock router and earlier split-route quote had not shown. The validator now allows it under strict rules, and a real response of that shape is a test fixture.
+- `pnpm test` after that fix, on macOS: 3 failed | 458 passed (461). The same 3 sealing tests fail.
 
 ### Known Limitations & Unresolved Questions
 - No swap has run on a real router yet. Run `pnpm smoke:swap`.
