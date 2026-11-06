@@ -20,7 +20,7 @@ import { bootEnclave } from '../src/server.js';
 import type { BootOptions, RunningEnclave } from '../src/server.js';
 import type { Quote, QuoteRequest } from '../src/uniswap.js';
 import { TEST_TOKEN_ABI, TEST_TOKEN_BYTECODE } from './fixtures/test-token.js';
-import { apiClient } from './helpers/enclave.js';
+import { apiClient, waitForDeposit } from './helpers/enclave.js';
 
 const ANVIL_PORT = 18_793;
 const API_PORT = 18_794;
@@ -313,7 +313,7 @@ describe('persistent runtime boot', () => {
       enclavePubKey: identity, quote: Buffer.from('runtime-quote').toString('base64'),
     });
     await send(eoa, 7n);
-    await second.parts.watcher.tick();
+    await waitForDeposit(second, 'persistent-session', 7n);
     expect(second.parts.ledger.getBalance(OWNER, NATIVE).available).toBe(parseEther('0.9') + 7n);
   });
 
