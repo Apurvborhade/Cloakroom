@@ -257,15 +257,15 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 `bootEnclave` in `server.ts` runs these in order, and `main.ts` is the entrypoint. If a step fails, it stops what already started and exits with `BOOT_FAILED:<step>`, and never prints the cause, which can contain the RPC URL.
 
 1. Check the RPC is on `CHAIN_ID`
-2. Init keys, and allocate up to `INVENTORY_EOA_COUNT` inventory addresses
-3. Open the journal with `KeyManager.journalCipher()`, replay it into the ledger, intent store, inventory and watcher, then call `KeyManager.restoreSigningState()`
+2. Open custody and its journal, then allocate up to `INVENTORY_EOA_COUNT` inventory addresses
+3. Restore the ledger, signing state, intent store, inventory and watcher
 4. Refresh inventory
 5. Run `Executor.recover()`. Operations it can't settle stay locked, and the boot continues
 6. Start the watcher and price poller, then open the server
 
-Shutdown stops the watcher and poller, closes the server, waits briefly for running swaps, then closes the journal. A swap still running at that point finishes on-chain, and recovery settles it at the next boot.
+Shutdown stops the watcher and poller, closes the server, waits briefly for running swaps, then closes custody and its journal. A swap still running at that point finishes on-chain, and recovery settles it at the next boot.
 
-Nitro persistent storage uses `openNitroRuntime({ keyArn, region, vaultId, buildHash })`; wiring its snapshot journal into this server bootstrap remains pending.
+Nitro passes `openRuntime` to `bootEnclave`, using `openNitroRuntime({ keyArn, region, vaultId, buildHash, policy })`. Its ledger and signing state are already restored; the server replays remaining components without applying ledger entries twice. The `openKeys` path and `JOURNAL_PATH` file are simulation-only. See [private application configuration](../infra/nitro/README.md#private-application-configuration) for the measured startup configuration and socket wiring.
 
 
 ## Custody implementation handoff

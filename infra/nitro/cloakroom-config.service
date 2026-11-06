@@ -1,0 +1,17 @@
+[Unit]
+Description=Cloakroom private runtime configuration
+ConditionPathExists=/etc/cloakroom/enclave.json
+
+[Service]
+Environment=ENCLAVE_CID=16
+EnvironmentFile=-/etc/cloakroom/parent.env
+ExecStart=/usr/bin/python3 /opt/cloakroom/nitro/config.py parent --cid ${ENCLAVE_CID} --file /etc/cloakroom/enclave.json
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -6,7 +6,8 @@ import { createPublicClient, http } from 'viem';
 import { loadConfig } from './config.js';
 import type { EnclaveConfig } from './config.js';
 import { KeyManager } from './keys.js';
-import { openNitroCustody } from './nitro-custody.js';
+import { openNitroRuntime } from './nitro-custody.js';
+import { readNitroConfig } from './nitro-config.js';
 import { AesGcmStateVault, FileCipherBlobStore, simulationSealingKey } from './sealed-state.js';
 import { bootEnclave } from './server.js';
 import type { BootOptions } from './server.js';
@@ -14,38 +15,43 @@ import { UniswapClient } from './uniswap.js';
 import { createNitroUniswapClient } from './nitro-uniswap.js';
 import { createNitroRpcTransport } from './nitro-rpc.js';
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    console.error(`Missing environment variable: ${name}`);
-    process.exit(1);
-  }
+function required(env: Readonly<Record<string, string | undefined>>, name: string): string {
+  const value = env[name];
+  if (!value) throw new Error('BOOT_FAILED:config');
   return value;
 }
 
-function custody(config: EnclaveConfig): BootOptions['openKeys'] {
+function custody(config: EnclaveConfig, env: Readonly<Record<string, string | undefined>>,
+  buildHash?: string): Pick<BootOptions, 'openKeys' | 'openRuntime'> {
   const allowCreate = config.CUSTODY_ALLOW_CREATE;
   if (config.SIM_MODE) {
-    const vaultPath = required('SIM_VAULT_PATH');
-    const sealingKey = required('SIM_SEALING_KEY');
-    return async (journal, policy) => {
+    const vaultPath = required(env, 'SIM_VAULT_PATH');
+    const sealingKey = required(env, 'SIM_SEALING_KEY');
+    return { openKeys: async (journal, policy) => {
       await mkdir(dirname(vaultPath), { recursive: true });
       const vault = new AesGcmStateVault(new FileCipherBlobStore(vaultPath), simulationSealingKey(sealingKey, true), true);
       const keys = new KeyManager({ vault, journal, policy, simMode: true, allowCreate });
-      await keys.init();
+      try { await keys.init(); } catch (error) { keys.close(); throw error; }
       return keys;
-    };
+    } };
   }
-  const keyArn = required('KMS_KEY_ARN');
-  const region = required('KMS_REGION');
-  const vaultId = required('VAULT_ID');
-  return (journal, policy) => openNitroCustody({ keyArn, region, vaultId, journal, policy, allowCreate });
+  const keyArn = required(env, 'KMS_KEY_ARN');
+  const region = required(env, 'KMS_REGION');
+  const vaultId = required(env, 'VAULT_ID');
+  if (!buildHash) throw new Error('BOOT_FAILED:config');
+  return { openRuntime: (policy) => openNitroRuntime({ keyArn, region, vaultId, buildHash, policy, allowCreate }) };
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig(process.env);
+  const nitro = process.argv.includes('--nitro');
+  const env = nitro
+    ? await readNitroConfig((await readFile(new URL('./config.sha256', import.meta.url), 'utf8')).trim())
+    : process.env;
+  const config = loadConfig(env);
+  if (config.SIM_MODE === nitro) throw new Error('BOOT_FAILED:config');
   if (config.SIM_MODE) console.log('SIM_MODE: not running in a TEE, so this makes no confidentiality claim.');
-  await mkdir(dirname(config.JOURNAL_PATH), { recursive: true });
+  if (config.SIM_MODE) await mkdir(dirname(config.JOURNAL_PATH), { recursive: true });
+  const buildHash = nitro ? (await readFile(new URL('./build-hash', import.meta.url), 'utf8')).trim() : undefined;
 
   const running = await bootEnclave({
     config,
@@ -56,10 +62,8 @@ async function main(): Promise<void> {
       chainId: config.CHAIN_ID,
       timeoutMs: config.PRICE_QUOTE_TIMEOUT_MS,
     }) : createNitroUniswapClient(config),
-    openKeys: custody(config),
-    attestation: config.SIM_MODE
-      ? undefined
-      : { buildHash: (await readFile(new URL('./build-hash', import.meta.url), 'utf8')).trim() },
+    ...custody(config, env, buildHash),
+    socketPath: nitro ? '\0cloakroom-attestation' : undefined,
     log: (code) => console.log(code),
   });
 

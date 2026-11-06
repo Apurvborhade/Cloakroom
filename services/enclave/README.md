@@ -2,7 +2,7 @@
 
 The TEE service. Module ownership: see [docs/enclave.md](../../docs/enclave.md).
 
-Phase 0 provides attestation only. `src/attestation-server.ts` is a temporary entrypoint; it does not implement custody or the application routes.
+The commands below build the attestation-only bootstrap. To start `main.ts` with persistent custody, use the [private application configuration](../../infra/nitro/README.md#private-application-configuration) build path.
 
 From the repository root:
 

@@ -1,6 +1,6 @@
 # Nitro operations
 
-The shipped entrypoint is an attestation bootstrap with an unfunded custody self-test. It does not serve the deposit, intent or withdrawal API. Live Nitro/KMS recovery is verified with an isolated test image; funded custody still requires application integration and verification of the final image.
+Images built without configuration serve the attestation bootstrap. A configured image starts the application server with persistent custody. The deployed release is still the bootstrap; the application image needs its own KMS policy measurements and live recovery verification before funding.
 
 ## Build and launch
 
@@ -17,13 +17,28 @@ Reserve one CPU and 2048 MiB in `/etc/nitro_enclaves/allocator.yaml`. Keep the Y
 
 Verify a fresh quote with `scripts/verify-attestation.py`, trusted `measurements.json` and `build-hash`. `release.json` records the Docker image ID, EIF SHA-256 and PCRs. These are different digests. Never select expected measurements from an untrusted response.
 
+## Private application configuration
+
+Create a UTF-8 JSON object outside the repository containing every variable in `.env.example`, plus `KMS_KEY_ARN`, `KMS_REGION` and `VAULT_ID`. All values are strings; use `SIM_MODE=false` and mode `0600`. Do not include shell variables such as `NODE_OPTIONS` or simulation keys.
+
+```sh
+TMPDIR=/path/to/disk-scratch bash infra/nitro/build-release.sh \
+  /path/to/release cloakroom-application:release /private/enclave.json
+sudo install -m 0600 /private/enclave.json /etc/cloakroom/enclave.json
+sudo systemctl enable --now cloakroom-config
+```
+
+Install the supplied helpers and service units first. Only the file's SHA-256 enters the image and build hash. At startup, the bridge selects `main.js --nitro`; it fetches the private file through the CID-restricted config service on vsock 8004 and rejects any mismatch before opening custody. Values are parsed as configuration, never shell environment overrides. HTTP uses the existing enclave socket and parent ingress.
+
+Changing any configuration bytes requires rebuilding the image and updating trusted KMS measurements. Use `CUSTODY_ALLOW_CREATE=true` only for initial provisioning; the funded release must use `false`. The parent holds API credentials in this private file, while custody keys remain inside the enclave.
+
 ## Persistent custody
 
 1. Supply trusted PCR0–2, a stable random public `VaultId` and an existing key administrator role to `kms.template.json`. The template creates a retained KMS key, EC2 role and instance profile. Validate the CloudFormation template in the target account before creating the stack. Demo resources were provisioned through the console; the template has not been deployed as a stack.
 2. Attach the resulting instance profile to the parent. Its credentials alone cannot obtain a plaintext wrapping key. The policy requires recipient attestation and the selected measurements and encryption context. The key administrator remains trusted because it can edit policy.
 3. Run `storage.py --cid 16 --directory /var/lib/cloakroom` and `kms-relay.py parent --region REGION --cid 16` on the parent. Both listen on vsock only, restricted to that enclave CID. The enclave bridge starts the matching internal relays.
-4. Call `openNitroRuntime({ keyArn, region, vaultId, buildHash, allowCreate })`. It validates the enclave environment with `loadConfig` and derives signing limits with `toSigningPolicy`; an explicit `policy` remains supported for isolated tests. Initial provisioning explicitly opts into creation and requires all three blobs absent. Ordinary restarts omit `allowCreate`. Parent role credentials are fetched through IMDSv2; no static AWS keys are required.
-5. Use the returned `keys`, `journal`, `ledger` and `attestation`. Restore remaining application state and executor operations before mounting routes. Journal snapshots are capped at 4 MiB; failed or uncertain storage writes require a runtime restart.
+4. `main.ts` opens `openNitroRuntime` with signing limits from the verified configuration. Initial provisioning requires all three blobs absent and explicit creation permission. Ordinary restarts refuse missing state. Parent role credentials are fetched through IMDSv2; no static AWS keys are required.
+5. `bootEnclave` uses the returned `keys`, snapshot `journal`, restored `ledger` and `attestation`, then restores intents, inventory, watcher and executor operations before listening. Journal snapshots are capped at 4 MiB; failed or uncertain storage writes require a runtime restart.
 6. Test an actual enclave restart with the same state and KMS policy before funding. Preserve `wrapping.blob`, `custody.blob` and `journal.blob` together; take backups with writes stopped. Missing or damaged blobs stop startup.
 
 An unfunded, non-debug Nitro test verified KMS-backed state creation and recovery after enclave and storage-service restarts: identity, cached transaction, journal and balances matched; duplicate signing and seeding disclosure stayed blocked. Fresh AWS quotes verified before and after recovery. Parent `GenerateDataKey` and `Decrypt` calls without recipient attestation were denied. The demo KMS policy permits the test image; update its trusted PCRs for the final application image and repeat recovery before funding.
@@ -65,7 +80,7 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 ## Remaining integration
 
-- Nitro application bootstrap with persistent journal storage and private runtime configuration.
+- Application API integration and live verification of the configured application image.
 - Public domain, HTTPS and frontend URL handoff.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Funding after verified deployment, followed by disabling the seeding route.

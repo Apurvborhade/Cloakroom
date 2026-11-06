@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NATIVE } from '@cloakroom/shared';
@@ -13,7 +13,9 @@ import { loadConfig } from '../src/config.js';
 import { Executor } from '../src/executor.js';
 import { EncryptedJournal } from '../src/journal.js';
 import { KeyManager } from '../src/keys.js';
-import { AesGcmStateVault, MemoryCipherBlobStore, simulationSealingKey } from '../src/sealed-state.js';
+import { AesGcmStateVault, FileCipherBlobStore, MemoryCipherBlobStore, simulationSealingKey } from '../src/sealed-state.js';
+import { openCustodyRuntime } from '../src/custody-runtime.js';
+import type { CustodyRuntime } from '../src/custody-runtime.js';
 import { bootEnclave } from '../src/server.js';
 import type { BootOptions, RunningEnclave } from '../src/server.js';
 import type { Quote, QuoteRequest } from '../src/uniswap.js';
@@ -251,6 +253,101 @@ describe('restarting', () => {
   });
 });
 
+describe('persistent runtime boot', () => {
+  function persistent(allowCreate: boolean): BootOptions['openRuntime'] {
+    return (policy) => openCustodyRuntime({
+      vault: new AesGcmStateVault(store, simulationSealingKey('aa'.repeat(32), true), true),
+      journalStore: new FileCipherBlobStore(join(directory, 'snapshot.blob')),
+      policy, buildHash: BUILD_HASH, simMode: true, allowCreate,
+      quote: async () => Buffer.from('runtime-quote'),
+    });
+  }
+
+  it('restores ledger, intents and watcher from the snapshot without opening a local journal', async () => {
+    const first = await boot({ openKeys: undefined, openRuntime: persistent(true) });
+    await credit(first, 'persistent-credit', parseEther('1'));
+    const order = { t: 'INTENT_CREATED', id: 'persistent-order', owner: OWNER,
+      intent: intent({ triggerPrice: 10n ** 30n }) } as const;
+    await record(first, order);
+    const eoa = (await first.parts.keys.allocate('deposit')).address;
+    await first.parts.watcher.openSession({ id: 'persistent-session', owner: OWNER, eoa,
+      expiry: Math.floor(Date.now() / 1000) + 3600 });
+    const identity = first.parts.keys.transportPublicKey();
+    const addresses = first.parts.keys.list();
+    await first.stop();
+    expect(existsSync(join(directory, 'enclave.journal'))).toBe(false);
+    expect(readFileSync(join(directory, 'snapshot.blob')).toString('latin1')).not.toContain('persistent-credit');
+
+    let runtime: CustodyRuntime | undefined;
+    const second = await boot({ openKeys: undefined, openRuntime: async (policy) => {
+      runtime = await persistent(false)!(policy); return runtime;
+    } });
+    expect(second.parts.ledger).toBe(runtime!.ledger);
+    expect(second.parts.keys.transportPublicKey()).toBe(identity);
+    expect(second.parts.keys.list()).toEqual(addresses);
+    expect(second.parts.ledger.getBalance(OWNER, NATIVE)).toMatchObject({
+      available: parseEther('0.9'), reserved: parseEther('0.1'),
+    });
+    expect(second.parts.intents.get('persistent-order')?.status).toBe('pending');
+    expect((await second.app.inject({ url: '/attestation' })).json()).toMatchObject({
+      enclavePubKey: identity, quote: Buffer.from('runtime-quote').toString('base64'),
+    });
+    await send(eoa, 7n);
+    await second.parts.watcher.tick();
+    expect(second.parts.ledger.getBalance(OWNER, NATIVE).available).toBe(parseEther('0.9') + 7n);
+  });
+
+  it.each(['missing', 'tampered'])('refuses a %s snapshot without replacing state', async (damage) => {
+    const first = await boot({ openKeys: undefined, openRuntime: persistent(true) });
+    await credit(first, 'credit', 5n);
+    await first.stop();
+    const path = join(directory, 'snapshot.blob');
+    if (damage === 'missing') rmSync(path);
+    else {
+      const bytes = readFileSync(path); bytes[bytes.length - 1] = bytes.at(-1)! ^ 0xff; writeFileSync(path, bytes);
+    }
+    const saved = await store.read();
+    await expect(bootEnclave(options({ openKeys: undefined, openRuntime: persistent(true) })))
+      .rejects.toThrow('BOOT_FAILED:custody');
+    expect(await store.read()).toEqual(saved);
+    expect(await isListening()).toBe(false);
+    expect(existsSync(join(directory, 'enclave.journal'))).toBe(false);
+  });
+
+  it('closes keys and snapshots after recovery fails', async () => {
+    let runtime: CustodyRuntime | undefined;
+    vi.spyOn(Executor.prototype, 'recover').mockRejectedValueOnce(new Error('secret RPC failure'));
+    await expect(bootEnclave(options({ openKeys: undefined, openRuntime: async (policy) => {
+      runtime = await persistent(true)!(policy); return runtime;
+    } }))).rejects.toThrow('BOOT_FAILED:recovery');
+    expect(await isListening()).toBe(false);
+    await expect(runtime!.keys.allocate('inventory')).rejects.toThrow('KEY_MANAGER_UNAVAILABLE');
+    await expect(runtime!.journal.append({ t: 'DEPOSIT_CREDITED', id: 'late', owner: OWNER, amount: 1n, block: 1n }))
+      .rejects.toThrow('JOURNAL_UNAVAILABLE');
+    expect(await boot({ openKeys: undefined, openRuntime: persistent(false) })).toBeDefined();
+  });
+
+  it('requires the persistent runtime outside simulation', async () => {
+    const openKeys = vi.fn(options().openKeys!);
+    await expect(bootEnclave(options({ config: env({ SIM_MODE: 'false' }), openKeys })))
+      .rejects.toThrow('BOOT_FAILED:storage');
+    expect(openKeys).not.toHaveBeenCalled();
+  });
+
+  it('listens on the enclave socket and closes the runtime on shutdown', async () => {
+    let runtime: CustodyRuntime | undefined;
+    const enclave = await boot({ socketPath: join(directory, 'enclave.sock'), openKeys: undefined,
+      openRuntime: async (policy) => { runtime = await persistent(true)!(policy); return runtime; } });
+    expect(existsSync(join(directory, 'enclave.sock'))).toBe(true);
+    expect(await isListening()).toBe(false);
+    expect((await enclave.app.inject({ url: '/attestation' })).statusCode).toBe(200);
+    const close = vi.spyOn(runtime!, 'close');
+    await enclave.stop(); await enclave.stop();
+    expect(close).toHaveBeenCalledTimes(1);
+    await expect(runtime!.keys.allocate('inventory')).rejects.toThrow('KEY_MANAGER_UNAVAILABLE');
+  });
+});
+
 describe('routes', () => {
   it('serves a quote for the key manager, and only with a valid nonce', async () => {
     const provider = vi.fn(async () => Buffer.from('quote'));
@@ -446,6 +543,7 @@ describe('the journal cipher option', () => {
     ['neither', {}],
     ['both', { key: Buffer.alloc(32), cipher }],
   ])('refuses %s of key and cipher', (_name, secret) => {
+    // @ts-expect-error Exercise runtime validation of deliberately invalid options.
     expect(() => new EncryptedJournal({ filePath: join(directory, 'x.journal'), ...secret })).toThrow('JOURNAL_KEY_INVALID');
   });
 

@@ -6,7 +6,7 @@ The enclave ships as one Docker image. Source hashing and base-image pinning are
 
 ## Docker image
 
-The [Dockerfile](../services/enclave/Dockerfile) builds a self-contained runtime with `pnpm deploy --prod --legacy`. Both package manifests include compiled output explicitly. The image includes all application dependencies and Nitro helpers. The current entrypoint serves attestation and runs an unfunded custody self-test; mounting the application API remains a separate integration step.
+The [Dockerfile](../services/enclave/Dockerfile) builds a self-contained runtime with `pnpm deploy --prod --legacy`. It includes application dependencies and Nitro helpers. Without a configuration commitment it serves the attestation bootstrap; [configured images](../infra/nitro/README.md#private-application-configuration) start the persistent application runtime.
 
 ```sh
 docker build -f services/enclave/Dockerfile -t cloakroom-attestation .
@@ -18,7 +18,7 @@ See the [enclave README](../services/enclave/README.md) for Nitro image creation
 
 Mirrored in [`.env.example`](../.env.example), and read by `loadConfig` in `services/enclave/src/config.ts`. Every variable is required, and the enclave refuses to start if one is missing or invalid. The error names the variable, never its value.
 
-Locally, pass the file to Node with `--env-file=.env`. In the TEE, inject the variables through the platform.
+Locally, use `SIM_MODE=true` and pass the file to Node with `--env-file=.env`. Nitro loads a private JSON file through the parent config service and checks its image-bound hash before startup; see the runbook above.
 
 Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price scale, stay in `packages/shared`.
 
@@ -55,8 +55,8 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 | `MAX_AMOUNT_NATIVE_WEI` | `1000000000000000000` | Demo cap that limits exposure |
 | `SIM_MODE` | `false` | Shows the TEE-simulated banner when `true` |
 | `ALLOWED_ORIGIN` | frontend URL | CORS |
-| `HOST`, `PORT` | `127.0.0.1`, `8787` | Where the API server listens |
-| `JOURNAL_PATH` | `journal/enclave.journal` | Encrypted journal file. Losing it loses the private ledger |
+| `HOST`, `PORT` | `127.0.0.1`, `8787` | Simulation listener; Nitro uses the enclave socket |
+| `JOURNAL_PATH` | `journal/enclave.journal` | Simulation journal file; Nitro uses the parent ciphertext snapshot |
 | `INVENTORY_EOA_COUNT` | `4` | Inventory addresses to allocate at boot, for seeding |
 | `CUSTODY_ALLOW_CREATE` | `true` once, then `false` | Allows new custody keys. Restarts must refuse missing state |
 
@@ -64,10 +64,10 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 
 ## Boot and attestation
 
-1. Call `openNitroRuntime({ keyArn, region, vaultId, buildHash })`. It loads `toSigningPolicy(loadConfig(process.env))`, restores custody and replays the journal before returning. Fresh provisioning requires explicit `allowCreate: true`; ordinary restarts refuse missing state. The HPKE identity is derived from the restored seed.
+1. `main.ts` passes `toSigningPolicy(loadConfig(verifiedConfig))` to `openNitroRuntime`, which restores custody and replays the journal before returning. Fresh provisioning requires explicit `allowCreate: true`; ordinary restarts refuse missing state. The HPKE identity is derived from the restored seed.
 2. It requests a platform quote whose report data commits to `sha256(enclavePubKey || buildHash)`.
 3. `GET /attestation` returns the quote, the public key, the build hash and the chain ID. The frontend uses the key hash as the EIP-712 `salt`.
-4. Replay remaining application state from the returned journal and run executor recovery before mounting routes. The parent stores ciphertext only. KMS delivers its wrapping key encrypted to an attested RSA recipient; TLS to KMS terminates inside the enclave. Simulation wrapping keys require an explicit simulation-only vault.
+4. Replay remaining application state from the returned journal and run executor recovery before mounting routes. The parent stores custody and journal ciphertext only. KMS delivers its wrapping key encrypted to an attested RSA recipient; TLS to KMS terminates inside the enclave. Simulation wrapping keys require an explicit simulation-only vault.
 
 ## Seeding
 
