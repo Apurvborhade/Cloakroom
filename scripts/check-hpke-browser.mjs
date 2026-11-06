@@ -7,9 +7,11 @@ import { chromium } from 'playwright';
 import { createTransportSuite } from '../packages/shared/dist/index.js';
 
 const { openEnvelope } = await import(pathToFileURL(resolve('services/enclave/dist/envelope.js')).href);
+const { openEnvelopeWithResponse } = await import(pathToFileURL(resolve('services/enclave/dist/envelope.js')).href);
 const { outputFiles } = await build({
   stdin: {
-    contents: `import { sealEnvelope } from './packages/shared/src/transport.ts'; globalThis.sealEnvelope = sealEnvelope;`,
+    contents: `import { sealEnvelope, sealEnvelopeWithResponse } from './packages/shared/src/transport.ts';
+      globalThis.sealEnvelope = sealEnvelope; globalThis.sealEnvelopeWithResponse = sealEnvelopeWithResponse;`,
     resolveDir: process.cwd(), sourcefile: 'transport-browser-check.js',
   },
   bundle: true, platform: 'browser', format: 'iife', target: 'es2022', write: false,
@@ -43,7 +45,16 @@ try {
       { sequence, message: 'browser transport check' });
     await assert.rejects(openEnvelope(keys.privateKey, envelope, { ...context, path: '/withdrawals' }));
   }
-  console.log(JSON.stringify({ ok: true, browser: 'Chromium', concurrentMessages: 16, wrongRouteRejected: true }));
+  const envelope = await page.evaluate(async (context) => {
+    globalThis.pending = await globalThis.sealEnvelopeWithResponse({ check: 'response' }, context);
+    return globalThis.pending.envelope;
+  }, context);
+  const recipient = await openEnvelopeWithResponse(keys.privateKey, envelope, context);
+  assert.deepEqual(recipient.payload, { check: 'response' });
+  const response = await recipient.sealResponse({ authenticated: true });
+  assert.deepEqual(await page.evaluate((response) => globalThis.pending.openResponse(response), response), { authenticated: true });
+  console.log(JSON.stringify({ ok: true, browser: 'Chromium', concurrentMessages: 16,
+    wrongRouteRejected: true, authenticatedResponse: true }));
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));

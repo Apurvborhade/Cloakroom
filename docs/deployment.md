@@ -1,18 +1,18 @@
 # Deployment, configuration and attestation
 
-**Owner:** Felix.
+**Owner:** TEE workstream.
 
-The enclave ships as one Docker image built reproducibly, so a judge can rebuild it and compare hashes. How a quote is fetched and how secrets reach the enclave differs per TEE provider, so treat those steps as *verify* items for whichever platform is chosen.
+The enclave ships as one Docker image. Source hashing and base-image pinning are implemented. Byte-for-byte image reproduction still needs fixed OS package snapshots and normalized build timestamps; do not claim matching PCRs across independent builds yet.
 
 ## Docker image
 
-The phase-0 [Dockerfile](../services/enclave/Dockerfile) builds the standalone attestation service with a digest-pinned Node 22 base image. That entrypoint uses only Node built-ins; the application package dependencies are not part of this bootstrap runtime. Use self-contained packaging when adding the application entrypoint; see [Dockerfile and pnpm](decisions/2026-11-06-0151-dockerfile-pnpm.md).
+The [Dockerfile](../services/enclave/Dockerfile) builds a self-contained runtime with `pnpm deploy --prod --legacy`. Both package manifests include compiled output explicitly. The image includes all application dependencies and Nitro helpers. The current entrypoint serves attestation and runs an unfunded custody self-test; mounting the application API remains a separate integration step.
 
 ```sh
 docker build -f services/enclave/Dockerfile -t cloakroom-attestation .
 ```
 
-See the [enclave README](../services/enclave/README.md) for Nitro image creation, vsock forwarding and verification. Production ingress, persistent secrets and final reproducible builds remain open.
+See the [enclave README](../services/enclave/README.md) for Nitro image creation, vsock forwarding and verification. Public HTTPS, live KMS provisioning and final reproducible builds remain open. The recipient adapter, external ciphertext storage and reviewed-parameter infrastructure template are available in [the Nitro runbook](../infra/nitro/README.md).
 
 ## Configuration
 
@@ -51,14 +51,14 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 
 ## Boot and attestation
 
-1. At boot the enclave generates its HPKE key pair and loads or creates the sealed HD seed.
+1. Open the sealed custody state with `openNitroCustody`. Fresh provisioning requires explicit `allowCreate: true`; ordinary restarts refuse missing state. The HPKE identity is derived from the restored seed.
 2. It requests a platform quote whose report data commits to `sha256(enclavePubKey || buildHash)`.
 3. `GET /attestation` returns the quote, the public key, the build hash and the chain ID. The frontend uses the key hash as the EIP-712 `salt`.
-4. The journal is encrypted with a key derived inside the TEE. If the platform has no sealed storage, use a persistent volume with a platform-derived key. Only `SIM_MODE` may fall back to a key from an environment variable.
+4. Open the journal with `keys.journalCipher()`, replay application state, then call `keys.restoreSigningState()`. The parent stores ciphertext only. KMS delivers its wrapping key encrypted to an attested RSA recipient; TLS to KMS terminates inside the enclave. Simulation wrapping keys require an explicit simulation-only vault.
 
 ## Seeding
 
-A signed admin call returns the inventory EOA addresses once. `scripts/seed-inventory.ts` funds them with ETH and the output token, then set `SEEDING_ENABLED=false`. These addresses become public the moment they are funded, which is a known leak.
+Mount `custodyRoutes` during initial funding. A signed, encrypted admin call returns inventory EOA addresses once through an authenticated encrypted response. Funding tooling is a separate executor handoff. Set `SEEDING_ENABLED=false` after setup. The one-time disclosure flag also survives restart. Funding exposes these inventory addresses on-chain.
 
 ## Release steps
 

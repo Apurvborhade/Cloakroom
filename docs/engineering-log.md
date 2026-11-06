@@ -503,3 +503,32 @@ This document is the canonical, chronological record of all backend and accounti
 - **Changes:** Split key initialization from signing-journal replay to allow encrypted journal startup. Added a late-open journal regression test and Anvil integration tests using the real key manager, inventory and executor.
 - **Verification:** 18 key-manager tests and 2 custody/executor integration tests passed. Native and ERC-20 payouts settle from an unlinked HD account. Restart preserves addresses and denies re-registration of settled operations. Typecheck passed.
 - **Push:** No push; local work only.
+
+## T6 — Persistent transport identity and one-time seeding
+
+- Objective: bind attestation to the same sealed HPKE identity and make inventory disclosure authenticated, encrypted and durable.
+- Added `custody-routes.ts`, admin EIP-712 schema, request-bound exporter response encryption, sealed disclosure consumption and identity injection. Updated shared/API contracts, decisions, role checklist and handoffs.
+- Verified 34 focused tests covering custody, attestation, transport, wallet/domain/expiry rejection, concurrent disclosure, restart and response substitution. Typecheck and Chromium response checks run with the complete packaging change below.
+- Local commit `b0ec4c4` contains T5 executor integration. No pushes.
+
+## T7 — Complete Nitro runtime and release tooling
+
+- Objective: package real application dependencies and exercise custody inside the same image as attestation.
+- Changed package file lists, Docker deploy packaging, shared-source build hashing, bootstrap self-test, release manifest script, systemd templates and HTTPS proxy configuration.
+- Verified self-contained deployment, Docker custody self-test, non-debug Nitro launch with 2 GiB, and independent fresh-quote verification. Image building on the small parent required swap and disk scratch space. Final live release verification follows after the KMS additions.
+- Full API mounting, public DNS/HTTPS and byte-for-byte build reproduction remain open. No pushes.
+
+## T8 — Recipient KMS sealing and external state recovery
+
+- Objective: keep custody wrapping keys inside Nitro while storing recoverable ciphertext on the parent.
+- Added KMS recipient adapter, in-enclave TLS agent, CMS anonymous-memory helper, role credential relay, ciphertext CAS backend, production custody composition and PCR-restricted CloudFormation template. Updated contracts, role progress and operations runbook.
+- Verified real RSA-OAEP CMS generation/decryption offline, key restoration with a fresh RSA recipient, NSM/KMS/storage failure refusal, certificate/hostname rejection, concurrent CAS and restart of both custody manager and storage process. Live IAM/KMS permissions and end-to-end recovery remain unprovisioned.
+
+## T9 — Dependency and logging audit
+
+- Objective: remove known production dependency issues and check TEE failure paths for sensitive output.
+- Updated both Zod dependencies to 4.6.7 after the audit reported GHSA-mrhx-c7xc-m3w5. Existing wire schema and configuration tests remain compatible. The TEE source contains only two generic bootstrap error logs; custody keys, seeds, allocations and request bodies are not logged. Internal role credentials are distinct from custody secrets and remain on vsock.
+- Verification: typecheck, 204 TypeScript tests, 10 Python verifier tests, Chromium request/response transport and `pnpm audit --prod` passed. No known production dependency vulnerabilities were reported.
+- Added a GitHub workflow with pinned action commits for the same checks; it has not run remotely because no push was made.
+
+- Infrastructure validation: `cfn-lint` passed for the KMS template. `actionlint` passed for the GitHub workflow. Shell syntax and Python helper compilation passed. A negative signature regression also checks that invalid curve points return unauthorized rather than a service error.

@@ -1,0 +1,244 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Nitro recipient-only custody wrapping key and EC2 role. Review policy and parameters before deployment.",
+  "Parameters": {
+    "KeyAdministratorArn": {
+      "Type": "String",
+      "Description": "Existing IAM role that administers key policy and recovery. Trusted to change enclave access.",
+      "AllowedPattern": "arn:aws:iam::[0-9]{12}:role/.+"
+    },
+    "VaultId": {
+      "Type": "String",
+      "Description": "Stable random public vault identifier; 32 bytes in hex.",
+      "AllowedPattern": "[a-f0-9]{64}"
+    },
+    "PCR0": {
+      "Type": "String",
+      "Description": "Trusted non-debug PCR0 from the reviewed EIF build.",
+      "AllowedPattern": "(?!0{96}$)[a-f0-9]{96}"
+    },
+    "PCR1": {
+      "Type": "String",
+      "Description": "Trusted non-debug PCR1 from the reviewed EIF build.",
+      "AllowedPattern": "(?!0{96}$)[a-f0-9]{96}"
+    },
+    "PCR2": {
+      "Type": "String",
+      "Description": "Trusted non-debug PCR2 from the reviewed EIF build.",
+      "AllowedPattern": "(?!0{96}$)[a-f0-9]{96}"
+    }
+  },
+  "Resources": {
+    "ParentRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+      }
+    },
+    "ParentProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Roles": [
+          {
+            "Ref": "ParentRole"
+          }
+        ]
+      }
+    },
+    "WrappingKey": {
+      "Type": "AWS::KMS::Key",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Description": "Cloakroom sealed custody wrapping key",
+        "EnableKeyRotation": true,
+        "KeyPolicy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "TrustedPolicyAdministration",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "KeyAdministratorArn"
+                }
+              },
+              "Action": [
+                "kms:DescribeKey",
+                "kms:GetKeyPolicy",
+                "kms:PutKeyPolicy",
+                "kms:EnableKeyRotation",
+                "kms:GetKeyRotationStatus",
+                "kms:ListResourceTags",
+                "kms:TagResource",
+                "kms:UntagResource"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "AttestedRecipientOnly",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "ParentRole",
+                    "Arn"
+                  ]
+                }
+              },
+              "Action": [
+                "kms:GenerateDataKey",
+                "kms:Decrypt"
+              ],
+              "Resource": "*",
+              "Condition": {
+                "StringEqualsIgnoreCase": {
+                  "kms:RecipientAttestation:PCR0": {
+                    "Ref": "PCR0"
+                  },
+                  "kms:RecipientAttestation:PCR1": {
+                    "Ref": "PCR1"
+                  },
+                  "kms:RecipientAttestation:PCR2": {
+                    "Ref": "PCR2"
+                  }
+                },
+                "StringEquals": {
+                  "kms:EncryptionContext:purpose": "cloakroom/vault/v1",
+                  "kms:EncryptionContext:vaultId": {
+                    "Ref": "VaultId"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "DenyUnattestedParentRelease",
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "ParentRole",
+                    "Arn"
+                  ]
+                }
+              },
+              "Action": [
+                "kms:GenerateDataKey",
+                "kms:Decrypt"
+              ],
+              "Resource": "*",
+              "Condition": {
+                "Null": {
+                  "kms:RecipientAttestation:ImageSha384": "true"
+                }
+              }
+            },
+            {
+              "Sid": "DenyParentEncryptionOfChosenKeys",
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "ParentRole",
+                    "Arn"
+                  ]
+                }
+              },
+              "Action": [
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKeyWithoutPlaintext"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
+      }
+    },
+    "ParentKmsPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "attested-custody-only",
+        "Roles": [
+          {
+            "Ref": "ParentRole"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "kms:GenerateDataKey",
+                "kms:Decrypt"
+              ],
+              "Resource": {
+                "Fn::GetAtt": [
+                  "WrappingKey",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "StringEqualsIgnoreCase": {
+                  "kms:RecipientAttestation:PCR0": {
+                    "Ref": "PCR0"
+                  },
+                  "kms:RecipientAttestation:PCR1": {
+                    "Ref": "PCR1"
+                  },
+                  "kms:RecipientAttestation:PCR2": {
+                    "Ref": "PCR2"
+                  }
+                },
+                "StringEquals": {
+                  "kms:EncryptionContext:purpose": "cloakroom/vault/v1",
+                  "kms:EncryptionContext:vaultId": {
+                    "Ref": "VaultId"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "KeyArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "WrappingKey",
+          "Arn"
+        ]
+      }
+    },
+    "InstanceProfileArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ParentProfile",
+          "Arn"
+        ]
+      }
+    },
+    "ParentRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ParentRole",
+          "Arn"
+        ]
+      }
+    }
+  }
+}

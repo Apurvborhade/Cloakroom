@@ -1,7 +1,8 @@
-import { createHash, createPublicKey, generateKeyPairSync } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import type { Hex } from 'viem';
 
 const run = promisify(execFile);
 const helper = fileURLToPath(new URL('../nitro/nsm.py', import.meta.url));
@@ -29,25 +30,27 @@ export const nitroQuote: QuoteProvider = async ({ publicKey, userData, nonce }) 
 };
 
 export class AttestationService {
-  readonly #privateKey = generateKeyPairSync('x25519').privateKey;
-
-  constructor(readonly buildHash: string, readonly provider: QuoteProvider = nitroQuote) {
+  constructor(readonly buildHash: string, readonly options: {
+    identity: { transportPublicKey(): Hex }; chainId: number; provider?: QuoteProvider;
+  }) {
     if (!/^[a-f0-9]{64}$/.test(buildHash)) throw new Error('Invalid build hash');
+    if (!Number.isSafeInteger(options.chainId) || options.chainId <= 0) throw new Error('Invalid chain ID');
   }
 
   async response(nonce?: Buffer): Promise<AttestationResponse> {
     if (nonce && (nonce.length < 32 || nonce.length > 64)) throw new Error('Invalid nonce');
-    const jwk = createPublicKey(this.#privateKey).export({ format: 'jwk' });
-    const publicKey = Buffer.from(jwk.x!, 'base64url');
+    const hex = this.options.identity.transportPublicKey();
+    if (!/^0x[a-fA-F0-9]{64}$/.test(hex)) throw new Error('Invalid transport key');
+    const publicKey = Buffer.from(hex.slice(2), 'hex');
     const userData = createHash('sha256')
       .update(publicKey).update(Buffer.from(this.buildHash, 'hex')).digest();
     // The raw X25519 public key also occupies the signed public_key field.
-    const quote = await this.provider({ publicKey, userData, nonce });
+    const quote = await (this.options.provider ?? nitroQuote)({ publicKey, userData, nonce });
     return {
       quote: quote.toString('base64'),
       enclavePubKey: `0x${publicKey.toString('hex')}`,
       buildHash: `0x${this.buildHash}`,
-      chainId: 11155111,
+      chainId: this.options.chainId,
     };
   }
 }

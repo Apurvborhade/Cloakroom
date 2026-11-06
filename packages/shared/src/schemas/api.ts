@@ -104,6 +104,12 @@ export const SignedDepositRequestSchema = createSignedRequestSchema(DepositReque
 export const SignedIntentSchema = createSignedRequestSchema(IntentWireSchema);
 export const SignedCancelIntentSchema = createSignedRequestSchema(CancelIntentWireSchema);
 export const SignedWithdrawalSchema = createSignedRequestSchema(WithdrawalWireSchema);
+export const AdminEoasWireSchema = z.object({
+  admin: addressSchema, nonce: uint64StringSchema, expiry: uint64StringSchema,
+}).strict();
+export const SignedAdminEoasSchema = z.object({
+  message: AdminEoasWireSchema, signature: signatureSchema,
+}).strict();
 
 // --- Response Schemas ---
 

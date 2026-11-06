@@ -2,12 +2,15 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { AttestationService } from './attestation.js';
+import { createBootstrapIdentity } from './keys.js';
+import { runCustodySelfTest } from './custody-selftest.js';
 import type { ErrorCode } from '@cloakroom/shared';
 
 const buildHash = (await readFile(new URL('./build-hash', import.meta.url), 'utf8')).trim();
-const attestation = new AttestationService(buildHash);
+const attestation = new AttestationService(buildHash, { identity: await createBootstrapIdentity(), chainId: 11155111 });
 // Fail closed outside Nitro; there is no simulated quote or host-generated key.
 try {
+  await runCustodySelfTest();
   await attestation.response();
 } catch {
   console.error('ATTESTATION_UNAVAILABLE');

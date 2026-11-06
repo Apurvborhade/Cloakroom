@@ -1,6 +1,6 @@
 # services/enclave
 
-The TEE service. Owned per module by Felix, Shreyas and Apurva: see [docs/enclave.md](../../docs/enclave.md).
+The TEE service. Module ownership: see [docs/enclave.md](../../docs/enclave.md).
 
 Phase 0 provides attestation only. `src/attestation-server.ts` is a temporary entrypoint; it does not implement custody or the application routes.
 
@@ -11,11 +11,11 @@ pnpm install --frozen-lockfile
 pnpm test
 docker build -f services/enclave/Dockerfile -t cloakroom-attestation .
 nitro-cli build-enclave --docker-uri cloakroom-attestation:latest --output-file /tmp/cloakroom.eif > /tmp/measurements.json
-nitro-cli run-enclave --cpu-count 1 --memory 1536 --enclave-cid 16 --enclave-name cloakroom --eif-path /tmp/cloakroom.eif
+nitro-cli run-enclave --cpu-count 1 --memory 2048 --enclave-cid 16 --enclave-name cloakroom --eif-path /tmp/cloakroom.eif
 python3 services/enclave/nitro/bridge.py parent --cid 16
 ```
 
-Build on an ARM64 Nitro-enabled parent with Docker, Nitro CLI, and its allocator reserving 1 vCPU and at least 1536 MiB. Keep debug mode disabled. The bridge listens on `127.0.0.1:8080`; `GET /attestation` is relayed over vsock to Node inside the enclave. No public ingress or TLS is configured by these commands.
+Build on an ARM64 Nitro-enabled parent with Docker, Nitro CLI, and its allocator reserving 1 vCPU and 2048 MiB. Keep debug mode disabled. The bridge listens on `127.0.0.1:8080`; `GET /attestation` is relayed over vsock to Node inside the enclave. No public ingress or TLS is configured by these commands.
 
 Verify from a machine with Python 3.10+ and OpenSSL 3, using a tunnel if needed:
 
@@ -40,4 +40,6 @@ pnpm exec playwright install chromium
 pnpm test:hpke:browser
 ```
 
-This bundles the shared sealing function for a real browser, encrypts concurrent messages in Chromium without Node globals, opens them with the enclave implementation, and checks route binding.
+This bundles the shared sealing function for Chromium, checks concurrent request encryption, route binding and an authenticated encrypted response.
+
+The full production dependency tree is packaged with `pnpm deploy --prod --legacy`. The bootstrap runs an unfunded signing/restart/HPKE self-test before serving attestation. See [the Nitro runbook](../../infra/nitro/README.md) for KMS recipient sealing, ciphertext persistence, services and the remaining live configuration.

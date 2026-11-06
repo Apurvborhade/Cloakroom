@@ -97,3 +97,7 @@ import {
   type IntentWire,
 } from '@cloakroom/shared';
 ```
+
+TEE handoff: mount `custodyRoutes` after `KeyManager.init()` and journal restoration. Use `AttestationService(buildHash, { identity: keys, chainId })` so attestation and decryption share the sealed identity. The admin client uses `sealEnvelopeWithResponse`, EIP-712 `AdminEoas`, then `openResponse`; do not treat its success body as plaintext addresses.
+
+Nitro custody handoff: `openNitroCustody` composes real NSM attestation, KMS recipient-only wrapping, authenticated AWS TLS and parent ciphertext storage. Follow [the runbook](../infra/nitro/README.md). Credentials and all security-critical boot configuration must be injected through the reviewed application bootstrap. Live IAM/KMS and the public domain are still external prerequisites.

@@ -119,7 +119,7 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 - `buildHash`: `0x`-prefixed lowercase hex SHA-256 build hash.
 - `chainId`: `11155111` (Sepolia).
 
-For freshness, supply `?nonce=<hex>` with 32–64 random bytes encoded as lowercase hex. The document signs that nonce, the raw public key in `public_key`, and `sha256(rawPublicKey || rawBuildHash)` in `user_data`. Decode the build hash from hex before concatenation. Verify against trusted PCR0–2 from the build, not just the response's build hash. The phase-0 key changes on restart; clients must fetch attestation again. Key persistence is still tracked in gap 3.6.
+For freshness, supply `?nonce=<hex>` with 32–64 random bytes encoded as lowercase hex. The document signs that nonce, the raw public key in `public_key`, and `sha256(rawPublicKey || rawBuildHash)` in `user_data`. Decode the build hash from hex before concatenation. Verify against trusted PCR0–2 from the build, not just the response's build hash. The attestation-only bootstrap key changes on restart. Custody attestation uses the sealed `KeyManager` identity, which survives state restoration. A new vault rotates the key and EIP-712 domain salt.
 
 ### Example: create an intent (inner JSON before sealing)
 
@@ -153,3 +153,12 @@ This reads as: swap 0.1 ETH for USDC once ETH is at or above 3,000 USDC, accept 
 - A per-IP rate limit
 - CORS limited to the frontend origin
 - Structured logs that never contain addresses, amounts or intent contents
+
+
+### Admin seeding contract
+
+`POST /admin/eoas` takes `{ enc, ct }` from `sealEnvelopeWithResponse`. Its plaintext is `{ message: { admin, nonce, expiry }, signature }`; nonce and expiry are uint64 decimal strings. Sign `EIP712_TYPES.AdminEoas` with the usual chain/key domain. Expiry must be current and at most 300 seconds ahead.
+
+Success returns `{ ct }`, authenticated and encrypted with a separate AES-256-GCM key exported from the request's HPKE context using `cloakroom/hpke/response/v1`. The fixed zero nonce is safe because each fresh request context permits exactly one response. `openResponse` returns `{ addresses }`; only inventory allocations are included, capped at 128. Responses from another request and modified ciphertext are rejected. Standard error responses remain plaintext and contain no addresses.
+
+The route is absent when seeding is disabled. Once disclosure is durably consumed, further authorized calls return `403 UNAUTHORIZED`, including after restart. Do not log requests or responses. A lost response does not automatically reopen disclosure.

@@ -14,6 +14,40 @@ export interface EnvelopeContext {
   enclavePubKey: Hex;
 }
 
+export interface EncryptedResponse { ct: string }
+const RESPONSE_LABEL = new TextEncoder().encode('cloakroom/hpke/response/v1');
+
+/** One response per fresh HPKE request, using its exporter secret and a distinct key. */
+export async function createResponseChannel(
+  exporter: { export(context: Uint8Array, length: number): Promise<ArrayBuffer> },
+  context: EnvelopeContext,
+): Promise<{ seal(payload: unknown): Promise<EncryptedResponse>; open(response: EncryptedResponse): Promise<unknown> }> {
+  const key = new Uint8Array(await exporter.export(RESPONSE_LABEL, 32));
+  const cipher = new Aes256Gcm().createEncryptionContext(key.slice().buffer);
+  key.fill(0);
+  const aad = new TextEncoder().encode(`response:${new TextDecoder().decode(envelopeAad(context))}`);
+  let used = false;
+  return {
+    async seal(payload) {
+      if (used) throw new Error('RESPONSE_ALREADY_USED');
+      used = true;
+      const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+      if (plaintext.length > HPKE_PARAMETERS.maxPlaintextBytes) throw new Error('INVALID_PAYLOAD');
+      return { ct: encodeBase64(new Uint8Array(await cipher.seal(new Uint8Array(12), plaintext, aad))) };
+    },
+    async open(response) {
+      if (used) throw new Error('RESPONSE_ALREADY_USED');
+      used = true;
+      try {
+        if (!response || Object.keys(response).join(',') !== 'ct') throw new Error();
+        const ct = decodeBase64(response.ct, HPKE_PARAMETERS.maxPlaintextBytes + 16);
+        const plaintext = await cipher.open(new Uint8Array(12), ct, aad);
+        return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plaintext)) as unknown;
+      } catch { throw new Error('INVALID_PAYLOAD'); }
+    },
+  };
+}
+
 export function createTransportSuite(): CipherSuite {
   return new CipherSuite({
     kem: new DhkemX25519HkdfSha256(), kdf: new HkdfSha256(), aead: new Aes256Gcm(),
@@ -53,6 +87,12 @@ export function envelopeAad(context: EnvelopeContext): Uint8Array {
 
 /** Browser-safe sealing; every request uses a new sender context and encapsulated key. */
 export async function sealEnvelope(payload: unknown, context: EnvelopeContext): Promise<Envelope> {
+  return (await sealEnvelopeWithResponse(payload, context)).envelope;
+}
+
+export async function sealEnvelopeWithResponse(payload: unknown, context: EnvelopeContext): Promise<{
+  envelope: Envelope; openResponse(response: EncryptedResponse): Promise<unknown>;
+}> {
   try {
     const encoded = JSON.stringify(payload);
     if (encoded === undefined) throw new Error();
@@ -64,7 +104,11 @@ export async function sealEnvelope(payload: unknown, context: EnvelopeContext): 
       recipientPublicKey, info: new TextEncoder().encode(HPKE_PARAMETERS.info),
     });
     const ciphertext = await sender.seal(plaintext, envelopeAad(context));
-    return { enc: encodeBase64(new Uint8Array(sender.enc)), ct: encodeBase64(new Uint8Array(ciphertext)) };
+    const response = await createResponseChannel(sender, context);
+    return {
+      envelope: { enc: encodeBase64(new Uint8Array(sender.enc)), ct: encodeBase64(new Uint8Array(ciphertext)) },
+      openResponse: response.open,
+    };
   } catch {
     throw new Error('INVALID_PAYLOAD');
   }

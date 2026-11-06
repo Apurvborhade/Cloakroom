@@ -7,7 +7,7 @@ import type { Address, Hex, TransactionSerializableEIP1559 } from 'viem';
 import { HDKey, hdKeyToAccount } from 'viem/accounts';
 import { z } from 'zod';
 import type { ExpectedTransaction, TransactionSigner } from './executor.js';
-import { openEnvelope } from './envelope.js';
+import { openEnvelopeWithResponse } from './envelope.js';
 import { FifoSerialQueue } from './queue.js';
 import type { StateVault } from './sealed-state.js';
 
@@ -15,6 +15,7 @@ const HEX = z.string().regex(/^0x(?:[a-fA-F0-9]{2})*$/);
 const STATE_SCHEMA = z.object({
   version: z.literal(1), seed: z.string().regex(/^[a-f0-9]{64}$/),
   allocations: z.array(z.enum(['deposit', 'inventory'])).max(10_000),
+  seedingClaimed: z.boolean().default(false),
   signedOperations: z.array(z.object({
     opId: z.string().min(1).max(128), index: z.number().int().nonnegative(), raw: HEX,
     requestHash: z.string().regex(/^0x[a-f0-9]{64}$/),
@@ -23,6 +24,14 @@ const STATE_SCHEMA = z.object({
 type State = z.infer<typeof STATE_SCHEMA>;
 const TRANSFER_ABI = parseAbi(['function transfer(address to, uint256 amount) returns (bool)']);
 const denied = () => new Error('SIGNING_DENIED');
+
+/** Attestation-only bootstrap. Full custody uses KeyManager's sealed identity instead. */
+export async function createBootstrapIdentity() {
+  const suite = createTransportSuite();
+  const pair = await suite.kem.generateKeyPair();
+  const publicKey = `0x${Buffer.from(await suite.kem.serializePublicKey(pair.publicKey)).toString('hex')}` as Hex;
+  return { transportPublicKey: () => publicKey };
+}
 
 export interface SigningPolicy {
   chainId: number;
@@ -84,7 +93,7 @@ export class KeyManager implements TransactionSigner {
         this.#revision = saved.revision;
       } else {
         if (!this.#allowCreate) throw new Error('SEALED_STATE_MISSING');
-        const initial: State = { version: 1, seed: randomBytes(32).toString('hex'), allocations: [], signedOperations: [] };
+        const initial: State = { version: 1, seed: randomBytes(32).toString('hex'), allocations: [], signedOperations: [], seedingClaimed: false };
         await this.#persist(initial);
       }
       const state = this.#ready();
@@ -182,10 +191,26 @@ export class KeyManager implements TransactionSigner {
     return this.#transportPublicKey;
   }
 
+  /** Authorization belongs to the admin route. Persist consumption before disclosure. */
+  claimSeedingAddresses(): Promise<Address[]> {
+    return this.#queue.run(async () => {
+      const current = this.#ready();
+      if (!this.#initialized || current.seedingClaimed) throw new Error('SEEDING_DISABLED');
+      const addresses = this.list().filter((item) => item.role === 'inventory').map((item) => item.address);
+      if (addresses.length === 0 || addresses.length > 128) throw new Error('INVALID_SEEDING_POOL');
+      await this.#persist({ ...current, seedingClaimed: true });
+      return addresses;
+    });
+  }
+
   async decrypt(envelope: Envelope, path: string): Promise<unknown> {
+    return (await this.decryptWithResponse(envelope, path)).payload;
+  }
+
+  async decryptWithResponse(envelope: Envelope, path: string) {
     const enclavePubKey = this.transportPublicKey();
     if (!this.#transport) throw new Error('KEY_MANAGER_UNAVAILABLE');
-    return openEnvelope(this.#transport.privateKey, envelope, { path, chainId: this.#policy.chainId, enclavePubKey });
+    return openEnvelopeWithResponse(this.#transport.privateKey, envelope, { path, chainId: this.#policy.chainId, enclavePubKey });
   }
 
   journalCipher(): JournalCipher {

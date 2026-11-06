@@ -1,4 +1,4 @@
-import { createTransportSuite, decodeBase64, envelopeAad, HPKE_PARAMETERS } from '@cloakroom/shared';
+import { createResponseChannel, createTransportSuite, decodeBase64, envelopeAad, HPKE_PARAMETERS } from '@cloakroom/shared';
 import type { Envelope, EnvelopeContext } from '@cloakroom/shared';
 
 /** Decrypts transport only; EIP-712 authorization and nonce consumption remain mandatory. */
@@ -7,6 +7,10 @@ export async function openEnvelope(
   envelope: Envelope,
   context: EnvelopeContext,
 ): Promise<unknown> {
+  return (await openEnvelopeWithResponse(privateKey, envelope, context)).payload;
+}
+
+export async function openEnvelopeWithResponse(privateKey: CryptoKey, envelope: Envelope, context: EnvelopeContext) {
   try {
     if (!envelope || Object.keys(envelope).sort().join(',') !== 'ct,enc') throw new Error();
     const enc = decodeBase64(envelope.enc, 32);
@@ -19,7 +23,8 @@ export async function openEnvelope(
     if (plaintext.byteLength > HPKE_PARAMETERS.maxPlaintextBytes) throw new Error();
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plaintext));
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error();
-    return value;
+    const response = await createResponseChannel(recipient, context);
+    return { payload: value, sealResponse: response.seal };
   } catch {
     throw new Error('INVALID_PAYLOAD');
   }

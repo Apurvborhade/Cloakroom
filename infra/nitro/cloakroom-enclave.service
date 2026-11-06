@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloakroom Nitro attestation bootstrap
+Requires=nitro-enclaves-allocator.service
+After=nitro-enclaves-allocator.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=ENCLAVE_CID=16
+Environment=ENCLAVE_MEMORY=2048
+EnvironmentFile=-/etc/cloakroom/parent.env
+WorkingDirectory=/opt/cloakroom
+ExecStart=/usr/bin/nitro-cli run-enclave --cpu-count 1 --memory ${ENCLAVE_MEMORY} --enclave-cid ${ENCLAVE_CID} --enclave-name cloakroom-attestation --eif-path /opt/cloakroom/current/attestation.eif
+ExecStop=/usr/bin/nitro-cli terminate-enclave --enclave-name cloakroom-attestation
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

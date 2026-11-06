@@ -2,12 +2,14 @@
 
 | Status | Owner | Needed by |
 | --- | --- | --- |
-| Open | Felix, Pradnyesh | Phase 1 |
+| Accepted | TEE, frontend | Phase 1 |
 
-## Problem
+## Decision
 
-The "key hash" function is unnamed, and the HPKE key is generated at every boot, so a restart changes the EIP-712 salt.
+`deriveEnclaveSalt` computes `keccak256` over the raw 32-byte X25519 public key. The HPKE identity is derived from the sealed custody seed with HKDF-SHA256 and the label `cloakroom/transport/v1`. Attestation receives that identity from `KeyManager`; it never creates a second custody transport key.
 
-## Proposal
+Restoring the same sealed state preserves the public key and EIP-712 salt. Creating a new vault rotates both. Clients fetch and verify attestation before signing; after rotation they discard the previous domain and sign again. The attestation-only bootstrap remains ephemeral and must not accept custody requests.
 
-Define `salt = keccak256(enclavePubKey)` in `packages/shared`. Either seal the HPKE key with the seed, or have the frontend re-fetch attestation and re-sign after a restart.
+## Verification
+
+Restart, attestation/decryption identity and domain mismatch regressions are covered by `keys.test.ts` and `custody-routes.test.ts`.

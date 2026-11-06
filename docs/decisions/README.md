@@ -6,13 +6,10 @@ One decision per file. This page is the index, so check here first.
 
 | Decision | Owner | Needed by |
 | --- | --- | --- |
-| [Dockerfile and pnpm](2026-11-06-0151-dockerfile-pnpm.md) | Felix | Phase 0 |
 | [Fee model](2026-11-06-0151-fee-model.md) | Shreyas, Apurva | Phase 1 |
 | [Missing EIP-712 types](2026-11-06-0151-missing-eip712-types.md) | Shreyas, Pradnyesh | Phase 1 |
 | [Journal cannot replay every state](2026-11-06-0151-journal-replay-events.md) | Shreyas | Phase 1 |
 | [Meaning of pending](2026-11-06-0151-pending-balance.md) | Shreyas | Phase 1 |
-| [Salt hash and key lifetime](2026-11-06-0151-salt-and-key-lifetime.md) | Felix, Pradnyesh | Phase 1 |
-| [Admin EOAs endpoint](2026-11-06-0151-admin-eoas-endpoint.md) | Felix, Shreyas | Phase 1 |
 | [Non-ETH deposits](2026-11-06-0151-non-eth-deposits.md) | Shreyas, Apurva | Phase 1 |
 | [Withdrawal status endpoint](2026-11-06-0331-withdrawal-status-endpoint.md) | Shreyas, Pradnyesh | Phase 1 |
 
@@ -29,6 +26,9 @@ One decision per file. This page is the index, so check here first.
 
 | Decision | Owner | Needed by |
 | --- | --- | --- |
+| [Salt hash and key lifetime](2026-11-06-0151-salt-and-key-lifetime.md) | TEE, frontend | Phase 1 |
+| [Admin EOAs endpoint](2026-11-06-0151-admin-eoas-endpoint.md) | TEE, API | Phase 1 |
+| [Dockerfile and pnpm](2026-11-06-0151-dockerfile-pnpm.md) | TEE | Phase 0 |
 | [TEE platform: AWS Nitro Enclaves](2026-11-06-0151-tee-platform.md) | Felix | Phase 0 |
 | [Network: Sepolia (pending a Trading API quote test)](2026-11-06-0229-network-sepolia.md) | Apurva | Phase 0 |
 | [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) | Apurva, Pradnyesh, Shreyas | Phase 2 |

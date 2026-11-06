@@ -91,7 +91,7 @@ export interface Ledger {
 }
 ```
 
-## Key manager (Felix)
+## Key manager (TEE)
 
 ```ts
 // keys.ts: the only code that touches private keys
@@ -188,4 +188,4 @@ Key initialization does not read the journal, so opening an encrypted journal ca
 
 The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 
-`journalCipher()` exposes encryption/decryption operations, never the derived key. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. A live Nitro KMS provider and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.
+`journalCipher()` exposes encryption/decryption operations, never the derived key. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.

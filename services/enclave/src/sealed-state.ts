@@ -5,6 +5,7 @@ import { mkdir, open } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { request } from 'node:http';
 
 const MAX_BLOB_BYTES = 4 * 1024 * 1024;
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -23,6 +24,46 @@ export interface StateVault {
   readonly protection: SealingKeyProvider['protection'];
   read(): Promise<{ revision: number; plaintext: Uint8Array } | undefined>;
   write(plaintext: Uint8Array, expectedRevision: number | null): Promise<number>;
+}
+
+/** The host receives ciphertext only. This transport cannot prevent whole-store rollback. */
+export class RemoteCipherBlobStore implements CipherBlobStore {
+  readonly #path: string;
+  constructor(readonly socketPath: string, vaultId: string, name: 'custody' | 'wrapping') {
+    if (!/^[a-f0-9]{64}$/.test(vaultId) || !['custody', 'wrapping'].includes(name)) throw new Error('INVALID_STORE');
+    this.#path = `/blobs/${vaultId}/${name}`;
+  }
+  async #request(method: 'GET' | 'POST', bytes?: Uint8Array, expected?: string | null): Promise<Uint8Array | undefined> {
+    return new Promise((resolve, reject) => {
+      const fail = () => reject(new Error('SEALED_STATE_UNAVAILABLE'));
+      const req = request({ socketPath: this.socketPath, path: this.#path, method, agent: false,
+        headers: method === 'POST' ? { 'content-length': bytes!.length, 'if-match': expected ?? 'none' } : {},
+      }, (response) => {
+        const parts: Buffer[] = []; let length = 0;
+        response.on('data', (part: Buffer) => {
+          length += part.length;
+          if (length > MAX_BLOB_BYTES) { response.destroy(); fail(); }
+          else parts.push(part);
+        });
+        response.on('error', fail);
+        response.on('end', () => {
+          if (method === 'GET' && response.statusCode === 404) resolve(undefined);
+          else if (response.statusCode === 200) resolve(Buffer.concat(parts));
+          else reject(new Error(response.statusCode === 409 ? 'SEALED_STATE_CONFLICT' : 'SEALED_STATE_UNAVAILABLE'));
+        });
+      });
+      req.on('error', fail);
+      req.setTimeout(10_000, () => { req.destroy(); fail(); });
+      req.end(bytes);
+    });
+  }
+  read(): Promise<Uint8Array | undefined> { return this.#request('GET'); }
+  async compareAndSwap(expectedHash: string | null, ciphertext: Uint8Array): Promise<void> {
+    if (ciphertext.byteLength > MAX_BLOB_BYTES || (expectedHash !== null && !/^[a-f0-9]{64}$/.test(expectedHash))) {
+      throw new Error('SEALED_STATE_UNAVAILABLE');
+    }
+    await this.#request('POST', Buffer.from(ciphertext), expectedHash);
+  }
 }
 
 /** Ciphertext only. A stale writer cannot overwrite another process's committed state. */

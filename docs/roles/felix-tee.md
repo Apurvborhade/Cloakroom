@@ -24,7 +24,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] Build and run the AWS hello-world enclave without debug mode
 - [x] Deploy an enclave returning a real quote from `GET /attestation`; verified through an SSH tunnel
 - [x] Document the `/attestation` response shape in [api.md](../api.md)
-- [x] Test the phase-0 Docker image in Nitro ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md)); full application packaging remains open
+- [x] Package all production dependencies with `pnpm deploy`; Docker self-test and non-debug Nitro quote verified ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md))
 - [ ] Configure public HTTPS ingress for the team
 - [ ] **If this is failing at hour 3:** switch to the fallback, the same container labelled TEE-simulated, with no confidentiality claim
 
@@ -34,8 +34,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] Withdrawal signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
 - [x] `envelope.ts` and shared browser sealing; Chromium-to-enclave transport tested with concurrent contexts
 - [x] Report data commits to `sha256(enclavePubKey || buildHash)`
-- [ ] Close [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md) with Pradnyesh
-- [ ] Close [the admin EOAs endpoint](../decisions/2026-11-06-0151-admin-eoas-endpoint.md) with Shreyas
+- [x] Define [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md); sealed identity shared by attestation and decryption
+- [x] Implement [the admin EOAs endpoint](../decisions/2026-11-06-0151-admin-eoas-endpoint.md); authenticated encrypted response, durable one-time disclosure, server mounting remains an API handoff
 
 ### Phase 2 (hours 12 to 22)
 
@@ -46,7 +46,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 - [x] Quote verification CLI script: AWS trust chain, COSE signature, nonce, timestamp, PCRs and key/build binding
 - [x] `keys.test.ts` and `envelope.test.ts` ([testing.md](../testing.md))
-- [ ] Audit: no endpoint returns a key or seed, and no key or custody address is ever logged
+- [x] Audit TEE modules and bootstrap: no key/seed endpoint, redacted failures, no custody address logging; dependency audit and API body bounds checked. Repeat when the application server is mounted
 
 ### Phase 4 (hours 29 to 36)
 
@@ -75,5 +75,5 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] TEE provider access and non-debug enclave startup
 - [x] Provider pricing checked
 - [x] Attestation format, retrieval through NSM, and independent verification
-- [ ] How secrets reach the enclave; KMS permissions and attestation policy if using AWS KMS
-- [ ] Seed and journal persistence across restarts. Nitro Enclaves have no persistent storage; design encrypted external storage and key recovery before custody is enabled
+- [x] KMS recipient adapter, in-enclave TLS, external ciphertext CAS store and PCR-restricted policy template; live IAM/KMS provisioning remains open
+- [x] Custody seed, HPKE identity, allocations and seeding flag survive external storage process restart in integration tests; journal cipher is stable. Live Nitro/KMS recovery and external rollback checkpoint remain open
