@@ -25,6 +25,8 @@ export interface AppConfig {
   native: TokenConfig;
   tokenOut: TokenConfig | null;
   maxAmountNativeWei: bigint;
+  /** The expected gas reserve, shown before signing. The server's own value decides. */
+  depositGasReserveWei: bigint;
   feeBps: number;
   maxSlippageBpsCap: number;
   walletConnectProjectId: string | null;
@@ -52,6 +54,7 @@ export interface RawEnv {
   NEXT_PUBLIC_TOKEN_OUT_SYMBOL?: string;
   NEXT_PUBLIC_TOKEN_OUT_DECIMALS?: string;
   NEXT_PUBLIC_MAX_AMOUNT_NATIVE_WEI?: string;
+  NEXT_PUBLIC_DEPOSIT_GAS_RESERVE_WEI?: string;
   NEXT_PUBLIC_FEE_BPS?: string;
   NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP?: string;
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?: string;
@@ -86,6 +89,7 @@ function readEnv(): RawEnv {
     NEXT_PUBLIC_TOKEN_OUT_SYMBOL: process.env.NEXT_PUBLIC_TOKEN_OUT_SYMBOL,
     NEXT_PUBLIC_TOKEN_OUT_DECIMALS: process.env.NEXT_PUBLIC_TOKEN_OUT_DECIMALS,
     NEXT_PUBLIC_MAX_AMOUNT_NATIVE_WEI: process.env.NEXT_PUBLIC_MAX_AMOUNT_NATIVE_WEI,
+    NEXT_PUBLIC_DEPOSIT_GAS_RESERVE_WEI: process.env.NEXT_PUBLIC_DEPOSIT_GAS_RESERVE_WEI,
     NEXT_PUBLIC_FEE_BPS: process.env.NEXT_PUBLIC_FEE_BPS,
     NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP: process.env.NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP,
     NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
@@ -175,6 +179,11 @@ export function parseConfig(env: RawEnv): AppConfig {
   if (/^\d+$/.test(maxWeiText)) maxAmountNativeWei = BigInt(maxWeiText);
   else issues.push('NEXT_PUBLIC_MAX_AMOUNT_NATIVE_WEI must be a whole number of wei');
 
+  const reserveText = trimmed(env.NEXT_PUBLIC_DEPOSIT_GAS_RESERVE_WEI) ?? '10000000000000000';
+  let depositGasReserveWei = 10n ** 16n;
+  if (/^\d+$/.test(reserveText)) depositGasReserveWei = BigInt(reserveText);
+  else issues.push('NEXT_PUBLIC_DEPOSIT_GAS_RESERVE_WEI must be a whole number of wei');
+
   const explicitExplorer = url(env.NEXT_PUBLIC_EXPLORER_URL, 'NEXT_PUBLIC_EXPLORER_URL', issues);
   const explorerUrl = explicitExplorer ?? chain.blockExplorers?.default.url ?? null;
 
@@ -208,6 +217,7 @@ export function parseConfig(env: RawEnv): AppConfig {
     native: { address: NATIVE, symbol: 'ETH', decimals: 18 },
     tokenOut,
     maxAmountNativeWei,
+    depositGasReserveWei,
     feeBps: int(env.NEXT_PUBLIC_FEE_BPS, 10, 'NEXT_PUBLIC_FEE_BPS', issues, 9_999),
     maxSlippageBpsCap: int(env.NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP, 100, 'NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP', issues, 10_000),
     walletConnectProjectId: trimmed(env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID),

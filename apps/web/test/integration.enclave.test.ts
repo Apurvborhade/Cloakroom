@@ -113,6 +113,18 @@ describe('frontend protocol against the real enclave routes (margin disabled)', 
     }, { timeout: 5_000, interval: 100 });
   });
 
+  it('opens a USDC deposit with a gas reserve, and reports its progress to its owner only', async () => {
+    const request = buildDepositRequest(binding, { owner: owner.address, asset: FIXTURE_TOKEN, nonce: nextNonce(), expiry: mutationExpiry() });
+    const session = await endpoints.openDepositSession(api, binding, await signRequest(signerFor(owner), request));
+    expect(session.singleUse).toBe(true);
+    expect(session.asset?.toLowerCase()).toBe(FIXTURE_TOKEN.toLowerCase());
+    expect(BigInt(session.gasReserveWei ?? '0')).toBeGreaterThan(0n);
+
+    const { deposits } = await endpoints.getDepositStatuses(api, binding, await sessions.signQuery(owner.address, binding));
+    const status = deposits.find((item) => item.sessionId === session.sessionId);
+    expect(status).toMatchObject({ status: 'awaiting_funds', nativeReceived: '0', tokenReceived: '0', singleUse: true });
+  });
+
   let intentId: Hex;
   it('creates an intent, reserves funds, reports status, and cancels exactly once', async () => {
     const signer = signerFor(owner);

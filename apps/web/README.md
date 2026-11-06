@@ -57,7 +57,7 @@ Nonces come from the millisecond clock and always increase, because the API cann
 - **Margin:** in simulation the backend uses `MockMarginAccounting`. It keeps everything in memory, does not debit your private balance, and charges no interest. The UI labels it as mock accounting. Leverage is capped at 4x. There is no stop-loss, partial close, collateral removal and so on.
 - **Intent lifetime:** the signed `expiry` is also the order's lifetime, and the enclave accepts at most 5 minutes ahead. Intents therefore live at most about 4.5 minutes.
 - **Intent and withdrawal details:** the status endpoints return only id, status, `amountOut`, `txHash` and `reason`. Pair, amount, trigger and destination are shown only for actions signed in the current tab (kept in memory only).
-- USDC deposits are not offered, because the v1 backend accepts only ETH.
+- **Deposits:** the amount typed is what gets credited. The app adds the server's `gasReserveWei` on top and shows it before funding. A USDC deposit shows an editable "ETH for gas" field, filled with the minimum, and needs two wallet transfers to the same address. ETH above the reserve is credited. `/deposits/status` tracks progress and lets a partly funded deposit resume after a refresh, and each completed address is single-use. A server without that route still takes ETH, with no reserve.
 
 ## Backend blockers found
 
