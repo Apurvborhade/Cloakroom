@@ -757,7 +757,7 @@ This document is the canonical, chronological record of all backend and accounti
 
 - **Date:** 2026-11-06
 - **Task Number & Title:** Task A9 (Apurva's workstream) — Price Poller
-- **Status:** Committed on branch `feat/price-poller`. Not yet run against the live Trading API. Not pushed by this entry.
+- **Status:** Committed on branch `feat/price-poller`. Live quote check passed. Not pushed by this entry.
 - **Objective:** Check the price from the enclave's own Uniswap quote, replacing the dropped CRE workflow as the trigger for intents.
 
 ### Files Created
@@ -775,7 +775,7 @@ This document is the canonical, chronological record of all backend and accounti
 - None.
 
 ### Architectural Decisions
-- Polls use a throwaway `swapper`, so custody addresses are not sent to Uniswap every interval. The live API accepting this is not yet confirmed.
+- Polls use a throwaway `swapper`, so custody addresses are not sent to Uniswap every interval. `pnpm smoke:quote` confirmed the live API accepts this.
 - A failed poll reports nothing, and `latest` returns null once a price is over two intervals old.
 - Polls never overlap, and `onReport` is not awaited, so a slow swap cannot stop price checks.
 - `UniswapClient` treats responses as untrusted, and rejects anything but a `CLASSIC` route.
@@ -790,8 +790,8 @@ This document is the canonical, chronological record of all backend and accounti
 - `pnpm typecheck`: Exited with code 0.
 
 ### Known Limitations & Unresolved Questions
-- Not run against the live Trading API, because `.env` had no `UNISWAP_API_KEY`. Run `pnpm smoke:quote`.
-- Trading API rate limits are unchecked.
+- `pnpm smoke:quote`, run by Apurva: all 6 live quotes passed from new throwaway addresses, in about 0.7 to 1.4 seconds each. The polling timer itself has only run in tests.
+- Trading API rate limits are unchecked beyond that short burst.
 - Nothing starts the poller at boot, and `IntentStore` does not exist yet.
 
 ### Integration Handoffs
@@ -799,4 +799,59 @@ This document is the canonical, chronological record of all backend and accounti
 
 ### Commit Reference
 - **Commits:** `82cc823430c350a88b7d0ab6734a2c0fae4327b5` (`feat(enclave): add a Uniswap Trading API client`), `49b20bc9075cc2269fdaf1ab65249c586a009723` (`feat(enclave): add the price poller`)
+- **Pushed to Remote:** No
+
+---
+
+## Task A10: Swap Execution
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A10 (Apurva's workstream) — Swap Execution
+- **Status:** Committed on branch `feat/run-intent`. Not yet run on Sepolia, and not pushed by this entry.
+- **Objective:** Swap an intent's reserved ETH from an EOA not linked to its owner, and settle from the receipt.
+
+### Files Created
+- `services/enclave/src/swap-calldata.ts`
+- `services/enclave/test/swap-calldata.test.ts`, `services/enclave/test/executor-intent.test.ts`
+- `services/enclave/test/fixtures/sepolia-quote.ts`, `test-swap-router.sol`, `test-swap-router.ts`
+- `services/enclave/scripts/swap-smoke.ts`
+- `docs/decisions/2026-11-06-1304-swap-safety-rules.md`
+
+### Files Modified
+- `services/enclave/src/executor.ts`, `services/enclave/src/uniswap.ts`
+- `package.json` (added `smoke:swap`)
+- `docs/chain-logic.md`, `docs/enclave.md`, `docs/decisions/README.md`, `docs/roles/apurva-onchain.md`, `docs/roles/felix-tee.md`, `scripts/README.md`, `FEEDBACK.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- See `docs/decisions/2026-11-06-1304-swap-safety-rules.md`.
+- Settlement goes through `InMemoryLedger.apply`, the same code replay uses.
+
+### Bugs Fixed
+- `runWithdrawal` journaled `FEE_BOOKED` but never booked the gas in the live ledger, so gas totals changed after a restart.
+
+### Tests Added
+- 29 calldata tests, including a real Sepolia Trading API response.
+- 41 executor tests on a local Anvil chain, with the real journal, ledger and queue, and a mock router.
+- Thirty-one deliberate bugs were introduced. Two escaped at first, which led to two new tests, and all are now caught.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 442 passed (445). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+- A live quote confirmed `protocols` with `V2` and `V3` returns a decodable route. Without it, a small swap routed through V4.
+
+### Known Limitations & Unresolved Questions
+- No swap has run on a real router yet. Run `pnpm smoke:swap`.
+- `KeyManager` refuses swaps until Felix adds an authorization path, so the tests and `smoke:swap` use a stand-in signer.
+- `IntentStore` does not exist yet, and nothing connects the price poller to `runIntent` at boot.
+- `Executor.recover` is not built, so an `unresolved` swap stays reserved until it exists.
+
+### Integration Handoffs
+- **Felix:** see "Needed for swaps" in `docs/roles/felix-tee.md`.
+- **Shreyas:** `IntentStore.due` should only return pending intents, and `mark` must accept `executing`, `pending`, `done` and `failed`. `runIntent` already refuses to run an intent twice at once.
+
+### Commit Reference
+- **Commits:** `9445d3751e43f5d951fa8933b8943ee12d73e7f1` (`feat(enclave): check Universal Router calldata before signing`), `1814aed8768fa97eb3ac7910774b63bbf0399fca` (`feat(enclave): add swap execution, and book withdrawal gas live`)
 - **Pushed to Remote:** No
