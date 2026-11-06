@@ -19,6 +19,8 @@ Only a confirmed swap consumes the reserved funds. Every other ending gives them
 
 ## Deposits (`watcher.ts`)
 
+Allow ETH deposits, or USDC deposits together with ETH for gas at the same address. Accept USDC only after both deposits are confirmed. The USDC path is pending implementation; the current ETH flow is:
+
 1. The user signs a DepositRequest. The enclave verifies the signature and nonce, assigns a fresh unused EOA exclusively to this session, and returns its address and expiry.
 2. The user sends ETH to that address with an ordinary transfer.
 3. When a session opens, record the assigned EOA's native balance as its baseline.
@@ -71,9 +73,9 @@ A problem before step 6 leaves the intent pending, with nothing sent. If the sig
 
 Every inventory EOA keeps `GAS_RESERVE_WEI`, which reconcile excludes from claims. Top-ups from one funder link the EOAs publicly. List that as a known leak.
 
-## Inventory seeding
+## Inventory funding
 
-Before the demo, fund 4 to 6 EOAs with ETH and the output token so withdrawals never depend on a lucky deposit. Say so openly in the demo.
+Inventory comes from user deposits and swaps; USDC deposits must include ETH for gas. Operator seeding is optional for demo fixtures and must be disclosed when used.
 
 ## Recovery on boot (`executor.recover`)
 
