@@ -33,7 +33,7 @@ All are `POST`, encrypted, and signed by the owner. The two queries take a sessi
 | `/margin/positions/close` | `MarginClose` |
 | `/margin/positions`, `/margin/lending` | `SessionQuery` |
 
-Open and close answer once approved, without waiting for the chain. Poll `/margin/positions` for the result.
+Open and close answer once approved, without waiting for the chain. Poll `/margin/positions` for the result. A failed attempt includes `reason`, including after restart; a new close or liquidation clears it. Only the position's owner can read it.
 
 ## Signer changes to review
 
@@ -72,7 +72,7 @@ The mock uses these so the rest could be built. They are suggestions.
 - **Closing a short overbuys.** The API only does exact-input, so the amount of USDC needed for a fixed ETH debt is an estimate. The mock adds 2% and leaves spare ETH. Accounting must credit that spare ETH and treat too little as a shortfall.
 - **Physical funds.** A swap must come from one address holding the whole amount and its gas reserve. Otherwise it fails with `NO_INVENTORY`, and a liquidation retries on the next price. This needs position limits, and possibly moving funds between addresses, which is public.
 - **Approval gas** is booked with `FEE_BOOKED`, using an `approval:` operation ID that belongs to no position.
-- **USDC collateral** can't be deposited yet, because the watcher only credits ETH. A user can deposit ETH and swap to USDC first.
+- **USDC collateral** can be deposited with ETH for gas through `/deposit-session`; see [the deposit API](api.md).
 
 ## Address rule
 

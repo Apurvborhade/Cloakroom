@@ -111,7 +111,9 @@ export class MarginPositionState {
           openOpId: event.opId, usdcDecimals: metadata.usdcDecimals,
         });
       } else {
-        this.entries.get(event.positionId as Hex)!.status = event.kind === 'close' ? 'closing' : 'liquidating';
+        const position = this.entries.get(event.positionId as Hex)!;
+        position.status = event.kind === 'close' ? 'closing' : 'liquidating';
+        delete position.reason;
       }
       this.operations.set(event.opId, { approval: structuredClone(event) });
       this.ledger.margin.remember(event);
@@ -134,6 +136,7 @@ export class MarginPositionState {
     }
     const position = this.entries.get(operation.approval.positionId as Hex)!;
     if (event.t === 'MARGIN_OP_FAILED') {
+      position.reason = event.reason;
       if (operation.approval.kind === 'open') {
         this.ledger.margin.cancel(position.openOpId);
         position.debt = 0n;

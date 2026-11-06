@@ -48,6 +48,7 @@ function positionWire(position: PositionView) {
     ...optional('equity', position.equity),
     ...optional('payout', position.payout),
     ...optional('shortfall', position.shortfall),
+    ...(position.reason === undefined ? {} : { reason: position.reason }),
   };
 }
 

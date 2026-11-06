@@ -178,6 +178,7 @@ export class MockMarginAccounting implements MarginAccounting {
     if (!operation) return;
     const position = this.positionsById.get(operation.positionId);
     if (!position) return;
+    position.reason = failure.reason;
     if (operation.kind === 'open') {
       position.status = 'failed';
       this.addLoan(position.debtToken, -position.debt);
@@ -248,6 +249,7 @@ export class MockMarginAccounting implements MarginAccounting {
       ...swap,
     };
     await this.deps.queue.run(() => this.deps.journal.append({ t: 'MARGIN_OP_APPROVED', ...operation }));
+    delete position.reason;
     this.operations.set(operation.opId, operation);
     return operation;
   }

@@ -193,6 +193,8 @@ describe('margin API', () => {
     expect(position!.debt).toBe(parseEther('0.5').toString());
     const failed = (await events(enclave)).find((event) => event.t === 'MARGIN_OP_FAILED');
     expect(failed).toMatchObject({ reason: 'NO_INVENTORY' });
+    expect(position!.reason).toBe('NO_INVENTORY');
+    expect(await api.positions(newAccount())).toEqual([]);
   });
 
   it('releases an operation a restart interrupted before anything was sent', async () => {

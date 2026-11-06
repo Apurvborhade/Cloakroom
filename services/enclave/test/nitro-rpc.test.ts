@@ -51,6 +51,39 @@ async function fixture(options: { host?: string; handler?: (req: IncomingMessage
 }
 
 describe('Nitro RPC HTTPS transport', () => {
+  it('queues a balance refresh instead of exceeding the relay connection limit', async () => {
+    let active = 0, peak = 0;
+    const { client } = await fixture({ handler: (req, res) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      res.on('close', () => { active -= 1; });
+      if (active > 16) { req.socket.destroy(); return; }
+      setTimeout(() => res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x1' })), 50);
+    } });
+    const rpc = client();
+    const requests = Array.from({ length: 24 }, (_, index) => rpc.getBalance({
+      address: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+    }));
+    const results = await Promise.allSettled(requests);
+    expect(results.every((result) => result.status === 'fulfilled' && result.value === 1n)).toBe(true);
+    expect(peak).toBeLessThanOrEqual(16);
+  });
+
+  it('releases queued and active requests on timeout so later callers still work', async () => {
+    let responding = false;
+    const { client } = await fixture({ handler: (_req, res) => {
+      if (responding) res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0xaa36a7' }));
+      else { res.writeHead(200); res.write('{'); }
+    } });
+    const rpc = client(undefined, 200);
+    const results = await Promise.allSettled(Array.from({ length: 24 }, (_, index) => rpc.getBalance({
+      address: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+    })));
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    responding = true;
+    await expect(rpc.getChainId()).resolves.toBe(11155111);
+  });
+
   it('works with viem and authenticates the hostname before sending the private URL path', async () => {
     const { client, received } = await fixture();
     expect(await client().getChainId()).toBe(11155111);

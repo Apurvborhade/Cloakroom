@@ -62,6 +62,7 @@ export interface PositionView {
   equity?: bigint;
   payout?: bigint;
   shortfall?: bigint;
+  reason?: string;
 }
 
 export interface LendingView {

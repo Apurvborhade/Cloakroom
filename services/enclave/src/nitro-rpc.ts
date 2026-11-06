@@ -8,7 +8,8 @@ const unavailable = () => new Error('RPC_UNAVAILABLE');
 
 class RpcRelayAgent extends Agent {
   constructor(private readonly socketPath: string, private readonly hostname: string, private readonly ca?: string) {
-    super({ keepAlive: false, maxCachedSessions: 0 });
+    // Both relay hops allow 16 connections; leave room for sockets still closing.
+    super({ keepAlive: false, maxCachedSessions: 0, maxSockets: 4, maxTotalSockets: 4 });
   }
 
   override createConnection(options: RequestOptions): TLSSocket {
@@ -24,38 +25,36 @@ export function rpcRelayFetch(endpoint: string, socketPath = '\0cloakroom-rpc', 
   try { url = new URL(endpoint); } catch { throw new Error('INVALID_RPC_ENDPOINT'); }
   if (url.protocol !== 'https:' || (url.port && url.port !== '443') || url.username || url.password || url.hash
       || !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(url.hostname)) throw new Error('INVALID_RPC_ENDPOINT');
+  const agent = new RpcRelayAgent(socketPath, url.hostname, trustedCa);
 
   return async (input, init) => {
     if (String(input) !== TRANSPORT_URL || init?.method !== 'POST' || typeof init.body !== 'string'
         || Buffer.byteLength(init.body) > 1024 * 1024 || !init.signal || init.signal.aborted) throw unavailable();
-    const agent = new RpcRelayAgent(socketPath, url.hostname, trustedCa);
-    try {
-      return await new Promise<Response>((resolve, reject) => {
-        const fail = () => reject(unavailable());
-        const req = request(url, { method: 'POST', agent, signal: init.signal!, headers: {
-          'content-type': 'application/json', 'content-length': Buffer.byteLength(init.body as string),
-          'accept-encoding': 'identity',
-        } }, (res) => {
-          res.on('error', fail);
-          const status = res.statusCode ?? 502;
-          if (status < 200 || status >= 300) { res.destroy(); req.destroy(); fail(); return; }
-          const parts: Buffer[] = [];
-          let length = 0;
-          res.on('aborted', fail);
-          res.on('data', (chunk: Buffer) => {
-            length += chunk.length;
-            if (length > MAX_RESPONSE_BYTES) { req.destroy(); res.destroy(); fail(); }
-            else parts.push(chunk);
-          });
-          res.on('end', () => {
-            if (!res.complete || length > MAX_RESPONSE_BYTES) { fail(); return; }
-            resolve(new Response(Buffer.concat(parts), { status: 200, headers: { 'content-type': 'application/json' } }));
-          });
+    return new Promise<Response>((resolve, reject) => {
+      const fail = () => reject(unavailable());
+      const req = request(url, { method: 'POST', agent, signal: init.signal!, headers: {
+        'content-type': 'application/json', 'content-length': Buffer.byteLength(init.body as string),
+        'accept-encoding': 'identity',
+      } }, (res) => {
+        res.on('error', fail);
+        const status = res.statusCode ?? 502;
+        if (status < 200 || status >= 300) { res.destroy(); req.destroy(); fail(); return; }
+        const parts: Buffer[] = [];
+        let length = 0;
+        res.on('aborted', fail);
+        res.on('data', (chunk: Buffer) => {
+          length += chunk.length;
+          if (length > MAX_RESPONSE_BYTES) { req.destroy(); res.destroy(); fail(); }
+          else parts.push(chunk);
         });
-        req.on('error', fail);
-        req.end(init.body as string);
+        res.on('end', () => {
+          if (!res.complete || length > MAX_RESPONSE_BYTES) { fail(); return; }
+          resolve(new Response(Buffer.concat(parts), { status: 200, headers: { 'content-type': 'application/json' } }));
+        });
       });
-    } finally { agent.destroy(); }
+      req.on('error', fail);
+      req.end(init.body as string);
+    });
   };
 }
 

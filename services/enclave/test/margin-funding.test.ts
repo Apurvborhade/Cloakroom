@@ -126,7 +126,7 @@ describe('margin funding', () => {
   it('cannot supply reserved collateral or use a lending claim as collateral', async () => {
     await credit(LENDER, USDC, 300n); await credit(TRADER, USDC, 100n);
     await supply('supply', 300n);
-    await expect(funding.reserveOpen(request('self-collateral', 200n, LENDER))).rejects.toThrow('INSUFFICIENT_BALANCE');
+    await expect(funding.reserveOpen(request('self-collateral', 200n, LENDER))).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
     await funding.reserveOpen(request('open'));
     await expect(funding.supply(TRADER, message('reuse', 1n, USDC, TRADER))).rejects.toThrow('INSUFFICIENT_BALANCE');
   });
