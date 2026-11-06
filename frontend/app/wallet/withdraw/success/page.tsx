@@ -102,14 +102,14 @@ export default function WithdrawalSuccessPage() {
   const { networkName } = useWallet();
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col font-mono selection:bg-[#3B82F6]/30 selection:text-white">
+    <div className="min-h-screen bg-[#F7F8FA] text-[#17191D] flex flex-col font-mono selection:bg-[#377FA5] selection:text-white">
       {/* Compact Header */}
       <PaymentSuccessHeader networkName={networkName || "Ethereum"} />
 
       {/* Suspense boundary for search parameters query reading */}
       <Suspense
         fallback={
-          <div className="flex-1 flex items-center justify-center p-8 text-xs text-[#94A3B8]">
+          <div className="flex-1 flex items-center justify-center p-8 text-xs text-[#626A75]">
             Initializing transaction verification...
           </div>
         }

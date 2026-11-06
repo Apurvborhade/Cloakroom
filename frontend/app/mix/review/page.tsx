@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
 import { MixHeader } from "@/components/mix/MixHeader";
 import { MixProgress } from "@/components/mix/MixProgress";
 import { MixReviewSummary } from "@/components/mix/MixReviewSummary";
@@ -46,6 +46,7 @@ export default function MixReviewPage() {
   const [config, setConfig] = useState<MixConfig | null>(null);
   const [isReady, setIsReady] = useState(false);
 
+  // Initialize config from session storage or URL parameters
   useEffect(() => {
     const saved = loadMixConfig();
     if (saved && saved.inputAmount) {
@@ -62,6 +63,7 @@ export default function MixReviewPage() {
       destination: string;
       network: string;
     }) => {
+      // If we don't have config yet or URL has valid params, derive config
       const quote = calculateMixQuote(params.asset, params.amount);
       const newConfig: MixConfig = {
         inputAsset: params.asset,
@@ -86,12 +88,12 @@ export default function MixReviewPage() {
 
   const editSetupHref = config
     ? `/mix?asset=${encodeURIComponent(config.inputAsset)}&amount=${encodeURIComponent(
-        config.inputAmount
-      )}&source=${encodeURIComponent(
-        config.sourceAddress
-      )}&destination=${encodeURIComponent(
-        config.destinationAddress
-      )}&network=${encodeURIComponent(config.network)}`
+      config.inputAmount
+    )}&source=${encodeURIComponent(
+      config.sourceAddress
+    )}&destination=${encodeURIComponent(
+      config.destinationAddress
+    )}&network=${encodeURIComponent(config.network)}`
     : "/mix";
 
   const handleConfirmAndProceed = () => {
@@ -109,7 +111,7 @@ export default function MixReviewPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col selection:bg-[#3B82F6]/20 selection:text-[#F0F4F8]">
+    <div className="min-h-screen bg-[#0C0C0C] text-[#F5F5F7] flex flex-col selection:bg-[#A6DCF8]/20 selection:text-[#F5F5F7]">
       <Suspense fallback={null}>
         <MixReviewParamsSync onParams={handleSyncParams} />
       </Suspense>
@@ -120,13 +122,13 @@ export default function MixReviewPage() {
       <main className="flex-1 max-w-xl mx-auto w-full px-4 sm:px-6 py-10 sm:py-14 animate-fade-in flex flex-col items-center">
         {/* Intro */}
         <div className="w-full text-center max-w-md mb-8">
-          <div className="font-mono text-[11px] font-medium tracking-[0.2em] text-[#3B82F6] uppercase mb-1.5">
+          <div className="font-mono text-[11px] font-medium tracking-[0.2em] text-[#92929B] uppercase mb-1.5">
             05 / INSPECTION & CONFIRMATION
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F0F4F8] mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F5F5F7] mb-2">
             Review Mix Intent
           </h1>
-          <p className="text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#92929B] leading-relaxed">
             Verify all parameters before dispatching to the confidential execution environment.
             No on-chain transaction occurs until execution confirmation.
           </p>
@@ -141,12 +143,14 @@ export default function MixReviewPage() {
           />
         ) : config ? (
           <div className="w-full space-y-6">
+            {/* Review Summary */}
             <MixReviewSummary config={config} />
 
+            {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
               <Link
                 href={editSetupHref}
-                className="w-full sm:w-auto flex-1 py-3 px-5 rounded-xl border border-[#232B36] bg-[#161B22] hover:bg-[#1C222B] hover:border-[#3A4759] text-xs font-mono font-medium text-[#94A3B8] hover:text-[#F0F4F8] transition-colors flex items-center justify-center gap-2"
+                className="w-full sm:w-auto flex-1 py-3 px-5 rounded-xl border border-[#292930] bg-[#141418] hover:bg-[#18181D] hover:border-[#3A3A46] text-xs font-mono font-medium text-[#92929B] hover:text-[#F5F5F7] transition-colors flex items-center justify-center gap-2"
               >
                 <ArrowLeft size={13} />
                 <span>BACK TO EDIT</span>
@@ -155,7 +159,7 @@ export default function MixReviewPage() {
               <button
                 type="button"
                 onClick={handleConfirmAndProceed}
-                className="w-full sm:w-auto flex-[2] py-3.5 px-6 rounded-xl bg-[#3B82F6] text-white hover:bg-[#2563EB] font-mono text-xs font-bold tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(59,130,246,0.25)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto flex-[2] py-3 px-6 rounded-xl bg-[#A6DCF8] text-[#0C0C0C] hover:bg-[#BDE7FC] font-mono text-xs font-semibold tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(166,220,248,0.25)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>CONFIRM & PROCEED TO EXECUTION</span>
                 <ArrowRight size={14} />

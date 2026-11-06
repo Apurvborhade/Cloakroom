@@ -8,13 +8,15 @@ import { Footer } from "@/components/Footer";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col font-mono selection:bg-[#3B82F6]/30 selection:text-white">
-      {/* Top Navigation */}
+    <div className="min-h-screen bg-[#0C0C0C] text-[#F5F5F7] flex flex-col">
+      {/* Minimal Top Navigation Bar */}
       <Navigation />
 
-      {/* Main Content */}
+      {/* Hero Section (Primary Focus: 85–90vh Viewport) */}
       <main className="flex-1">
         <HeroSection />
+
+        {/* Protocol Architecture & How It Works Section */}
         <ProtocolSection />
       </main>
 
@@ -23,3 +25,4 @@ export default function LandingPage() {
     </div>
   );
 }
+

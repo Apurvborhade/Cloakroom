@@ -64,11 +64,13 @@ export default function PoolPage() {
   const router = useRouter();
   const { account, balance: liveEthBalance, networkName } = useWallet();
 
+  // Active form state
   const [orderType, setOrderType] = useState<PoolOrderType>("MARKET");
   const [sellAmount, setSellAmount] = useState<string>("1.0");
   const [targetPrice, setTargetPrice] = useState<string>("3500");
   const [expiryDuration, setExpiryDuration] = useState<string>("7 Days");
 
+  // Transfer routing params (inherited from Screen 2 & 3)
   const [sourceAddress, setSourceAddress] = useState<string>(
     account || "0x71C568a8F9B60471f54aC482C400cCE9C298B319"
   );
@@ -77,10 +79,14 @@ export default function PoolPage() {
   );
   const [network, setNetwork] = useState<string>(networkName || "Sepolia Testnet");
 
+  // Error states
   const [sellError, setSellError] = useState<string | null>(null);
   const [targetError, setTargetError] = useState<string | null>(null);
+
+  // Active orders count
   const [activeOrderCount, setActiveOrderCount] = useState<number>(0);
 
+  // Sync wallet address if connected
   useEffect(() => {
     if (account) {
       setSourceAddress(account);
@@ -90,6 +96,7 @@ export default function PoolPage() {
     }
   }, [account, networkName]);
 
+  // Load existing config and active order count on mount
   useEffect(() => {
     const saved = loadPoolConfig();
     if (saved) {
@@ -106,6 +113,7 @@ export default function PoolPage() {
     setActiveOrderCount(active.length);
   }, []);
 
+  // Handle URL query parameters
   const handleParams = useCallback(
     (params: {
       amount?: string;
@@ -123,9 +131,11 @@ export default function PoolPage() {
     []
   );
 
+  // Calculations
   const marketQuote = calculateMarketQuote(sellAmount, REFERENCE_ETH_PRICE);
   const limitQuote = calculateLimitQuote(sellAmount, targetPrice, REFERENCE_ETH_PRICE);
 
+  // Real-time validation
   const validateForm = (): boolean => {
     const sVal = validatePoolSellAmount(sellAmount, liveEthBalance);
     setSellError(sVal.error);
@@ -145,6 +155,7 @@ export default function PoolPage() {
       : validatePoolSellAmount(sellAmount, liveEthBalance).isValid &&
         validateLimitTargetPrice(targetPrice).isValid;
 
+  // Handle Review Proceed
   const handleReviewProceed = () => {
     if (!validateForm()) return;
 
@@ -182,36 +193,42 @@ export default function PoolPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col selection:bg-[#3B82F6]/20 selection:text-[#F0F4F8]">
+    <div className="min-h-screen bg-[#F7F8FA] text-[#17191D] flex flex-col selection:bg-[#377FA5]/15 selection:text-[#17191D]">
       <Suspense fallback={null}>
         <PoolParamsSync onParams={handleParams} />
       </Suspense>
 
+      {/* Navigation Header */}
       <PoolHeader
         activeOrdersCount={activeOrderCount}
         backHref="/execution"
       />
 
+      {/* Main Content */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8 font-mono">
+        {/* Step Progress Tracker */}
         <PoolProgress currentStep={1} />
 
+        {/* Section Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1C222B] border border-[#232B36] text-[11px] text-[#3B82F6] tracking-wider uppercase font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E7F3FA] border border-[#CDE5F3] text-[11px] text-[#377FA5] tracking-wider uppercase font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#377FA5] animate-pulse" />
             <span>CONFIDENTIAL TEE EXCHANGE</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F0F4F8] uppercase">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17191D] uppercase">
             POOL EXECUTION TRADING
           </h1>
-          <p className="text-xs sm:text-sm text-[#94A3B8] max-w-lg mx-auto leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#626A75] max-w-lg mx-auto leading-relaxed">
             Trade ETH to USDC directly with zero public mempool leakage, MEV front-running protection, and deterministic settlement.
           </p>
         </div>
 
+        {/* Order Type Selector Tabs */}
         <div className="flex flex-col items-center gap-3">
           <OrderTypeSelector orderType={orderType} onChange={setOrderType} />
         </div>
 
+        {/* Form Container */}
         <div className="space-y-6">
           {orderType === "MARKET" ? (
             <MarketOrderForm
@@ -258,6 +275,7 @@ export default function PoolPage() {
             />
           )}
 
+          {/* Technical Price & Enclave Liquidity Breakdown */}
           <PriceInformation
             orderType={orderType}
             currentPrice={REFERENCE_ETH_PRICE}
@@ -267,12 +285,13 @@ export default function PoolPage() {
             network={network}
           />
 
+          {/* Action CTA & Orders Link */}
           <div className="space-y-4 pt-2">
             <button
               type="button"
               onClick={handleReviewProceed}
               disabled={!isFormValid}
-              className="w-full py-4 px-6 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#1C222B] disabled:text-[#505D6E] disabled:cursor-not-allowed text-white font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(59,130,246,0.25)] flex items-center justify-center gap-2 focus:outline-none cursor-pointer"
+              className="w-full py-3.5 px-6 rounded-xl bg-[#17191D] hover:bg-[#2B303B] disabled:bg-[#E3E6EB] disabled:text-[#9299A3] disabled:cursor-not-allowed text-white font-semibold text-xs uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none"
             >
               <span>
                 {orderType === "MARKET"
@@ -282,17 +301,18 @@ export default function PoolPage() {
               <ArrowRight size={15} />
             </button>
 
-            <div className="flex items-center justify-between text-xs text-[#94A3B8] px-1">
+            {/* Sub-links */}
+            <div className="flex items-center justify-between text-xs text-[#626A75] px-1">
               <Link
                 href="/execution"
-                className="hover:text-[#F0F4F8] transition-colors"
+                className="hover:text-[#17191D] transition-colors"
               >
                 ← Back to Mode Selection
               </Link>
 
               <Link
                 href="/pool/orders"
-                className="hover:text-[#3B82F6] transition-colors flex items-center gap-1.5 font-bold"
+                className="hover:text-[#377FA5] transition-colors flex items-center gap-1.5 font-medium"
               >
                 <History size={13} />
                 <span>Orders Dashboard ({activeOrderCount} Active)</span>
@@ -302,7 +322,8 @@ export default function PoolPage() {
         </div>
       </main>
 
-      <footer className="border-t border-[#232B36] py-6 px-4 text-center text-xs text-[#505D6E] font-mono bg-[#12161D]">
+      {/* Footer */}
+      <footer className="border-t border-[#E3E6EB] py-6 px-4 text-center text-xs text-[#9299A3] font-mono">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <span>NONY PROTOCOL • ENCLAVE POOL ENGINE</span>
           <span>DETERMINISTIC TEE EXECUTION</span>

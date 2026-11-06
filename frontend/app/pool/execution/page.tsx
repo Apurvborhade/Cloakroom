@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PoolHeader } from "@/components/pool/PoolHeader";
 import { PoolProgress } from "@/components/pool/PoolProgress";
@@ -82,8 +83,10 @@ export default function PoolExecutionPage() {
   const [isCancelOpen, setIsCancelOpen] = useState<boolean>(false);
   const [walletModalOpen, setWalletModalOpen] = useState<boolean>(false);
 
+  // Prevent duplicate execution lifecycle triggers on re-render
   const lifecycleInitiatedRef = useRef<boolean>(false);
 
+  // Initial load from session storage
   useEffect(() => {
     const saved = loadPoolConfig();
     if (saved && saved.sellAmount) {
@@ -92,6 +95,7 @@ export default function PoolExecutionPage() {
     setIsReady(true);
   }, []);
 
+  // Synchronize URL parameters if navigated with direct query
   const handleSyncParams = useCallback(
     (params: {
       orderId?: string;
@@ -102,15 +106,35 @@ export default function PoolExecutionPage() {
       destination?: string;
       network?: string;
     }) => {
+      // 1. If an existing order ID is provided, load that exact record
       if (params.orderId) {
         const found = getPoolOrderById(params.orderId);
         if (found) {
           setOrder(found);
-          lifecycleInitiatedRef.current = true;
+
+          const derivedConfig: PoolOrderConfig = {
+            orderType: found.orderType,
+            tradingPair: found.tradingPair,
+            sellAsset: found.sellAsset,
+            buyAsset: found.buyAsset,
+            sellAmount: found.sellAmount,
+            targetPrice: found.targetPrice,
+            currentPrice: REFERENCE_ETH_PRICE,
+            estimatedOutput: found.estimatedOutput,
+            slippageTolerance: 0.005,
+            feePercent: 0.001,
+            feeAmount: found.feeAmount,
+            network: found.network,
+            sourceAddress: found.sourceAddress,
+            destinationAddress: found.destinationAddress,
+            quoteTimestamp: found.createdAt,
+          };
+          setConfig(derivedConfig);
           return;
         }
       }
 
+      // 2. Otherwise derive config if parameters are provided
       if (params.amount && !config) {
         const orderType = params.type || "MARKET";
         const targetPrice = params.targetPrice || (orderType === "LIMIT" ? "3500" : undefined);
@@ -154,18 +178,29 @@ export default function PoolExecutionPage() {
     [config]
   );
 
+  // Lifecycle Runner: Advances lifecycle states deterministically
   useEffect(() => {
     if (!config || lifecycleInitiatedRef.current) return;
+
+    // Check if we are already viewing a loaded order
+    if (order && order.id) {
+      return;
+    }
+
     lifecycleInitiatedRef.current = true;
 
-    const assignedId = `POOL-${config.orderType}-${Date.now().toString(36).toUpperCase()}`;
+    // Create a new order record
+    const newOrderId = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.floor(
+      Math.random() * 1000
+    )}`;
+    const newBatchId = `ENCLAVE-POOL-${Date.now().toString(36).toUpperCase()}`;
 
-    const newRecord: PoolOrderRecord = {
-      id: assignedId,
+    const initialRecord: PoolOrderRecord = {
+      id: newOrderId,
       orderType: config.orderType,
-      tradingPair: "ETH/USDC",
-      sellAsset: "ETH",
-      buyAsset: "USDC",
+      tradingPair: config.tradingPair,
+      sellAsset: config.sellAsset,
+      buyAsset: config.buyAsset,
       sellAmount: config.sellAmount,
       targetPrice: config.targetPrice,
       estimatedOutput: config.estimatedOutput,
@@ -173,66 +208,98 @@ export default function PoolExecutionPage() {
       network: config.network,
       sourceAddress: config.sourceAddress,
       destinationAddress: config.destinationAddress,
-      status: "preparing",
+      status: config.orderType === "LIMIT" ? "order_created" : "preparing",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      batchId: newBatchId,
       isSimulation: true,
     };
 
-    setOrder(newRecord);
-    savePoolOrder(newRecord);
+    savePoolOrder(initialRecord);
+    setOrder(initialRecord);
 
-    const timer1 = setTimeout(() => {
-      newRecord.status = "awaiting_signature";
-      newRecord.updatedAt = new Date().toISOString();
-      setOrder({ ...newRecord });
-      savePoolOrder(newRecord);
+    if (config.orderType === "MARKET") {
+      // Market Flow: preparing -> awaiting_signature -> submitted -> processing -> completed
+      const t1 = setTimeout(() => {
+        initialRecord.status = "awaiting_signature";
+        initialRecord.updatedAt = new Date().toISOString();
+        savePoolOrder(initialRecord);
+        setOrder({ ...initialRecord });
 
-      const timer2 = setTimeout(() => {
-        newRecord.status = "submitted";
-        newRecord.updatedAt = new Date().toISOString();
-        setOrder({ ...newRecord });
-        savePoolOrder(newRecord);
+        const t2 = setTimeout(() => {
+          initialRecord.status = "submitted";
+          initialRecord.updatedAt = new Date().toISOString();
+          savePoolOrder(initialRecord);
+          setOrder({ ...initialRecord });
 
-        if (config.orderType === "MARKET") {
-          const timer3 = setTimeout(() => {
-            newRecord.status = "processing";
-            newRecord.updatedAt = new Date().toISOString();
-            setOrder({ ...newRecord });
-            savePoolOrder(newRecord);
+          const t3 = setTimeout(() => {
+            initialRecord.status = "processing";
+            initialRecord.updatedAt = new Date().toISOString();
+            savePoolOrder(initialRecord);
+            setOrder({ ...initialRecord });
 
-            const timer4 = setTimeout(() => {
-              newRecord.status = "completed";
-              newRecord.completedAt = new Date().toISOString();
-              newRecord.actualOutput = config.estimatedOutput;
-              newRecord.updatedAt = new Date().toISOString();
-              newRecord.txHash = null;
-              setOrder({ ...newRecord });
-              savePoolOrder(newRecord);
+            const t4 = setTimeout(() => {
+              initialRecord.status = "completed";
+              initialRecord.completedAt = new Date().toISOString();
+              initialRecord.updatedAt = new Date().toISOString();
+              initialRecord.actualOutput = config.estimatedOutput;
+              initialRecord.txHash = null; // Honest: Off-chain enclave batch settlement
+              savePoolOrder(initialRecord);
+              setOrder({ ...initialRecord });
             }, 2500);
 
-            return () => clearTimeout(timer4);
-          }, 1500);
+            return () => clearTimeout(t4);
+          }, 1800);
 
-          return () => clearTimeout(timer3);
-        } else {
-          const timerLimit = setTimeout(() => {
-            newRecord.status = "active_waiting";
-            newRecord.updatedAt = new Date().toISOString();
-            setOrder({ ...newRecord });
-            savePoolOrder(newRecord);
-          }, 1500);
+          return () => clearTimeout(t3);
+        }, 1600);
 
-          return () => clearTimeout(timerLimit);
-        }
-      }, 1800);
+        return () => clearTimeout(t2);
+      }, 1000);
 
-      return () => clearTimeout(timer2);
-    }, 1200);
+      return () => clearTimeout(t1);
+    } else {
+      // Limit Flow: order_created -> funds_reserved -> awaiting_signature -> submitted -> active_waiting
+      const t1 = setTimeout(() => {
+        initialRecord.status = "funds_reserved";
+        initialRecord.updatedAt = new Date().toISOString();
+        savePoolOrder(initialRecord);
+        setOrder({ ...initialRecord });
 
-    return () => clearTimeout(timer1);
-  }, [config]);
+        const t2 = setTimeout(() => {
+          initialRecord.status = "awaiting_signature";
+          initialRecord.updatedAt = new Date().toISOString();
+          savePoolOrder(initialRecord);
+          setOrder({ ...initialRecord });
 
+          const t3 = setTimeout(() => {
+            initialRecord.status = "submitted";
+            initialRecord.updatedAt = new Date().toISOString();
+            savePoolOrder(initialRecord);
+            setOrder({ ...initialRecord });
+
+            const t4 = setTimeout(() => {
+              // Reaches active_waiting and rests in confidential book without closing
+              initialRecord.status = "active_waiting";
+              initialRecord.updatedAt = new Date().toISOString();
+              savePoolOrder(initialRecord);
+              setOrder({ ...initialRecord });
+            }, 1600);
+
+            return () => clearTimeout(t4);
+          }, 1400);
+
+          return () => clearTimeout(t3);
+        }, 1200);
+
+        return () => clearTimeout(t2);
+      }, 900);
+
+      return () => clearTimeout(t1);
+    }
+  }, [config, order]);
+
+  // Handle Add Funds Action
   const handleConfirmAddFunds = (additionalEth: string) => {
     if (!order) return;
     const updated = addFundsToPoolOrder(order.id, additionalEth);
@@ -241,6 +308,7 @@ export default function PoolExecutionPage() {
     }
   };
 
+  // Handle Cancel Order Action
   const handleConfirmCancel = (orderId: string) => {
     requestCancelPoolOrder(orderId);
     const success = cancelPoolOrder(orderId);
@@ -254,6 +322,7 @@ export default function PoolExecutionPage() {
     }
   };
 
+  // Handle Dev Simulation: Target Price Spike Hit
   const handleSimulateTargetHit = () => {
     if (!order || order.status !== "active_waiting") return;
 
@@ -285,14 +354,17 @@ export default function PoolExecutionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col selection:bg-[#3B82F6]/20 selection:text-[#F0F4F8]">
+    <div className="min-h-screen bg-[#F7F8FA] text-[#17191D] flex flex-col selection:bg-[#377FA5]/15 selection:text-[#17191D]">
       <Suspense fallback={null}>
         <PoolExecutionParamsSync onParams={handleSyncParams} />
       </Suspense>
 
+      {/* Navigation Header */}
       <PoolHeader backHref="/pool" backLabel="TRADE" />
 
+      {/* Main Content */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8 font-mono">
+        {/* Step Progress Tracker */}
         <PoolProgress currentStep={3} />
 
         {isReady && !order ? (
@@ -304,38 +376,53 @@ export default function PoolExecutionPage() {
           />
         ) : order ? (
           <>
+            {/* Screen Category Title */}
             <div className="text-center space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1C222B] border border-[#232B36] text-[11px] text-[#3B82F6] tracking-wider uppercase font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E7F3FA] border border-[#CDE5F3] text-[11px] text-[#377FA5] tracking-wider uppercase font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#377FA5] animate-pulse" />
                 <span>CONFIDENTIAL ORDER STATUS & MANAGEMENT</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F0F4F8] uppercase">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17191D] uppercase">
                 ORDER MONITORING & MANAGEMENT
               </h1>
-              <p className="text-xs sm:text-sm text-[#94A3B8] max-w-lg mx-auto leading-relaxed">
+              <p className="text-xs sm:text-sm text-[#626A75] max-w-lg mx-auto leading-relaxed">
                 Real-time tracking of committed assets, execution lifecycle status, fund modification, and unconditional cancellation.
               </p>
             </div>
 
+            {/* Missing Wallet Notice */}
             {!account && (
-              <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2 text-amber-300">
-                  <Wallet size={15} className="text-amber-400 shrink-0" />
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 text-amber-800">
+                  <Wallet size={15} className="text-amber-600 shrink-0" />
                   <span>Wallet Disconnected: Connect your Web3 wallet to authorize allocations or manage funds.</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setWalletModalOpen(true)}
-                  className="py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold whitespace-nowrap transition-colors shadow-lg cursor-pointer"
+                  className="py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold whitespace-nowrap transition-colors shadow-xs"
                 >
                   Connect Wallet
                 </button>
               </div>
             )}
 
+            {/* B. Order Overview Card */}
             <OrderOverviewCard order={order} />
-            <OrderProgressTimeline orderType={order.orderType} status={order.status} />
-            <OrderFinancialBreakdown order={order} availableEthBalance={liveEthBalance} />
+
+            {/* C. Order Progress Tracker (Visual Timeline) */}
+            <OrderProgressTimeline
+              orderType={order.orderType}
+              status={order.status}
+            />
+
+            {/* D. Financial Breakdown Card */}
+            <OrderFinancialBreakdown
+              order={order}
+              availableEthBalance={liveEthBalance}
+            />
+
+            {/* E. Order Management Actions (Add Funds / Cancel Order) */}
             <OrderActionControls
               order={order}
               onOpenAddFunds={() => setIsAddFundsOpen(true)}
@@ -343,11 +430,14 @@ export default function PoolExecutionPage() {
               onSimulateTargetHit={handleSimulateTargetHit}
               onProceedToSuccess={handleProceedToSuccess}
             />
+
+            {/* F. Wallet Navigation Banner */}
             <WalletNavigationBanner />
           </>
         ) : null}
       </main>
 
+      {/* Primary Action Modal: Add Funds */}
       {order && (
         <AddFundsModal
           isOpen={isAddFundsOpen}
@@ -358,6 +448,7 @@ export default function PoolExecutionPage() {
         />
       )}
 
+      {/* Secondary Action Modal: Cancel Order */}
       {order && (
         <CancelOrderModal
           isOpen={isCancelOpen}
@@ -371,12 +462,14 @@ export default function PoolExecutionPage() {
         />
       )}
 
+      {/* Wallet Modal */}
       <WalletModal
         isOpen={walletModalOpen}
         onClose={() => setWalletModalOpen(false)}
       />
 
-      <footer className="border-t border-[#232B36] py-6 px-4 text-center text-xs text-[#505D6E] font-mono bg-[#12161D]">
+      {/* Footer */}
+      <footer className="border-t border-[#E3E6EB] py-6 px-4 text-center text-xs text-[#9299A3] font-mono">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <span>NONY PROTOCOL • ENCLAVE POOL ENGINE</span>
           <span>ORDER STATUS & MANAGEMENT PIPELINE</span>

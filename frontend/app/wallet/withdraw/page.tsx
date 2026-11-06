@@ -131,34 +131,34 @@ export default function WithdrawalPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col font-mono selection:bg-[#3B82F6]/30 selection:text-white">
+    <div className="min-h-screen bg-[#F7F8FA] text-[#17191D] flex flex-col font-mono selection:bg-[#377FA5] selection:text-white">
       {/* Top Header */}
       <WithdrawalHeader account={account} networkName={networkName} />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Page Header Title & Subtitle */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#232B36]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E3E6EB]">
           <div>
-            <div className="flex items-center gap-2 text-xs text-[#94A3B8] mb-1">
-              <Link href="/wallet" className="hover:text-[#F0F4F8] transition-colors flex items-center gap-1 font-semibold">
+            <div className="flex items-center gap-2 text-xs text-[#626A75] mb-1">
+              <Link href="/wallet" className="hover:text-[#17191D] transition-colors flex items-center gap-1 font-semibold">
                 <ArrowLeft size={13} />
                 <span>Wallet</span>
               </Link>
               <span>/</span>
-              <span className="text-[#3B82F6] font-semibold">Cash Out</span>
+              <span className="text-[#377FA5] font-semibold">Cash Out</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#F0F4F8] font-sans">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#17191D] font-sans">
               Cash Out
             </h1>
-            <p className="text-xs text-[#94A3B8] mt-0.5">
+            <p className="text-xs text-[#626A75] mt-0.5">
               Withdraw your available assets to your self-custodial Web3 wallet.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[#94A3B8] bg-[#161B22] border border-[#232B36] px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md font-semibold">
-              <ShieldCheck size={13} className="text-[#10B981]" />
+            <span className="text-[11px] text-[#626A75] bg-white border border-[#E3E6EB] px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm font-semibold">
+              <ShieldCheck size={13} className="text-[#21865B]" />
               <span>Layer-1 Exit Gateway</span>
             </span>
           </div>
@@ -166,17 +166,17 @@ export default function WithdrawalPage() {
 
         {/* State 1: Initial Loading */}
         {(isLoading || isConnecting) && (
-          <div className="p-4 rounded-2xl bg-[#161B22] border border-[#232B36] flex items-center justify-center gap-2 text-xs text-[#94A3B8] shadow-md">
-            <Loader2 size={16} className="animate-spin text-[#3B82F6]" />
+          <div className="p-4 rounded-2xl bg-white border border-[#E3E6EB] flex items-center justify-center gap-2 text-xs text-[#626A75] shadow-sm">
+            <Loader2 size={16} className="animate-spin text-[#377FA5]" />
             <span>Synchronizing wallet balances with blockchain provider...</span>
           </div>
         )}
 
         {/* Network Mismatch Banner */}
         {isNetworkMismatch && (
-          <div className="p-4 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/30 flex items-start gap-3">
-            <AlertTriangle size={18} className="text-[#F59E0B] shrink-0 mt-0.5" />
-            <div className="text-xs text-[#F59E0B]">
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+            <div className="text-xs text-[#B45309]">
               <span className="font-bold">Network Mismatch:</span> Connected to an unsupported network ({networkName}). Please switch your Web3 wallet to Ethereum Sepolia or Mainnet to proceed.
             </div>
           </div>
@@ -184,17 +184,17 @@ export default function WithdrawalPage() {
 
         {/* Disconnected Warning Banner */}
         {!account && (
-          <div className="p-4 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-3">
-              <AlertTriangle size={18} className="text-[#F59E0B] shrink-0 mt-0.5" />
-              <div className="text-xs text-[#F59E0B]">
+              <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+              <div className="text-xs text-[#B45309]">
                 <span className="font-bold">Web3 Wallet Required:</span> Connect your wallet to inspect verified on-chain balances and configure your withdrawal destination.
               </div>
             </div>
             <button
               type="button"
               onClick={() => setWalletModalOpen(true)}
-              className="py-2 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-[#F0F4F8] text-xs font-bold uppercase tracking-wider transition-colors shrink-0 shadow-md"
+              className="py-2 px-4 rounded-xl bg-[#17191D] hover:bg-[#2C3038] text-white text-xs font-bold uppercase tracking-wider transition-colors shrink-0 shadow-sm"
             >
               Connect Wallet
             </button>

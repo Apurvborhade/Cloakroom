@@ -140,7 +140,7 @@ export default function WalletPage() {
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col font-mono selection:bg-[#3B82F6]/30 selection:text-white">
+    <div className="min-h-screen bg-[#F7F8FA] text-[#17191D] flex flex-col font-mono selection:bg-[#377FA5] selection:text-white">
       {/* Header */}
       <WalletHeader
         account={account}
@@ -154,13 +154,13 @@ export default function WalletPage() {
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
         {/* Intro */}
         <div className="text-left space-y-1">
-          <div className="text-[11px] font-semibold tracking-[0.2em] text-[#3B82F6] uppercase">
+          <div className="text-[11px] font-semibold tracking-[0.2em] text-[#626A75] uppercase">
             CONSOLIDATED ASSET OVERVIEW
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F0F4F8] font-sans">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17191D] font-sans">
             Confidential Portfolio
           </h1>
-          <p className="text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#626A75] leading-relaxed">
             Real-time accounting of live on-chain EOA holdings, active enclave order locks, and settled trade proceeds.
           </p>
         </div>

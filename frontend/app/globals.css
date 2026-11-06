@@ -3,19 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --bg-canvas: #0F1318;
-  --bg-surface: #161B22;
-  --bg-elevated: #1C222B;
-  --border-base: #232B36;
-  --border-active: #3A4759;
-  --text-primary: #F0F4F8;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  --accent-primary: #3B82F6;
-  --accent-soft: #1A2738;
-  --success: #10B981;
-  --warning: #F59E0B;
-  --error: #EF4444;
+  --bg-primary: #0C0C0C;
+  --bg-secondary: #141418;
+  --bg-surface: #18181D;
+  --bg-elevated: #1E1E26;
+  --text-primary: #F5F5F7;
+  --text-secondary: #92929B;
+  --text-muted: #666670;
+  --border-color: #292930;
+  --accent-color: #A6DCF8;
 }
 
 @layer base {
@@ -25,41 +21,43 @@
   
   html {
     scroll-behavior: smooth;
-    background-color: #0F1318;
-    color: #F0F4F8;
+    background-color: #0C0C0C;
+    color: #F5F5F7;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
   body {
-    background-color: #0F1318;
-    color: #F0F4F8;
+    background-color: #0C0C0C;
+    color: #F5F5F7;
     min-height: 100vh;
     overflow-x: hidden;
+    selection-background-color: #A6DCF8;
+    selection-color: #0C0C0C;
   }
 
   ::selection {
-    background-color: rgba(59, 130, 246, 0.35);
-    color: #FFFFFF;
+    background-color: rgba(166, 220, 248, 0.25);
+    color: #F5F5F7;
   }
 }
 
-/* Subtle architectural scrollbar */
+/* Subtle custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0F1318;
+  background: #0C0C0C;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #232B36;
+  background: #292930;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3A4759;
+  background: #3A3A46;
 }
 
 /* Reduced motion support */

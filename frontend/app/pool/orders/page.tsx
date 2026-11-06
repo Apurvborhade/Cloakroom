@@ -66,17 +66,20 @@ export default function PoolOrdersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col selection:bg-[#3B82F6]/20 selection:text-[#F0F4F8]">
+    <div className="min-h-screen bg-[#F7F8FA] text-[#17191D] flex flex-col selection:bg-[#377FA5]/15 selection:text-[#17191D]">
+      {/* Header */}
       <PoolHeader activeOrdersCount={activeCount} backHref="/pool" />
 
+      {/* Main Container */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6 font-mono">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#232B36]">
+        {/* Top Title & Action Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#E3E6EB]">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 text-xs text-[#94A3B8] uppercase tracking-wider font-semibold">
-              <History size={13} className="text-[#3B82F6]" />
+            <div className="inline-flex items-center gap-2 text-xs text-[#626A75] uppercase tracking-wider font-semibold">
+              <History size={13} className="text-[#377FA5]" />
               <span>ENCLAVE ORDER MANAGEMENT</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#F0F4F8] uppercase">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#17191D] uppercase">
               POOL ORDERS DASHBOARD
             </h1>
           </div>
@@ -84,7 +87,7 @@ export default function PoolOrdersPage() {
           <div className="flex items-center gap-3">
             <Link
               href="/pool"
-              className="py-2.5 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 focus:outline-none shadow-lg cursor-pointer"
+              className="py-2.5 px-4 rounded-xl bg-[#17191D] hover:bg-[#2B303B] text-white font-semibold text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 focus:outline-none shadow-sm"
             >
               <Plus size={14} />
               <span>NEW POOL ORDER</span>
@@ -93,7 +96,7 @@ export default function PoolOrdersPage() {
         </div>
 
         {/* Filter Navigation Tabs */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#1C222B] border border-[#232B36] w-full sm:w-fit text-xs">
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#F0F2F5] border border-[#E3E6EB] w-full sm:w-fit text-xs">
           {(["ACTIVE", "ALL", "COMPLETED", "CANCELLED"] as FilterTab[]).map((tab) => {
             const isCurrent = activeTab === tab;
             return (
@@ -102,15 +105,15 @@ export default function PoolOrdersPage() {
                 type="button"
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "py-1.5 px-3 rounded-lg font-medium transition-all cursor-pointer",
+                  "py-1.5 px-3 rounded-lg font-medium transition-all",
                   isCurrent
-                    ? "bg-[#161B22] text-[#F0F4F8] border border-[#232B36] shadow-sm font-bold"
-                    : "text-[#94A3B8] hover:text-[#F0F4F8]"
+                    ? "bg-white text-[#17191D] border border-[#E3E6EB] shadow-xs font-semibold"
+                    : "text-[#626A75] hover:text-[#17191D]"
                 )}
               >
                 <span>{tab}</span>
                 {tab === "ACTIVE" && activeCount > 0 && (
-                  <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-[#3B82F6] text-white text-[10px] font-bold">
+                  <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-[#E7F3FA] text-[#377FA5] text-[10px] font-bold">
                     {activeCount}
                   </span>
                 )}
@@ -121,15 +124,15 @@ export default function PoolOrdersPage() {
 
         {/* Orders Listing */}
         {filteredOrders.length === 0 ? (
-          <div className="p-12 rounded-2xl bg-[#161B22] border border-[#232B36] text-center space-y-4 shadow-xl my-6">
-            <div className="w-12 h-12 rounded-full bg-[#1C222B] border border-[#232B36] flex items-center justify-center text-[#505D6E] mx-auto">
+          <div className="p-12 rounded-2xl bg-white border border-[#E3E6EB] text-center space-y-4 shadow-sm my-6">
+            <div className="w-12 h-12 rounded-full bg-[#F7F8FA] border border-[#E3E6EB] flex items-center justify-center text-[#9299A3] mx-auto">
               <Inbox size={22} />
             </div>
             <div className="space-y-1">
-              <h3 className="text-base font-bold text-[#F0F4F8]">
+              <h3 className="text-base font-bold text-[#17191D]">
                 No {activeTab.toLowerCase()} orders found
               </h3>
-              <p className="text-xs text-[#94A3B8]">
+              <p className="text-xs text-[#626A75]">
                 {activeTab === "ACTIVE"
                   ? "You have no open limit orders currently resting in the enclave book."
                   : "No historical records match this status category."}
@@ -137,7 +140,7 @@ export default function PoolOrdersPage() {
             </div>
             <Link
               href="/pool"
-              className="inline-flex items-center gap-2 py-2 px-4 rounded-xl bg-[#3B82F6] text-white text-xs font-bold uppercase tracking-wider shadow-lg hover:bg-[#2563EB] transition-colors"
+              className="inline-flex items-center gap-2 py-2 px-4 rounded-xl bg-[#17191D] text-white text-xs font-semibold uppercase tracking-wider shadow-sm hover:bg-[#2B303B] transition-colors"
             >
               <span>CREATE AN ORDER</span>
             </Link>
@@ -155,9 +158,10 @@ export default function PoolOrdersPage() {
         )}
       </main>
 
+      {/* Cancellation Confirmation Modal */}
       {orderToCancel && (
         <CancelOrderModal
-          isOpen={true}
+          isOpen={!!orderToCancel}
           orderId={orderToCancel.id}
           sellAmount={orderToCancel.sellAmount}
           sellAsset={orderToCancel.sellAsset}
@@ -168,10 +172,11 @@ export default function PoolOrdersPage() {
         />
       )}
 
-      <footer className="border-t border-[#232B36] py-6 px-4 text-center text-xs text-[#505D6E] font-mono bg-[#12161D]">
+      {/* Footer */}
+      <footer className="border-t border-[#E3E6EB] py-6 px-4 text-center text-xs text-[#9299A3] font-mono">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <span>NONY PROTOCOL • ENCLAVE POOL ENGINE</span>
-          <span>ORDERS REGISTRY & MONITOR</span>
+          <span>ORDERS REGISTRY</span>
         </div>
       </footer>
     </div>

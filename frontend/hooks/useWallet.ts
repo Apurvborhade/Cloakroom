@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { formatEther } from "viem";
+import { formatEther, type Address, type Hex } from "viem";
+import { getNextNonce as getNextNonceUtil, commitNonce as commitNonceUtil, bumpNonceOnConflict } from "../lib/crypto/nonce";
 
 export interface WalletState {
-  account: string | null;
+  account: Address | null;
   chainId: number | null;
   networkName: string;
   balance: string | null;
@@ -49,7 +50,6 @@ export function useWallet() {
       });
       const balanceBigInt = BigInt(balanceHex);
       const formatted = formatEther(balanceBigInt);
-      // Format to 4 decimals for clean display
       const [intPart, decPart = ""] = formatted.split(".");
       const cleanBalance = `${intPart}.${decPart.slice(0, 4)}`;
       setWallet((prev) => ({ ...prev, balance: cleanBalance }));
@@ -69,7 +69,7 @@ export function useWallet() {
       const numericChainId = chainIdHex ? parseInt(chainIdHex, 16) : null;
 
       if (accounts && accounts.length > 0 && accounts[0]) {
-        const activeAccount = accounts[0];
+        const activeAccount = accounts[0].toLowerCase() as Address;
         setWallet((prev) => ({
           ...prev,
           account: activeAccount,
@@ -100,8 +100,9 @@ export function useWallet() {
       const ethereum = (window as any).ethereum;
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length > 0 && accounts[0]) {
-          setWallet((prev) => ({ ...prev, account: accounts[0] }));
-          updateBalance(accounts[0]);
+          const norm = accounts[0].toLowerCase() as Address;
+          setWallet((prev) => ({ ...prev, account: norm }));
+          updateBalance(norm);
         } else {
           setWallet((prev) => ({ ...prev, account: null, balance: null }));
         }
@@ -141,7 +142,7 @@ export function useWallet() {
         method: "eth_requestAccounts",
       });
       if (accounts && accounts.length > 0 && accounts[0]) {
-        const activeAccount = accounts[0];
+        const activeAccount = accounts[0].toLowerCase() as Address;
         const chainIdHex = await (window as any).ethereum.request({ method: "eth_chainId" });
         const numericChainId = chainIdHex ? parseInt(chainIdHex, 16) : null;
         setWallet({
@@ -177,13 +178,122 @@ export function useWallet() {
     });
   }, []);
 
+  const switchChain = useCallback(async (targetChainId: number = 11155111): Promise<boolean> => {
+    if (typeof window === "undefined" || !(window as any).ethereum) return false;
+    const ethereum = (window as any).ethereum;
+    const hexChainId = `0x${targetChainId.toString(16)}`;
+    try {
+      await ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: hexChainId }],
+      });
+      return true;
+    } catch (switchError: any) {
+      // Chain not added error (4902)
+      if (switchError?.code === 4902 && targetChainId === 11155111) {
+        try {
+          await ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: hexChainId,
+                chainName: "Sepolia Testnet",
+                nativeCurrency: { name: "Sepolia Ether", symbol: "SEP", decimals: 18 },
+                rpcUrls: ["https://rpc.sepolia.org"],
+                blockExplorerUrls: ["https://sepolia.etherscan.io"],
+              },
+            ],
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
+  }, []);
+
+  const signTypedData = useCallback(
+    async (typedData: Record<string, unknown>): Promise<Hex> => {
+      if (typeof window === "undefined" || !(window as any).ethereum) {
+        throw new Error("No Web3 browser wallet available to sign typed data.");
+      }
+      if (!wallet.account) {
+        throw new Error("Wallet not connected. Connect your wallet first.");
+      }
+
+      const stringifiedData = JSON.stringify(typedData, (_key, value) =>
+        typeof value === "bigint" ? value.toString() : value
+      );
+
+      const signature = await (window as any).ethereum.request({
+        method: "eth_signTypedData_v4",
+        params: [wallet.account, stringifiedData],
+      });
+
+      return signature as Hex;
+    },
+    [wallet.account]
+  );
+
+  const sendEthTransaction = useCallback(
+    async ({ to, valueWei }: { to: Address; valueWei: bigint }): Promise<Hex> => {
+      if (typeof window === "undefined" || !(window as any).ethereum) {
+        throw new Error("No Web3 browser wallet detected.");
+      }
+      if (!wallet.account) {
+        throw new Error("Wallet not connected.");
+      }
+
+      const txHash = await (window as any).ethereum.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: wallet.account,
+            to,
+            value: `0x${valueWei.toString(16)}`,
+          },
+        ],
+      });
+
+      return txHash as Hex;
+    },
+    [wallet.account]
+  );
+
+  const getNextNonce = useCallback((): bigint => {
+    if (!wallet.account) return 1n;
+    return getNextNonceUtil(wallet.account);
+  }, [wallet.account]);
+
+  const commitNonce = useCallback(
+    (nonce: bigint) => {
+      if (!wallet.account) return;
+      commitNonceUtil(wallet.account, nonce);
+    },
+    [wallet.account]
+  );
+
+  const bumpNonce = useCallback(
+    (hint?: bigint): bigint => {
+      if (!wallet.account) return 1n;
+      return bumpNonceOnConflict(wallet.account, hint);
+    },
+    [wallet.account]
+  );
+
   return {
     ...wallet,
     connect,
     disconnect,
+    switchChain,
+    signTypedData,
+    sendEthTransaction,
+    getNextNonce,
+    commitNonce,
+    bumpNonce,
     refreshBalance: () => {
       if (wallet.account) updateBalance(wallet.account);
     },
   };
 }
-

@@ -4,7 +4,7 @@ import React, { useRef, useEffect } from "react";
 import { Check, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// --- Visual A: MIX Atomic Orbital Canvas ---
+// --- Visual A: Lightweight MIX Atomic Orbital Canvas (Light Theme) ---
 function MixOrbitalVisual({ isSelected }: { isSelected: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -52,8 +52,8 @@ function MixOrbitalVisual({ isSelected }: { isSelected: boolean }) {
       }
 
       ctx.beginPath();
-      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected ? "#3B82F6" : "#64748B";
+      ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? "#377FA5" : "#9299A3";
       ctx.fill();
 
       rings.forEach((ring, rIdx) => {
@@ -64,8 +64,8 @@ function MixOrbitalVisual({ isSelected }: { isSelected: boolean }) {
         ctx.beginPath();
         ctx.ellipse(0, 0, ring.rx, ring.ry, 0, 0, Math.PI * 2);
         ctx.strokeStyle = isSelected
-          ? "rgba(59, 130, 246, 0.45)"
-          : "rgba(51, 65, 85, 0.6)";
+          ? "rgba(55, 127, 165, 0.45)"
+          : "rgba(209, 213, 219, 0.75)";
         ctx.lineWidth = 1;
         ctx.stroke();
 
@@ -75,8 +75,8 @@ function MixOrbitalVisual({ isSelected }: { isSelected: boolean }) {
           const py = ring.ry * Math.sin(pAngle);
 
           ctx.beginPath();
-          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-          ctx.fillStyle = isSelected ? "#60A5FA" : "#94A3B8";
+          ctx.arc(px, py, 2, 0, Math.PI * 2);
+          ctx.fillStyle = isSelected ? "#377FA5" : "#626A75";
           ctx.fill();
         }
 
@@ -107,7 +107,7 @@ function MixOrbitalVisual({ isSelected }: { isSelected: boolean }) {
   );
 }
 
-// --- Visual B: Geometric POOL Exchange Canvas ---
+// --- Visual B: Geometric POOL Exchange Canvas (Light Theme) ---
 function PoolExchangeVisual({ isSelected }: { isSelected: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -156,8 +156,8 @@ function PoolExchangeVisual({ isSelected }: { isSelected: boolean }) {
       ctx.moveTo(nodeLeftX + nodeWidth / 2, cy);
       ctx.lineTo(nodeRightX - nodeWidth / 2, cy);
       ctx.strokeStyle = isSelected
-        ? "rgba(59, 130, 246, 0.45)"
-        : "rgba(51, 65, 85, 0.6)";
+        ? "rgba(55, 127, 165, 0.4)"
+        : "rgba(209, 213, 219, 0.8)";
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.stroke();
@@ -172,8 +172,8 @@ function PoolExchangeVisual({ isSelected }: { isSelected: boolean }) {
         const px = trackStart + trackLen * progress;
 
         ctx.beginPath();
-        ctx.arc(px, cy, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = isSelected ? "#60A5FA" : "#94A3B8";
+        ctx.arc(px, cy, 2, 0, Math.PI * 2);
+        ctx.fillStyle = isSelected ? "#377FA5" : "#626A75";
         ctx.fill();
       }
 
@@ -183,9 +183,9 @@ function PoolExchangeVisual({ isSelected }: { isSelected: boolean }) {
       ctx.rotate(Math.PI / 4);
       ctx.beginPath();
       ctx.rect(-6, -6, 12, 12);
-      ctx.fillStyle = "#161B22";
+      ctx.fillStyle = "#FFFFFF";
       ctx.fill();
-      ctx.strokeStyle = isSelected ? "#3B82F6" : "#232B36";
+      ctx.strokeStyle = isSelected ? "#377FA5" : "#E3E6EB";
       ctx.lineWidth = 1.25;
       ctx.stroke();
       ctx.restore();
@@ -227,14 +227,14 @@ function PoolExchangeVisual({ isSelected }: { isSelected: boolean }) {
       c.save();
       c.beginPath();
       c.roundRect(x, y, w, h, 6);
-      c.fillStyle = "#1C222B";
+      c.fillStyle = "#FFFFFF";
       c.fill();
-      c.strokeStyle = selected ? "#3B82F6" : "#232B36";
+      c.strokeStyle = selected ? "#377FA5" : "#E3E6EB";
       c.lineWidth = 1;
       c.stroke();
 
       c.font = "bold 10px monospace";
-      c.fillStyle = selected ? "#60A5FA" : "#94A3B8";
+      c.fillStyle = selected ? "#17191D" : "#626A75";
       c.textAlign = "center";
       c.textBaseline = "middle";
       c.fillText(label, x + w / 2, y + h / 2);
@@ -293,10 +293,10 @@ export function ExecutionModeCard({
         }
       }}
       className={cn(
-        "group relative flex flex-col justify-between w-full rounded-2xl p-6 sm:p-7 text-left transition-all duration-200 cursor-pointer select-none border outline-none bg-[#161B22]",
+        "group relative flex flex-col justify-between w-full rounded-2xl p-6 sm:p-7 text-left transition-all duration-200 cursor-pointer select-none border outline-none bg-white",
         isSelected
-          ? "border-[#3B82F6] ring-1 ring-[#3B82F6]/30 shadow-[0_0_24px_rgba(59,130,246,0.12)]"
-          : "border-[#232B36] hover:border-[#3A4759] shadow-lg"
+          ? "border-[#377FA5] ring-2 ring-[#377FA5]/20 shadow-elevated"
+          : "border-[#E3E6EB] hover:border-[#377FA5] shadow-card hover:shadow-elevated"
       )}
     >
       <div>
@@ -305,8 +305,8 @@ export function ExecutionModeCard({
             className={cn(
               "px-2.5 py-1 rounded-full text-[10px] font-mono tracking-wider uppercase border font-bold transition-colors",
               isSelected
-                ? "bg-[#3B82F6]/10 text-[#3B82F6] border-[#3B82F6]/30"
-                : "bg-[#1C222B] text-[#94A3B8] border-[#232B36]"
+                ? "bg-[#E7F3FA] text-[#377FA5] border-[#D2E8F5]"
+                : "bg-[#F0F2F5] text-[#626A75] border-[#E3E6EB]"
             )}
           >
             {badge}
@@ -316,15 +316,15 @@ export function ExecutionModeCard({
             className={cn(
               "w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200",
               isSelected
-                ? "border-[#3B82F6] bg-[#3B82F6] text-white"
-                : "border-[#3A4759] bg-[#1C222B]"
+                ? "border-[#377FA5] bg-[#377FA5] text-white"
+                : "border-[#CBD5E1] bg-[#F7F8FA]"
             )}
           >
             {isSelected && <Check size={12} strokeWidth={3} />}
           </div>
         </div>
 
-        <div className="mb-4 rounded-xl bg-[#0F1318] border border-[#232B36] overflow-hidden">
+        <div className="mb-4 rounded-xl bg-[#F7F8FA] border border-[#E3E6EB] overflow-hidden">
           {mode === "MIX" ? (
             <MixOrbitalVisual isSelected={isSelected} />
           ) : (
@@ -333,30 +333,30 @@ export function ExecutionModeCard({
         </div>
 
         <div className="space-y-1.5 mb-5">
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#F0F4F8] font-sans">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#17191D] font-sans">
             {title}
           </h2>
-          <p className="text-sm text-[#F0F4F8] font-medium leading-relaxed font-sans">
+          <p className="text-sm text-[#17191D] font-semibold leading-relaxed font-sans">
             {description}
           </p>
-          <p className="text-xs text-[#94A3B8] leading-relaxed font-sans">
+          <p className="text-xs text-[#626A75] leading-relaxed font-sans">
             {supportingText}
           </p>
         </div>
 
-        <div className="pt-4 border-t border-[#232B36] space-y-2 mb-6">
-          <div className="text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] font-bold">
+        <div className="pt-4 border-t border-[#E3E6EB] space-y-2 mb-6">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-[#9299A3] font-bold">
             Capabilities
           </div>
           {features.map((feature, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-2.5 text-xs text-[#94A3B8]"
+              className="flex items-center gap-2.5 text-xs text-[#626A75]"
             >
               <span
                 className={cn(
                   "w-1.5 h-1.5 rounded-full transition-colors",
-                  isSelected ? "bg-[#3B82F6]" : "bg-[#3A4759]"
+                  isSelected ? "bg-[#377FA5]" : "bg-[#CBD5E1]"
                 )}
               />
               <span className="font-sans">{feature}</span>
@@ -373,10 +373,10 @@ export function ExecutionModeCard({
             onSelect();
           }}
           className={cn(
-            "w-full py-2.5 px-4 rounded-xl text-xs font-mono font-bold tracking-wide flex items-center justify-between transition-all duration-200 border uppercase cursor-pointer",
+            "w-full py-2.5 px-4 rounded-xl text-xs font-mono font-bold tracking-wide flex items-center justify-between transition-all duration-200 border uppercase",
             isSelected
-              ? "bg-[#3B82F6] text-white border-[#3B82F6] shadow-[0_0_15px_rgba(59,130,246,0.25)]"
-              : "bg-[#1C222B] text-[#F0F4F8] border-[#232B36] hover:border-[#3B82F6]/50 hover:bg-[#232B36]"
+              ? "bg-[#17191D] text-white border-[#17191D] shadow-xs"
+              : "bg-[#F7F8FA] text-[#17191D] border-[#E3E6EB] hover:border-[#377FA5] hover:bg-white"
           )}
         >
           <span>{isSelected ? `${title} SELECTED` : `SELECT ${title}`}</span>

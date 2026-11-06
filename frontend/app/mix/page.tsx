@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, ShieldCheck, ArrowDown } from "lucide-react";
+import { ArrowRight, ShieldCheck, ArrowDown, Info } from "lucide-react";
 import { MixHeader } from "@/components/mix/MixHeader";
 import { MixProgress } from "@/components/mix/MixProgress";
 import { AssetInput } from "@/components/mix/AssetInput";
@@ -51,6 +52,7 @@ export default function MixSetupPage() {
   const router = useRouter();
   const { account, balance: ethBalance, networkName } = useWallet();
 
+  // Primary Configuration State
   const [inputAsset, setInputAsset] = useState<MixAssetSymbol>("ETH");
   const [inputAmount, setInputAmount] = useState<string>("1.0");
   const [sourceAddress, setSourceAddress] = useState<string>(
@@ -61,8 +63,10 @@ export default function MixSetupPage() {
   );
   const [network, setNetwork] = useState<string>("Sepolia Testnet");
 
+  // Mock USDC balance (or 0 if disconnected/no contract read)
   const usdcBalance = account ? "2,450.00" : null;
 
+  // Restore previous config if present
   useEffect(() => {
     const saved = loadMixConfig();
     if (saved && saved.inputAmount) {
@@ -82,6 +86,7 @@ export default function MixSetupPage() {
       destination: string;
       network: string;
     }) => {
+      // Prioritize URL params if passed from Screen 4
       if (params.asset) setInputAsset(params.asset);
       if (params.amount) setInputAmount(params.amount);
       if (params.source) setSourceAddress(params.source);
@@ -91,10 +96,12 @@ export default function MixSetupPage() {
     []
   );
 
+  // Financial Calculations
   const quoteCalculation = useMemo(() => {
     return calculateMixQuote(inputAsset, inputAmount, ETH_USDC_ESTIMATED_RATE);
   }, [inputAsset, inputAmount]);
 
+  // Balance & Validation
   const activeBalance = inputAsset === "ETH" ? ethBalance : usdcBalance;
   const validation = useMemo(() => {
     return validateMixAmount(inputAmount, inputAsset, activeBalance);
@@ -106,12 +113,14 @@ export default function MixSetupPage() {
 
   const canContinue = validation.isValid && !isInsufficient;
 
+  // MAX Handler
   const handleMaxClick = () => {
     if (!activeBalance) return;
     const rawNum = parseFloat(activeBalance.replace(/,/g, ""));
     if (isNaN(rawNum) || rawNum <= 0) return;
 
     if (inputAsset === "ETH") {
+      // Reserve 0.005 ETH for gas cushion
       const safe = Math.max(0, rawNum - 0.005);
       setInputAmount(safe > 0 ? safe.toFixed(4) : activeBalance);
     } else {
@@ -156,24 +165,28 @@ export default function MixSetupPage() {
   )}&destination=${encodeURIComponent(destinationAddress)}&mode=MIX`;
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col selection:bg-[#3B82F6]/20 selection:text-[#F0F4F8]">
+    <div className="min-h-screen bg-[#0C0C0C] text-[#F5F5F7] flex flex-col selection:bg-[#A6DCF8]/20 selection:text-[#F5F5F7]">
       <Suspense fallback={null}>
         <MixSetupParamsSync onParams={handleSyncParams} />
       </Suspense>
 
+      {/* Header */}
       <MixHeader backHref={executionBackHref} backLabel="EXECUTION STRATEGY" />
+
+      {/* Progress */}
       <MixProgress currentStep={1} />
 
+      {/* Main Setup Content */}
       <main className="flex-1 max-w-xl mx-auto w-full px-4 sm:px-6 py-10 sm:py-14 animate-fade-in flex flex-col items-center">
         {/* Intro */}
         <div className="w-full text-center max-w-md mb-8">
-          <div className="font-mono text-[11px] font-medium tracking-[0.2em] text-[#3B82F6] uppercase mb-1.5">
+          <div className="font-mono text-[11px] font-medium tracking-[0.2em] text-[#92929B] uppercase mb-1.5">
             04 / MIX CONFIGURATION
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F0F4F8] mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F5F5F7] mb-2">
             Configure Private Mix
           </h1>
-          <p className="text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#92929B] leading-relaxed">
             Commit assets to confidential enclave pooling. Assets are batch-processed
             to eliminate transaction graph linkage before shielded settlement.
           </p>
@@ -181,6 +194,7 @@ export default function MixSetupPage() {
 
         {/* Input Panels */}
         <div className="w-full space-y-4">
+          {/* Primary Deposit Asset Input */}
           <AssetInput
             asset="ETH"
             name="Ethereum"
@@ -193,12 +207,14 @@ export default function MixSetupPage() {
             sublabel="Assets will be deposited into single-use enclave custody."
           />
 
+          {/* Directional Indicator */}
           <div className="flex justify-center -my-2 relative z-10">
-            <div className="w-8 h-8 rounded-full bg-[#1C222B] border border-[#232B36] flex items-center justify-center text-[#3B82F6] shadow-md">
+            <div className="w-8 h-8 rounded-full bg-[#18181D] border border-[#292930] flex items-center justify-center text-[#A6DCF8] shadow-md">
               <ArrowDown size={14} />
             </div>
           </div>
 
+          {/* Estimated Shielded Allocation (USDC) */}
           <AssetInput
             asset="USDC"
             name="USD Coin"
@@ -210,11 +226,13 @@ export default function MixSetupPage() {
             sublabel="Calculated oracle allocation allocated inside private pool."
           />
 
+          {/* Conversion Details Summary */}
           <ConversionSummary
             inputAsset={inputAsset}
             calculation={quoteCalculation}
           />
 
+          {/* Dynamic Balance Breakdown */}
           <BalanceBreakdown
             inputAsset={inputAsset}
             committedAmount={inputAmount}
@@ -224,9 +242,10 @@ export default function MixSetupPage() {
             isInsufficient={isInsufficient}
           />
 
-          <div className="p-4 rounded-xl bg-[#161B22] border border-[#232B36] text-xs font-mono text-[#94A3B8] space-y-1.5 text-left">
-            <div className="text-[11px] font-semibold text-[#F0F4F8] uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldCheck size={13} className="text-[#3B82F6]" />
+          {/* Supporting Protocol Note */}
+          <div className="p-4 rounded-xl bg-[#141418] border border-[#292930] text-xs font-mono text-[#92929B] space-y-1.5 text-left">
+            <div className="text-[11px] font-semibold text-[#F5F5F7] uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldCheck size={13} className="text-[#A6DCF8]" />
               <span>Next: Transaction Inspection</span>
             </div>
             <p className="text-[11px] leading-relaxed">
@@ -235,15 +254,16 @@ export default function MixSetupPage() {
             </p>
           </div>
 
+          {/* Primary CTA Button */}
           <div className="pt-3">
             <button
               type="button"
               disabled={!canContinue}
               onClick={handleContinue}
-              className={`w-full py-4 px-6 rounded-xl font-mono text-xs font-bold tracking-wider uppercase transition-all duration-200 flex items-center justify-center gap-2 shadow-lg ${
+              className={`w-full py-3.5 px-6 rounded-xl font-mono text-xs font-semibold tracking-wider uppercase transition-all duration-200 flex items-center justify-center gap-2 ${
                 canContinue
-                  ? "bg-[#3B82F6] text-white hover:bg-[#2563EB] shadow-[0_0_20px_rgba(59,130,246,0.25)] active:scale-[0.98] cursor-pointer"
-                  : "bg-[#1C222B] text-[#505D6E] border border-[#232B36] cursor-not-allowed opacity-50"
+                  ? "bg-[#A6DCF8] text-[#0C0C0C] hover:bg-[#BDE7FC] shadow-[0_0_20px_rgba(166,220,248,0.25)] active:scale-[0.98] cursor-pointer"
+                  : "bg-[#18181D] text-[#666670] border border-[#292930] cursor-not-allowed opacity-50"
               }`}
             >
               <span>CONTINUE TO REVIEW</span>

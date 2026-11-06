@@ -53,6 +53,7 @@ export default function PoolReviewPage() {
   const [config, setConfig] = useState<PoolOrderConfig | null>(null);
   const [isReady, setIsReady] = useState(false);
 
+  // Load config on mount
   useEffect(() => {
     const saved = loadPoolConfig();
     if (saved && saved.sellAmount) {
@@ -129,40 +130,46 @@ export default function PoolReviewPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F1318] text-[#F0F4F8] flex flex-col selection:bg-[#3B82F6]/20 selection:text-[#F0F4F8]">
+    <div className="min-h-screen bg-[#F7F8FA] text-[#17191D] flex flex-col selection:bg-[#377FA5]/15 selection:text-[#17191D]">
       <Suspense fallback={null}>
         <PoolReviewParamsSync onParams={handleSyncParams} />
       </Suspense>
 
+      {/* Navigation Header */}
       <PoolHeader backHref={editHref} />
 
+      {/* Main Content */}
       <main className="flex-1 max-w-2xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8 font-mono">
+        {/* Step Progress Tracker */}
         <PoolProgress currentStep={2} />
 
         {isReady && !config ? (
           <PoolEmptyState />
         ) : config ? (
           <>
+            {/* Page Title */}
             <div className="text-center space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1C222B] border border-[#232B36] text-[11px] text-[#3B82F6] tracking-wider uppercase font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse" />
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E7F3FA] border border-[#CDE5F3] text-[11px] text-[#377FA5] tracking-wider uppercase font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#377FA5] animate-pulse" />
                 <span>CONFIDENTIAL VERIFICATION</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F0F4F8] uppercase">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#17191D] uppercase">
                 REVIEW POOL ORDER
               </h1>
-              <p className="text-xs sm:text-sm text-[#94A3B8] max-w-md mx-auto leading-relaxed">
+              <p className="text-xs sm:text-sm text-[#626A75] max-w-md mx-auto leading-relaxed">
                 Verify your order terms before cryptographically authorizing the transaction inside the Secure Enclave.
               </p>
             </div>
 
+            {/* Order Review Summary Component */}
             <OrderReviewSummary config={config} />
 
+            {/* Action Buttons */}
             <div className="space-y-3 pt-2">
               <button
                 type="button"
                 onClick={handleConfirmAndProceed}
-                className="w-full py-4 px-6 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-white font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(59,130,246,0.25)] flex items-center justify-center gap-2 focus:outline-none cursor-pointer"
+                className="w-full py-3.5 px-6 rounded-xl bg-[#17191D] hover:bg-[#2B303B] text-white font-semibold text-xs uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 focus:outline-none"
               >
                 <span>
                   {config.orderType === "LIMIT"
@@ -172,16 +179,16 @@ export default function PoolReviewPage() {
                 <ArrowRight size={15} />
               </button>
 
-              <div className="flex items-center justify-between text-xs text-[#94A3B8] px-1">
+              <div className="flex items-center justify-between text-xs text-[#626A75] px-1">
                 <Link
                   href={editHref}
-                  className="hover:text-[#F0F4F8] transition-colors flex items-center gap-1"
+                  className="hover:text-[#17191D] transition-colors flex items-center gap-1"
                 >
                   <ArrowLeft size={13} />
                   <span>Edit Parameters</span>
                 </Link>
 
-                <span className="text-[11px] text-[#505D6E]">
+                <span className="text-[11px] text-[#9299A3]">
                   {config.orderType === "LIMIT"
                     ? "Cancellable at any time prior to execution"
                     : "Zero slippage beyond 0.5% threshold"}
@@ -192,7 +199,8 @@ export default function PoolReviewPage() {
         ) : null}
       </main>
 
-      <footer className="border-t border-[#232B36] py-6 px-4 text-center text-xs text-[#505D6E] font-mono bg-[#12161D]">
+      {/* Footer */}
+      <footer className="border-t border-[#E3E6EB] py-6 px-4 text-center text-xs text-[#9299A3] font-mono">
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <span>NONY PROTOCOL • ENCLAVE POOL ENGINE</span>
           <span>REVIEW & VERIFICATION STEP</span>
