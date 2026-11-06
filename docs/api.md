@@ -137,6 +137,8 @@ Each `POST /deposit-session` allocates a new address. `pending` in a balance is 
 
 `/health/reconcile` returns aggregates only, with no per-user data. Never return custody EOA addresses except the one assigned to a deposit session, and the one-time admin seeding call.
 
+**Deposit policy:** Allow ETH, or the configured USDC token accompanied by ETH for gas at the same deposit address. USDC is accepted only after both deposits are confirmed. The USDC path is pending implementation; see [the deposit decision](decisions/2026-11-06-0151-non-eth-deposits.md).
+
 ### Attestation response (Nitro, phase 0)
 
 `GET /attestation` returns `{ quote, enclavePubKey, buildHash, chainId }`:
