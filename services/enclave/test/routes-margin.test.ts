@@ -5,6 +5,7 @@ import type { Address, Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PricePoller } from '../src/price-poller.js';
 import type { RunningEnclave } from '../src/server.js';
 import { apiClient, enclaveHarness } from './helpers/enclave.js';
 
@@ -136,7 +137,7 @@ describe('margin API', () => {
     expect(types).toEqual(expect.arrayContaining(['MARGIN_OP_APPROVED', 'SIGNING_REGISTERED', 'MARGIN_OP_BROADCAST', 'MARGIN_OP_SETTLED']));
   });
 
-  it('refuses new risk without a fresh price, and past the leverage cap or the lending pool', async () => {
+  it('refuses new risk with no price at all, and past the leverage cap or the lending pool', async () => {
     const { enclave, prices } = await bootMargin();
     const api = client(enclave);
     const trader = newAccount();
@@ -150,6 +151,20 @@ describe('margin API', () => {
     expect(stale.status).toBe(503);
     expect(stale.body.error).toBe('STALE_PRICE');
     expect(await api.positions(trader)).toEqual([]);
+  });
+
+  it('keeps using the last price, however old it gets', () => {
+    let nowMs = 1_000_000;
+    const report = { pair: 'test', price: MARKET_PRICE, ts: 1_000, source: 'test' };
+    const poller = new PricePoller({
+      quoter: { quote: vi.fn() }, tokenOut: NATIVE, tokenOutDecimals: 6, referenceAmountWei: 1n, intervalSec: 10,
+      swapper: NATIVE, onReport: () => undefined, onError: () => undefined, now: () => nowMs,
+    });
+    expect(poller.lastReport()).toBeNull();
+    (poller as unknown as { latestReport: PriceReport }).latestReport = report;
+    nowMs += 86_400_000;
+    expect(poller.latest()).toBeNull();
+    expect(poller.lastReport()).toEqual(report);
   });
 
   it('never signs a margin swap accounting did not approve, or a stray approval', async () => {

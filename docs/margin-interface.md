@@ -2,7 +2,7 @@
 
 The API and execution side of margin trading, and what it needs from accounting. Written for Felix, who owns accounting. The interface is a proposal: change it where accounting needs something different.
 
-Everything is off unless `MARGIN_ENABLED=true`. With it off, the routes don't exist, the signer refuses margin operations, and no extra price checks run.
+Everything is off unless `MARGIN_ENABLED=true`. With it off, the routes don't exist and the signer refuses margin operations.
 
 ## How the two sides meet
 
@@ -58,10 +58,13 @@ The mock uses these so the rest could be built. They are suggestions.
 | Meaning of 4x | Position size divided by collateral, so a long borrows 3x and a short borrows 4x |
 | Maintenance margin | 10% of current position value: a long liquidates at -16.7%, a short at +13.6% |
 | Interest and fees | None. A simple fixed rate is the suggestion |
-| Risk price | Midpoint of Uniswap's buy and sell quotes, refused if over 5% apart or older than 2 poll intervals |
-| Stale price | No new positions or liquidations |
-| Liquidation limit | At most 3% worse than the risk price |
+| Price | The last ETH to USDC quote from the existing price check, with no freshness or spread check, because this is testnet only |
+| Liquidation limit | At most 3% worse than the last price |
 | Losses past collateral | Recorded as `shortfall` only. The suggestion is that lenders share them |
+
+## Old prices
+
+If price checks stop working, margin keeps using the last price, for both new positions and liquidations. A position can then be opened or liquidated on a price that is no longer true. The swap's own quote still has to meet the minimum output, so a badly wrong price makes the swap fail, not fill badly. Mainnet would need a freshness rule.
 
 ## Things accounting has to handle
 
@@ -76,7 +79,7 @@ Margin swaps only avoid the owner's deposit addresses, and don't link the addres
 
 ## Demo
 
-Sepolia's pool is too deep to move on cue. On the buy side, 10,000 USDC moved the price only about 0.4%. So the demo needs the `riskPrices` boot option, which replaces the risk price and is refused outside simulation. The liquidation then executes against the real pool at the real price, and the demo must say the price drop was simulated.
+Sepolia's pool is too deep to move on cue. On the buy side, 10,000 USDC moved the price only about 0.4%. So the demo needs the `riskPrices` boot option, which replaces the price margin uses and is refused outside simulation. The liquidation then executes against the real pool at the real price, and the demo must say the price drop was simulated.
 
 ## Known leaks
 

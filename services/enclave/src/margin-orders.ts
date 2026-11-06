@@ -31,13 +31,13 @@ export class MarginOrders {
   }
 
   async open(owner: Address, message: MarginOpenMsg): Promise<Hex> {
-    const operation = await this.deps.accounting.prepareOpen(owner, message, this.freshPrice());
+    const operation = await this.deps.accounting.prepareOpen(owner, message, this.currentPrice());
     this.execute(operation);
     return operation.positionId;
   }
 
   async close(owner: Address, message: MarginCloseMsg): Promise<Hex> {
-    const operation = await this.deps.accounting.prepareClose(owner, message, this.freshPrice());
+    const operation = await this.deps.accounting.prepareClose(owner, message, this.currentPrice());
     this.execute(operation);
     return operation.positionId;
   }
@@ -53,8 +53,8 @@ export class MarginOrders {
       });
   }
 
-  /** Refused rather than guessed: new risk must never be taken on an old price. */
-  private freshPrice(): PriceReport {
+  /** The last price seen, however old. The only refusal is having no price at all yet. */
+  private currentPrice(): PriceReport {
     const price = this.deps.riskPrices.latest();
     if (!price) throw new AuthError(ERROR_CODES.STALE_PRICE);
     return price;

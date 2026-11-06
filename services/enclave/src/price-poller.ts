@@ -64,6 +64,11 @@ export class PricePoller {
     return ageSec <= this.deps.intervalSec * MAX_AGE_INTERVALS ? this.latestReport : null;
   }
 
+  /** The newest price however old it is, or null before the first one. Margin uses this. */
+  lastReport(): PriceReport | null {
+    return this.latestReport;
+  }
+
   private stop(): void {
     this.running = false;
     if (this.timer) clearTimeout(this.timer);

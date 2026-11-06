@@ -21,7 +21,6 @@ import { LiquidationMonitor } from './liquidation.js';
 import { MockMarginAccounting } from './margin-mock.js';
 import { MarginOrders } from './margin-orders.js';
 import { PricePoller } from './price-poller.js';
-import { RiskPricePoller } from './risk-price.js';
 import { DepositWatcher } from './watcher.js';
 import { trackWithdrawals, WithdrawalOrders, WithdrawalStatuses } from './withdrawal-orders.js';
 import { NATIVE } from '@cloakroom/shared';
@@ -37,8 +36,6 @@ const DRAIN_CHECK_MS = 50;
 const ATTESTATION_NONCE = /^(?:[a-f0-9]{2}){32,64}$/;
 const MAX_ATTESTATIONS_IN_FLIGHT = 8;
 const MS_PER_SECOND = 1000;
-/** Sepolia's buy and sell prices differ by about 0.6%, so far beyond that means a bad reading. */
-const RISK_PRICE_MAX_SPREAD_BPS = 500;
 
 export type KeyJournal = Pick<Journal, 'append' | 'replay'>;
 
@@ -60,7 +57,7 @@ export interface BootOptions {
     queue: FifoSerialQueue;
     ledger: InMemoryLedger;
   }) => MarginAccounting;
-  /** Replaces the Uniswap risk price, so a test or demo can move it. Simulation only. */
+  /** Replaces the price margin uses, so a test or demo can move it. Simulation only. */
   riskPrices?: { latest(): PriceReport | null };
   /** Receives fixed status codes only, never request data or error text. */
   log?: (code: string) => void;
@@ -332,6 +329,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     executor,
     onIntentError: () => log('INTENT_EXECUTION_ERROR'),
   });
+  let margin: EnclaveParts['margin'];
   const poller = new PricePoller({
     quoter,
     tokenOut: config.TOKEN_OUT_ADDRESS,
@@ -339,25 +337,18 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     referenceAmountWei: config.PRICE_REFERENCE_AMOUNT_WEI,
     intervalSec: config.PRICE_POLL_INTERVAL_SEC,
     swapper: privateKeyToAccount(generatePrivateKey()).address,
-    onReport: pipeline.onReport,
+    onReport: (report) => {
+      if (margin) {
+        const price = margin.riskPrices.latest() ?? report;
+        void margin.liquidations.onReport(price).catch(() => log('LIQUIDATION_ERROR'));
+      }
+      return pipeline.onReport(report);
+    },
     onError: () => log('PRICE_POLL_FAILED'),
   });
 
-  let margin: EnclaveParts['margin'];
-  let riskPoller: RiskPricePoller | undefined;
   if (marginAccounting) {
-    riskPoller = options.riskPrices ? undefined : new RiskPricePoller({
-      quoter,
-      tokenOut: config.TOKEN_OUT_ADDRESS,
-      tokenOutDecimals: config.TOKEN_OUT_DECIMALS,
-      referenceAmountWei: config.PRICE_REFERENCE_AMOUNT_WEI,
-      intervalSec: config.PRICE_POLL_INTERVAL_SEC,
-      maxSpreadBps: RISK_PRICE_MAX_SPREAD_BPS,
-      swapper: privateKeyToAccount(generatePrivateKey()).address,
-      onReport: (report) => margin?.liquidations.onReport(report),
-      onError: () => log('RISK_PRICE_POLL_FAILED'),
-    });
-    const riskPrices = options.riskPrices ?? (riskPoller as RiskPricePoller);
+    const riskPrices = options.riskPrices ?? { latest: () => poller.lastReport() };
     const orders = new MarginOrders({
       accounting: marginAccounting,
       executor,
@@ -407,7 +398,6 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   await step('start', () => {
     cleanups.push(watcher.start(chain, () => log('WATCHER_ERROR')));
     cleanups.push(poller.start());
-    if (riskPoller) cleanups.push(riskPoller.start());
     // On its own timer, so orders still expire and release funds when price checks are failing.
     const expiryTimer = setInterval(() => {
       intentOrders.expireDue().catch(() => log('INTENT_EXPIRY_ERROR'));
