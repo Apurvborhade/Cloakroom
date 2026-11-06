@@ -35,10 +35,12 @@ def main():
     kms = None
     storage = None
     uniswap = None
+    rpc = None
     if args.mode == "enclave":
         kms = subprocess.Popen(["python3", "/app/nitro/kms-relay.py", "enclave"])
         storage = subprocess.Popen(["python3", "/app/nitro/storage-relay.py"])
         uniswap = subprocess.Popen(["python3", "/app/nitro/uniswap-relay.py", "enclave"])
+        rpc = subprocess.Popen(["python3", "/app/nitro/rpc-relay.py", "enclave"])
         child = subprocess.Popen(["node", "/app/dist/attestation-server.js"])
         listener = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
         listener.bind((socket.VMADDR_CID_ANY, 5000))
@@ -72,7 +74,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
-        while child is None or all(process.poll() is None for process in (child, kms, storage, uniswap)):
+        while child is None or all(process.poll() is None for process in (child, kms, storage, uniswap, rpc)):
             try:
                 connection, peer = listener.accept()
             except socket.timeout:
@@ -96,6 +98,9 @@ def main():
         if uniswap is not None:
             uniswap.terminate()
             uniswap.wait(timeout=10)
+        if rpc is not None:
+            rpc.terminate()
+            rpc.wait(timeout=10)
 
 
 if __name__ == "__main__":

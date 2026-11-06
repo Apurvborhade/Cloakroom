@@ -1,0 +1,19 @@
+[Unit]
+Description=Cloakroom raw RPC TLS relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=ENCLAVE_CID=16
+EnvironmentFile=-/etc/cloakroom/parent.env
+ExecCondition=/usr/bin/test -n "${RPC_HOST}"
+ExecStart=/usr/bin/python3 /opt/cloakroom/nitro/rpc-relay.py parent --cid ${ENCLAVE_CID} --host ${RPC_HOST}
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

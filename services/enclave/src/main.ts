@@ -12,6 +12,7 @@ import { bootEnclave } from './server.js';
 import type { BootOptions } from './server.js';
 import { UniswapClient } from './uniswap.js';
 import { createNitroUniswapClient } from './nitro-uniswap.js';
+import { createNitroRpcTransport } from './nitro-rpc.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -48,7 +49,7 @@ async function main(): Promise<void> {
 
   const running = await bootEnclave({
     config,
-    chain: createPublicClient({ transport: http(config.RPC_URL) }),
+    chain: createPublicClient({ transport: config.SIM_MODE ? http(config.RPC_URL) : createNitroRpcTransport(config.RPC_URL) }),
     quoter: config.SIM_MODE ? new UniswapClient({
       apiUrl: config.UNISWAP_API_URL,
       apiKey: config.UNISWAP_API_KEY,

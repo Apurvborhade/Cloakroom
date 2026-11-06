@@ -32,15 +32,21 @@ AWS API behavior follows [GenerateDataKey recipient responses](https://docs.aws.
 
 KMS TLS terminates inside the enclave. The parent relays encrypted bytes to a fixed regional AWS endpoint. Recipient CMS by itself does not authenticate the KMS server. The RSA key is generated inside the enclave, supplied to NSM, and passed to the CMS helper through a private pipe and anonymous memory descriptor. The host sees wrapped KMS keys and authenticated custody ciphertext only.
 
+Revision CAS and the signing journal catch stale concurrent writers and vault rollback relative to the journal. A malicious host rolling back all stored state together still needs an external trusted checkpoint. Missing or corrupt state causes refusal; do not repair it by silently generating a new seed.
+
 ## Uniswap egress
 
 `createNitroUniswapClient(config)` uses `\0cloakroom-uniswap` and vsock port 8002. `main.ts` selects it when `SIM_MODE=false`. Enable `cloakroom-uniswap.service` on the parent; the enclave bridge starts its internal relay. The only destination is `trade-api.gateway.uniswap.org:443`, with `UNISWAP_API_URL=https://trade-api.gateway.uniswap.org/v1`.
 
-TLS certificate and hostname checks run inside the enclave. Redirects are refused, responses are capped at 1 MiB, and the quote timeout covers the response body. A missing relay fails the quote; there is no direct-network fallback. RPC egress remains separate.
+TLS certificate and hostname checks run inside the enclave. Redirects are refused, responses are capped at 1 MiB, and the quote timeout covers the response body. A missing relay fails the quote; there is no direct-network fallback.
 
 Live verification used a non-debug Nitro test image with independently verified AWS attestation. Uniswap returned HTTP 401 for an intentionally invalid API key. An authenticated quote still requires valid credentials.
 
-Revision CAS and the signing journal catch stale concurrent writers and vault rollback relative to the journal. A malicious host rolling back all stored state together still needs an external trusted checkpoint. Missing or corrupt state causes refusal; do not repair it by silently generating a new seed.
+## RPC egress
+
+`main.ts` selects `createNitroRpcTransport(RPC_URL)` when `SIM_MODE=false`. Set only the RPC hostname as `RPC_HOST` in `/etc/cloakroom/parent.env` and enable `cloakroom-rpc.service`. It forwards vsock port 8003 to that host on port 443; the enclave uses `\0cloakroom-rpc` and checks the TLS certificate and hostname itself.
+
+Supply the full HTTPS `RPC_URL` privately to the enclave. Its credential-bearing path stays inside TLS and is omitted from transport error URLs. Redirects and direct-network fallback are refused; requests time out after 10 seconds and responses are capped at 10 MiB. Keep both RPC and Uniswap credentials out of source control and images.
 
 ## Services and HTTPS
 
@@ -50,6 +56,7 @@ The supplied systemd units expect Nitro helpers in `/opt/cloakroom/nitro/`, a re
 ENCLAVE_CID=16
 ENCLAVE_MEMORY=2048
 AWS_REGION=REGION
+RPC_HOST=rpc-provider.example
 ```
 
 From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/release REGION` verifies the EIF digest and installs the helpers, release and units. It preserves an existing parent configuration and does not stop or start an enclave. Confirm allocator settings, then stop any previous manual instance and start the services. Enable storage/KMS relays before the custody application. The enclave unit starts a non-debug enclave; verify health and a fresh quote after each restart. It is a oneshot launch unit, so enclave process failure also needs external health monitoring.
@@ -58,7 +65,7 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 ## Remaining integration
 
-- Nitro application bootstrap with persistent journal storage, and RPC egress.
+- Nitro application bootstrap with persistent journal storage and private runtime configuration.
 - Public domain, HTTPS and frontend URL handoff.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Funding after verified deployment, followed by disabling the seeding route.

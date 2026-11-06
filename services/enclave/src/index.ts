@@ -3,6 +3,7 @@ export { SnapshotJournal } from './snapshot-journal.js';
 export { openCustodyRuntime } from './custody-runtime.js';
 export { openNitroRuntime } from './nitro-custody.js';
 export { createNitroUniswapClient } from './nitro-uniswap.js';
+export { createNitroRpcTransport } from './nitro-rpc.js';
 export {
   EncryptedJournal,
   computeEntryHash,
