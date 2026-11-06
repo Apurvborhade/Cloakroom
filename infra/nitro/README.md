@@ -50,7 +50,7 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 ## Remaining integration
 
-- Application server wiring, swap authorization and RPC egress.
+- Application server wiring and RPC/Uniswap HTTPS egress. Uniswap TLS inside Nitro is not yet deployed or live-verified.
 - Public domain, HTTPS and frontend URL handoff.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Funding after verified deployment, followed by disabling the seeding route.

@@ -182,7 +182,7 @@ export interface KeyManager {
 }
 ```
 
-**Signing guard:** before an operation starts, the executor registers `opId` with the expected destination, value and calldata hash. `KeyManager.sign` refuses any transaction that does not match a registered, journaled operation, and each opId signs once. There is no endpoint that returns a key or a seed.
+**Signing guard:** before an operation starts, the executor registers `opId` with the expected destination, value and calldata hash; swaps also supply the full calldata. `KeyManager.sign` refuses any transaction that does not match a registered, journaled operation, and each opId signs once. There is no endpoint that returns a key or a seed.
 
 ## Intents (Shreyas)
 
@@ -265,7 +265,9 @@ export function reconcile(): { ok: boolean; perToken: Array<{ token: Address; on
 
 `KeyManager` in `keys.ts` implements `TransactionSigner`. Allocation is asynchronous because persistence completes before an address is returned. Registration now permits a promise; the executor awaits it while synchronous test adapters remain compatible.
 
-The current guard supports journaled native and ERC-20 withdrawals. It checks the locked payout, chain, signer, destination, value, calldata and gas/fee caps, and refuses source-linked EOAs. Swap authorization remains blocked until the swap executor supplies a corresponding authorization contract.
+The guard supports journaled native/ERC-20 withdrawals and native-input limit swaps. Swaps require an open, unexpired `INTENT_CREATED`, comparator 0, the configured router/token, exact input value and an EOA not linked to the owner's deposits or prior swaps. Calldata is checked at registration and signing, independently of the executor. The signer trusts journaled intent provenance.
+
+For swaps, call `registerOp(opId, { eoa, to, value, dataHash, data })` with `opId = exec:<intentId>`. `data` is optional only for withdrawals and is persisted with `SIGNING_REGISTERED`. `SigningPolicy.swaps` contains `{ routerAddress, tokenOut, tokenOutDecimals, feeBps }`; `toSigningPolicy` loads these from the existing environment variables. Omitting `swaps` disables swap signing. Both executor and signer use `limitFloor(amountIn, triggerPrice, tokenOutDecimals, feeBps)` to protect the amount credited after fees, with no slippage deduction from the limit.
 
 Key initialization does not read the journal, so opening an encrypted journal cannot cause a circular dependency. Signing and registration validate replayed signing state before proceeding.
 

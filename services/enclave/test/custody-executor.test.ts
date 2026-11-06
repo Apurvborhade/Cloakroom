@@ -1,18 +1,21 @@
 import { randomBytes } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { NATIVE } from '@cloakroom/shared';
-import { createPublicClient, createTestClient, http, parseEther, publicActions, walletActions } from 'viem';
+import { NATIVE, type StoredIntent } from '@cloakroom/shared';
+import { createPublicClient, createTestClient, encodeAbiParameters, encodeFunctionData, getAddress, http,
+  parseAbiParameters, parseEther, publicActions, walletActions } from 'viem';
 import type { Address } from 'viem';
 import { privateKeyToAddress, generatePrivateKey } from 'viem/accounts';
 import { foundry } from 'viem/chains';
 import { Executor } from '../src/executor.js';
 import { Inventory } from '../src/inventory.js';
 import { KeyManager } from '../src/keys.js';
+import { InMemoryLedger, replayLedger } from '../src/ledger.js';
 import { FifoSerialQueue } from '../src/queue.js';
 import { AesGcmStateVault, MemoryCipherBlobStore, simulationSealingKey } from '../src/sealed-state.js';
 import { memoryJournal } from './helpers/memory-journal.js';
 import { TEST_TOKEN_ABI, TEST_TOKEN_BYTECODE } from './fixtures/test-token.js';
+import { TEST_SWAP_ROUTER_ABI, TEST_SWAP_ROUTER_BYTECODE } from './fixtures/test-swap-router.js';
 
 const port = 20000 + Math.floor(Math.random() * 20000);
 const transport = http(`http://127.0.0.1:${port}`);
@@ -39,6 +42,73 @@ beforeAll(async () => {
 afterAll(() => { process?.kill(); });
 
 describe('custody signer with the real executor', () => {
+  it('settles a limit swap with the real KeyManager and preserves the limit after fees', async () => {
+    const [funder] = await anvil.getAddresses();
+    const deployment = await anvil.deployContract({ account: funder!, chain: foundry,
+      abi: TEST_SWAP_ROUTER_ABI, bytecode: TEST_SWAP_ROUTER_BYTECODE });
+    const router = getAddress((await anvil.waitForTransactionReceipt({ hash: deployment })).contractAddress!);
+    const outputToken = await chain.readContract({ address: router, abi: TEST_SWAP_ROUTER_ABI, functionName: 'token' });
+    const output = 301_000_000n;
+    const configured = await anvil.writeContract({ account: funder!, chain: foundry, address: router,
+      abi: TEST_SWAP_ROUTER_ABI, functionName: 'configure', args: [output, false] });
+    await anvil.waitForTransactionReceipt({ hash: configured });
+    const log = memoryJournal();
+    const keys = new KeyManager({ simMode: true, allowCreate: true, journal: log.journal,
+      vault: new AesGcmStateVault(new MemoryCipherBlobStore(), simulationSealingKey(randomBytes(32).toString('hex'), true), true),
+      policy: { chainId: foundry.id, maxGas: 1_200_000n, maxFeePerGas: 100_000_000_000n,
+        maxPriorityFeePerGas: 10_000_000_000n, maxNativeValue: parseEther('1'),
+        swaps: { routerAddress: router, tokenOut: outputToken, tokenOutDecimals: 6, feeBps: 10 } } });
+    await keys.init();
+    const linked = await keys.allocate('inventory');
+    const custody = await keys.allocate('inventory');
+    const owner = privateKeyToAddress(generatePrivateKey());
+    const ledger = new InMemoryLedger();
+    const inventory = new Inventory({ chain, keys, tokens: [outputToken], gasReserveWei: parseEther('0.01') });
+    for (const eoa of [linked, custody]) await anvil.setBalance({ address: eoa.address, value: parseEther('1') });
+    const stored: StoredIntent = { id: 'swap', owner, status: 'pending', createdAt: Date.now(), intent: {
+      owner, tokenIn: NATIVE, tokenOut: outputToken, amountIn: parseEther('0.1'), comparator: 0,
+      triggerPrice: 3_000n * 10n ** 18n, maxSlippageBps: 50, nonce: 1n,
+      expiry: BigInt(Math.floor(Date.now() / 1000)) + 300n,
+    } };
+    await log.journal.append({ t: 'DEPOSIT_SESSION_OPENED', id: 'deposit', owner, eoa: linked.address,
+      expiry: 4_000_000_000, baseline: 0n, baselineBlock: 0n });
+    inventory.linkOwner(owner, linked.address);
+    await log.journal.append({ t: 'DEPOSIT_CREDITED', id: 'deposit', owner, amount: stored.intent.amountIn, block: 1n });
+    await log.journal.append({ t: 'INTENT_CREATED', id: stored.id, owner, intent: stored.intent });
+    for (const event of log.events) ledger.apply(event);
+    let quotes = 0;
+    const executor = new Executor({ chain, chainId: foundry.id, signer: keys, inventory, ledger,
+      journal: log.journal, queue: new FifoSerialQueue(), confirmations: 0n, receiptTimeoutMs: 5000,
+      gasMarginPercent: 120n, inventorySettleAttempts: 2, swaps: {
+        routerAddress: router, tokenOut: outputToken, tokenOutDecimals: 6, feeBps: 10,
+        maxSlippageBpsCap: 100, ledger, intents: { mark() {} }, quoter: {
+          async quote(request) {
+            quotes++;
+            const minOut = output * (10_000n - BigInt(Math.round(request.slippagePercent! * 100))) / 10_000n;
+            const data = encodeFunctionData({ abi: TEST_SWAP_ROUTER_ABI, functionName: 'execute', args: [
+              '0x0b08', [
+                encodeAbiParameters(parseAbiParameters('address, uint256'),
+                  ['0x0000000000000000000000000000000000000002', request.amountIn]),
+                encodeAbiParameters(parseAbiParameters('address, uint256, uint256, address[], bool'),
+                  [request.swapper, request.amountIn, minOut, [token, outputToken], false]),
+              ], stored.intent.expiry,
+            ] });
+            return { amountIn: request.amountIn, amountOut: output, minAmountOut: minOut,
+              transaction: { to: router, from: request.swapper, value: request.amountIn, data } };
+          },
+        },
+      } });
+    const outcome = await executor.runIntent(stored);
+    if (outcome.status !== 'settled') throw new Error(`Swap did not settle: ${JSON.stringify(outcome)}`);
+    expect(quotes).toBe(2);
+    expect(getAddress((await chain.getTransaction({ hash: outcome.txHash })).from)).toBe(custody.address);
+    expect(outcome.amountOut - outcome.fee).toBeGreaterThanOrEqual(300_000_000n);
+    expect(ledger.getBalance(owner, outputToken).available).toBe(300_699_000n);
+    expect((await replayLedger(log.journal)).getBalance(owner, outputToken)).toEqual(ledger.getBalance(owner, outputToken));
+    expect(log.events.map((event) => event.t)).toContain('SIGNING_COMPLETED');
+    await expect(keys.recoverSigned('exec:swap')).rejects.toThrow('SIGNING_DENIED');
+  });
+
   for (const native of [true, false]) {
     it(`settles a ${native ? 'native' : 'ERC-20'} payout from an unlinked HD account`, async () => {
       const log = memoryJournal();
