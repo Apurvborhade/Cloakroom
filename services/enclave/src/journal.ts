@@ -4,14 +4,67 @@ import type { FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Journal, JournalEntry, JournalEvent } from '@cloakroom/shared';
 import { concat, encodePacked, keccak256, stringToHex, type Hex } from 'viem';
+import type { JournalCipher } from './keys.js';
 
 export const GENESIS_HASH: Hex = '0x0000000000000000000000000000000000000000000000000000000000000000';
 export const DEFAULT_MAX_RECORD_BYTES = 4 * 1024 * 1024; // 4 MB
 
 export interface JournalOptions {
   filePath: string;
-  key: Buffer | Uint8Array | Hex;
+  /** A raw key, for tests and scripts. Pass exactly one of key or cipher. */
+  key?: Buffer | Uint8Array | Hex;
+  /** KeyManager.journalCipher(), so the running service never holds the key itself. */
+  cipher?: JournalCipher;
   maxRecordBytes?: number;
+}
+
+interface SealedRecord {
+  iv: Buffer;
+  ciphertext: Buffer;
+  authTag: Buffer;
+}
+
+interface RecordSealer {
+  seal(plaintext: Buffer): SealedRecord;
+  open(record: SealedRecord): Buffer;
+}
+
+function keySealer(key: Buffer): RecordSealer {
+  return {
+    seal(plaintext) {
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+      return { iv, ciphertext, authTag: cipher.getAuthTag() };
+    },
+    open({ iv, ciphertext, authTag }) {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(authTag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    },
+  };
+}
+
+const CIPHER_ASSOCIATED_DATA = Buffer.from('cloakroom/journal/v1');
+const CIPHER_IV_BYTES = 12;
+const CIPHER_TAG_BYTES = 16;
+
+/** JournalCipher returns nonce, tag, then ciphertext. Records keep the same layout on disk. */
+function cipherSealer(journalCipher: JournalCipher): RecordSealer {
+  return {
+    seal(plaintext) {
+      const sealed = Buffer.from(journalCipher.encrypt(plaintext, CIPHER_ASSOCIATED_DATA));
+      return {
+        iv: sealed.subarray(0, CIPHER_IV_BYTES),
+        authTag: sealed.subarray(CIPHER_IV_BYTES, CIPHER_IV_BYTES + CIPHER_TAG_BYTES),
+        ciphertext: sealed.subarray(CIPHER_IV_BYTES + CIPHER_TAG_BYTES),
+      };
+    },
+    open({ iv, ciphertext, authTag }) {
+      const sealed = Buffer.concat([iv, authTag, ciphertext]);
+      return Buffer.from(journalCipher.decrypt(sealed, CIPHER_ASSOCIATED_DATA));
+    },
+  };
 }
 
 /**
@@ -70,7 +123,7 @@ export function computeEntryHash(
  */
 export class EncryptedJournal implements Journal {
   private readonly filePath: string;
-  private readonly key: Buffer;
+  private readonly sealer: RecordSealer;
   private readonly maxRecordBytes: number;
   private fileHandle: FileHandle | null = null;
   private currentSequence = 0;
@@ -87,18 +140,26 @@ export class EncryptedJournal implements Journal {
     this.filePath = options.filePath;
     this.maxRecordBytes = options.maxRecordBytes ?? DEFAULT_MAX_RECORD_BYTES;
 
+    if ((options.key === undefined) === (options.cipher === undefined)) {
+      throw new Error('JOURNAL_KEY_INVALID: pass exactly one of key or cipher');
+    }
+    if (options.cipher) {
+      this.sealer = cipherSealer(options.cipher);
+      return;
+    }
+
     let keyBytes: Buffer;
     if (typeof options.key === 'string') {
       const cleanHex = options.key.startsWith('0x') ? options.key.slice(2) : options.key;
       keyBytes = Buffer.from(cleanHex, 'hex');
     } else {
-      keyBytes = Buffer.from(options.key);
+      keyBytes = Buffer.from(options.key as Buffer | Uint8Array);
     }
 
     if (keyBytes.length !== 32) {
       throw new Error(`JOURNAL_KEY_INVALID: encryption key must be exactly 32 bytes, got ${keyBytes.length}`);
     }
-    this.key = keyBytes;
+    this.sealer = keySealer(keyBytes);
   }
 
   /**
@@ -164,10 +225,7 @@ export class EncryptedJournal implements Journal {
         const serializedEntry = canonicalJson(entry);
         const plaintext = Buffer.from(serializedEntry, 'utf8');
 
-        const iv = crypto.randomBytes(12);
-        const cipher = crypto.createCipheriv('aes-256-gcm', this.key, iv);
-        const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-        const authTag = cipher.getAuthTag();
+        const { iv, ciphertext, authTag } = this.sealer.seal(plaintext);
 
         const fullFrameLength = 4 + 12 + ciphertext.length + 16;
         const frame = Buffer.alloc(fullFrameLength);
@@ -227,9 +285,7 @@ export class EncryptedJournal implements Journal {
 
       let plaintextBuf: Buffer;
       try {
-        const decipher = crypto.createDecipheriv('aes-256-gcm', this.key, iv);
-        decipher.setAuthTag(authTag);
-        plaintextBuf = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+        plaintextBuf = this.sealer.open({ iv, ciphertext, authTag });
       } catch (err) {
         throw new Error(
           `JOURNAL_CORRUPT: authentication tag verification failed at sequence ${expectedSeq} (offset ${offset}): ${(err as Error).message}`
@@ -339,9 +395,7 @@ export class EncryptedJournal implements Journal {
 
       let plaintextBuf: Buffer;
       try {
-        const decipher = crypto.createDecipheriv('aes-256-gcm', this.key, iv);
-        decipher.setAuthTag(authTag);
-        plaintextBuf = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+        plaintextBuf = this.sealer.open({ iv, ciphertext, authTag });
       } catch (err) {
         throw new Error(
           `JOURNAL_CORRUPT: authentication tag verification failed at sequence ${expectedSeq} (offset ${offset}): ${(err as Error).message}`
