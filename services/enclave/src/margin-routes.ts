@@ -47,6 +47,7 @@ function positionWire(position: PositionView) {
     ...optional('liquidationPrice', position.liquidationPrice),
     ...optional('equity', position.equity),
     ...optional('payout', position.payout),
+    ...optional('payoutNative', position.payoutNative),
     ...optional('shortfall', position.shortfall),
   };
 }

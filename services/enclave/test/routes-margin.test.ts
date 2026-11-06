@@ -6,6 +6,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunningEnclave } from '../src/server.js';
+import { JournaledMarginAccounting } from '../src/margin-accounting.js';
 import { apiClient, enclaveHarness } from './helpers/enclave.js';
 
 const harness = enclaveHarness(18_803, 18_804);
@@ -17,19 +18,19 @@ const newAccount = () => privateKeyToAccount(generatePrivateKey());
 const expiry = () => Math.floor(Date.now() / 1000) + 120;
 
 /** A price a test can move, or take away. */
-function testPrice() {
+function testPrice(pair = 'test') {
   let price: bigint | null = MARKET_PRICE;
   return {
     set: (value: bigint | null) => { price = value; },
     latest: (): PriceReport | null => (price === null ? null : {
-      pair: 'test', price, ts: Math.floor(Date.now() / 1000), source: 'test',
+      pair, price, ts: Math.floor(Date.now() / 1000), source: 'test',
     }),
   };
 }
 
-async function bootMargin(overrides: Record<string, string> = { MARGIN_ENABLED: 'true' }) {
+async function bootMargin(overrides: Record<string, string> = { MARGIN_ENABLED: 'true' }, realAccounting = false) {
   const uniswap = await harness.localUniswap();
-  const prices = testPrice();
+  const prices = testPrice(`${NATIVE}/${uniswap.token}`);
   const enclave = await harness.boot({
     config: harness.config({
       TOKEN_OUT_ADDRESS: uniswap.token,
@@ -38,6 +39,9 @@ async function bootMargin(overrides: Record<string, string> = { MARGIN_ENABLED: 
     }),
     quoter: uniswap.quoter,
     riskPrices: prices,
+    marginAccounting: realAccounting ? (parts) => new JournaledMarginAccounting({
+      ...parts, usdc: uniswap.token, usdcDecimals: 6,
+    }) : undefined,
   });
   await harness.send(enclave.parts.keys.list()[0]!.address, parseEther('2'));
   await enclave.parts.inventory.refresh();
@@ -134,6 +138,52 @@ describe('margin API', () => {
 
     const types = (await events(enclave)).map((event) => event.t);
     expect(types).toEqual(expect.arrayContaining(['MARGIN_OP_APPROVED', 'SIGNING_REGISTERED', 'MARGIN_OP_BROADCAST', 'MARGIN_OP_SETTLED']));
+  });
+
+  it('opens a short with funded collateral, real accounting and the real signer on the local chain', async () => {
+    const { enclave, uniswap } = await bootMargin({ MARGIN_ENABLED: 'true', FEE_BPS: '0' }, true);
+    const { ledger, journal, queue, keys, intentOrders, intents, executor, inventory } = enclave.parts;
+    const trader = newAccount(), lender = newAccount();
+    const eoa = keys.list()[0]!.address;
+    for (const [owner, amount] of [[lender.address, parseEther('1')], [trader.address, parseEther('0.125')]] as const) {
+      await harness.send(eoa, amount);
+      await queue.run(async () => {
+        const event = { t: 'DEPOSIT_CREDITED', id: `fund:${owner}`, owner, amount, block: 1n } as const;
+        await journal.append(event); ledger.apply(event);
+      });
+    }
+    const id = await intentOrders.create(trader.address, {
+      owner: trader.address, tokenIn: NATIVE, tokenOut: uniswap.token, amountIn: parseEther('0.125'),
+      comparator: 0, triggerPrice: 1_900n * PRICE_SCALE, maxSlippageBps: 100, nonce: 1n, expiry: BigInt(expiry()),
+    });
+    expect((await executor.runIntent(intents.get(id)!)).status).toBe('settled');
+    expect(ledger.getBalance(trader.address, uniswap.token).available).toBe(COLLATERAL);
+
+    const api = client(enclave);
+    expect((await api.supply(lender, NATIVE, parseEther('1'))).status).toBe(200);
+    expect((await api.open(trader, 'short')).status).toBe(200);
+    await vi.waitFor(async () => {
+      expect((await api.positions(trader))[0]?.status).toBe('open');
+    }, { timeout: 8_000, interval: 100 });
+    const [position] = await api.positions(trader);
+    expect(position).toMatchObject({ debt: parseEther('0.5').toString(), asset: '1000000000', equity: COLLATERAL.toString() });
+    expect(ledger.getBalance(trader.address, uniswap.token).available).toBe(0n);
+    expect(ledger.margin.balance(lender.address, NATIVE).available).toBe(parseEther('0.5'));
+    const physical = await inventory.getPhysicalBalances();
+    for (const [token, amount] of ledger.custodyClaims()) expect(physical.get(token) ?? 0n).toBeGreaterThanOrEqual(amount);
+    ledger.assertInvariants();
+  });
+
+  it('returns a short buyback surplus separately from its USDC payout', async () => {
+    const { enclave, uniswap } = await bootMargin();
+    const owner = newAccount();
+    vi.spyOn(enclave.parts.margin!.accounting, 'positions').mockReturnValue([{
+      id: `0x${'aa'.repeat(32)}`, owner: owner.address, side: 'short', status: 'closed',
+      collateral: COLLATERAL, sizeUsd: 1_000_000_000n, debtToken: NATIVE, debt: 0n,
+      assetToken: uniswap.token, asset: 0n, payout: 230_000_000n, payoutNative: parseEther('0.01'), shortfall: 0n,
+    }]);
+    const [position] = await client(enclave).positions(owner);
+    expect(position).toMatchObject({ payout: '230000000', payoutNative: '10000000000000000', shortfall: '0' });
   });
 
   it('refuses new risk without a fresh price, and past the leverage cap or the lending pool', async () => {

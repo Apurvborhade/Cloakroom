@@ -6,9 +6,9 @@ Everything is off unless `MARGIN_ENABLED=true`. With it off, the routes don't ex
 
 ## How the two sides meet
 
-The interface is [`MarginAccounting`](../packages/shared/src/types/margin.ts). `main.ts` injects [`LongMarginAccounting`](../services/enclave/src/margin-accounting.ts) through the `marginAccounting` boot option. Direct `bootEnclave` callers must also inject it; otherwise simulation uses [`MockMarginAccounting`](../services/enclave/src/margin-mock.ts), and a non-simulated boot fails.
+The interface is [`MarginAccounting`](../packages/shared/src/types/margin.ts). `main.ts` injects [`JournaledMarginAccounting`](../services/enclave/src/margin-accounting.ts) through the `marginAccounting` boot option. Direct `bootEnclave` callers must also inject it; otherwise simulation uses [`MockMarginAccounting`](../services/enclave/src/margin-mock.ts), and a non-simulated boot fails.
 
-Real accounting supports 1–4x longs, additional USDC collateral and full closes/liquidations. It charges no interest or extra margin fee; transaction gas is booked as an operational expense. Maintenance is 10%, with liquidation limited to 3% below the risk price. Shorts are refused.
+Real accounting supports 1–4x longs and shorts, additional USDC collateral and full closes/liquidations. It charges no interest or extra margin fee; transaction gas is booked as an operational expense. Maintenance is 10%, with liquidation limited to 3% worse than the risk price.
 
 1. The route verifies the signature and spends the nonce, or the liquidation monitor passes a candidate.
 2. `prepareOpen`, `prepareClose` or `prepareLiquidation` checks the risk, reserves funds, and journals `MARGIN_OP_APPROVED`.
@@ -34,6 +34,8 @@ All are `POST`, encrypted, and signed by the owner. The two queries take a sessi
 | `/margin/positions`, `/margin/lending` | `SessionQuery` |
 
 Open and close answer once approved, without waiting for the chain. Poll `/margin/positions` for the result.
+
+Closed positions report `payout` in USDC base units. Shorts also report `payoutNative`, the excess ETH credited in wei. `shortfall` and remaining `debt` use `debtToken` units, so short losses are denominated in ETH. These amounts are decimal strings on the API.
 
 ## Signer changes to review
 
@@ -69,7 +71,7 @@ The mock uses these so the rest could be built. They are suggestions.
 
 ## Things accounting has to handle
 
-- **Closing a short overbuys.** The API only does exact-input, so the amount of USDC needed for a fixed ETH debt is an estimate. The mock adds 2% and leaves spare ETH. Accounting must credit that spare ETH and treat too little as a shortfall.
+- **Short buybacks use exact input.** Accounting budgets the ETH debt at the risk price plus 2%, capped at the position's USDC. The signed limit still applies. Remaining USDC and excess ETH are credited only after full repayment; an underwater liquidation spends all held USDC before recording an ETH shortfall.
 - **Physical funds.** A swap must come from one address holding the whole amount and its gas reserve. Otherwise it fails with `NO_INVENTORY`, and a liquidation retries on the next price. This needs position limits, and possibly moving funds between addresses, which is public.
 - **Approval gas** is booked with `FEE_BOOKED`, using an `approval:` operation ID that belongs to no position.
 - **USDC collateral** can't be deposited yet, because the watcher only credits ETH. A user can deposit ETH and swap to USDC first.
