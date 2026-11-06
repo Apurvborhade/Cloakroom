@@ -1,4 +1,6 @@
 export { FifoSerialQueue } from './queue.js';
+export { MarginFunding, type MarginFundingDeps } from './margin-funding.js';
+export { LongMarginAccounting, type LongMarginAccountingDeps } from './margin-accounting.js';
 export { SnapshotJournal } from './snapshot-journal.js';
 export { openCustodyRuntime } from './custody-runtime.js';
 export { openNitroRuntime } from './nitro-custody.js';

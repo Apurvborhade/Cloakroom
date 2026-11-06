@@ -6,7 +6,9 @@ Everything is off unless `MARGIN_ENABLED=true`. With it off, the routes don't ex
 
 ## How the two sides meet
 
-The interface is [`MarginAccounting`](../packages/shared/src/types/margin.ts). `server.ts` takes a real one through the `marginAccounting` boot option. Without one, simulation uses [`MockMarginAccounting`](../services/enclave/src/margin-mock.ts), and a non-simulated boot fails.
+The interface is [`MarginAccounting`](../packages/shared/src/types/margin.ts). `main.ts` injects [`LongMarginAccounting`](../services/enclave/src/margin-accounting.ts) through the `marginAccounting` boot option. Direct `bootEnclave` callers must also inject it; otherwise simulation uses [`MockMarginAccounting`](../services/enclave/src/margin-mock.ts), and a non-simulated boot fails.
+
+Real accounting supports 1–4x longs, additional USDC collateral and full closes/liquidations. It charges no interest or extra margin fee; transaction gas is booked as an operational expense. Maintenance is 10%, with liquidation limited to 3% below the risk price. Shorts are refused.
 
 1. The route verifies the signature and spends the nonce, or the liquidation monitor passes a candidate.
 2. `prepareOpen`, `prepareClose` or `prepareLiquidation` checks the risk, reserves funds, and journals `MARGIN_OP_APPROVED`.
@@ -15,7 +17,9 @@ The interface is [`MarginAccounting`](../packages/shared/src/types/margin.ts). `
 
 A broadcast with no receipt calls neither, and the funds stay reserved. On restart, the executor settles whatever has a receipt, and calls `fail` with `INTERRUPTED` on anything approved but never broadcast. Accounting must rebuild its own state from the journal before that runs.
 
-`InMemoryLedger.apply` ignores the four margin events, so margin balances are entirely accounting's.
+`InMemoryLedger.apply` restores funding and positions from the same journal as ordinary balances. Real approvals include `accounting` metadata; simulation approvals without it have no ledger effects. Approval and funding reservation use one journal write. Confirmed closes repay the loan before crediting the remainder, and unresolved broadcasts keep funds locked.
+
+Voluntary closes must cover the debt. A liquidation shortfall stays visible in the position and freezes the affected lending pool's redemptions and new loans until resolved; losses are not automatically distributed. `ledger.custodyClaims()` includes locked position assets and excludes performing loan receivables when comparing settled books with physical inventory. Bad debt remains an uncovered claim.
 
 ## Routes
 
