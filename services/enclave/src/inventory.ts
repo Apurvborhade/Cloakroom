@@ -43,6 +43,7 @@ export class Inventory implements InventoryReader {
   private readonly balances = new Map<Address, Map<Address, bigint>>();
   private readonly holds = new Map<string, Hold>();
   private readonly linkedEoas = new Map<Address, Set<Address>>();
+  private readonly depositEoas = new Map<Address, Set<Address>>();
   private readonly broadcastEoas = new Map<string, Address>();
   private appliedBlock = -1n;
   private useSequence = 0;
@@ -142,6 +143,23 @@ export class Inventory implements InventoryReader {
     this.linkedEoas.set(key, linked);
   }
 
+  /** Records an owner's deposit address, which publicly identifies them and is never reused for them. */
+  linkDeposit(owner: Address, eoa: Address): void {
+    this.linkOwner(owner, eoa);
+    const key = getAddress(owner);
+    const deposits = this.depositEoas.get(key) ?? new Set<Address>();
+    deposits.add(getAddress(eoa));
+    this.depositEoas.set(key, deposits);
+  }
+
+  /**
+   * What margin swaps exclude. They skip the wider `eoasLinkedTo` rule, because a liquidation must
+   * still find an address after a trader's earlier swaps have linked every other one.
+   */
+  depositEoasOf(owner: Address): ReadonlySet<Address> {
+    return new Set(this.depositEoas.get(getAddress(owner)));
+  }
+
   /** The EOAs to pass to pick as `exclude` when operating for this owner. */
   eoasLinkedTo(owner: Address): ReadonlySet<Address> {
     return new Set(this.linkedEoas.get(getAddress(owner)));
@@ -151,7 +169,7 @@ export class Inventory implements InventoryReader {
   replay(event: JournalEvent): void {
     switch (event.t) {
       case 'DEPOSIT_SESSION_OPENED':
-        this.linkOwner(event.owner, event.eoa);
+        this.linkDeposit(event.owner, event.eoa);
         break;
       case 'DEPOSIT_SESSION_CLOSED':
         this.markInventory(event.eoa);

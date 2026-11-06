@@ -169,7 +169,7 @@ export function apiClient(enclave: RunningEnclave) {
   return {
     sign: (
       account: PrivateKeyAccount,
-      primaryType: 'SessionGrant' | 'SessionQuery' | 'DepositRequest' | 'Intent' | 'CancelIntent' | 'Withdrawal',
+      primaryType: keyof typeof EIP712_TYPES,
       message: never,
     ) =>
       account.signTypedData({ domain, types: EIP712_TYPES, primaryType, message }),

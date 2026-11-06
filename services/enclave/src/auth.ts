@@ -10,6 +10,11 @@ import {
   type IntentMsg,
   type CancelIntentMsg,
   type WithdrawalMsg,
+  type MarginSupplyMsg,
+  type MarginRedeemMsg,
+  type MarginOpenMsg,
+  type MarginAddCollateralMsg,
+  type MarginCloseMsg,
   type SerialQueue,
   type Journal,
   type Ledger,
@@ -31,13 +36,23 @@ export type MutatingPrimaryType =
   | 'DepositRequest'
   | 'Intent'
   | 'CancelIntent'
-  | 'Withdrawal';
+  | 'Withdrawal'
+  | 'MarginSupply'
+  | 'MarginRedeem'
+  | 'MarginOpen'
+  | 'MarginAddCollateral'
+  | 'MarginClose';
 
 export type MutatingMessageMap = {
   DepositRequest: DepositRequestMsg;
   Intent: IntentMsg;
   CancelIntent: CancelIntentMsg;
   Withdrawal: WithdrawalMsg;
+  MarginSupply: MarginSupplyMsg;
+  MarginRedeem: MarginRedeemMsg;
+  MarginOpen: MarginOpenMsg;
+  MarginAddCollateral: MarginAddCollateralMsg;
+  MarginClose: MarginCloseMsg;
 };
 
 export type OwnerPrimaryType = MutatingPrimaryType | 'SessionGrant';
@@ -51,7 +66,12 @@ export type OwnerPayload =
   | { primaryType: 'DepositRequest'; message: DepositRequestMsg }
   | { primaryType: 'Intent'; message: IntentMsg }
   | { primaryType: 'CancelIntent'; message: CancelIntentMsg }
-  | { primaryType: 'Withdrawal'; message: WithdrawalMsg };
+  | { primaryType: 'Withdrawal'; message: WithdrawalMsg }
+  | { primaryType: 'MarginSupply'; message: MarginSupplyMsg }
+  | { primaryType: 'MarginRedeem'; message: MarginRedeemMsg }
+  | { primaryType: 'MarginOpen'; message: MarginOpenMsg }
+  | { primaryType: 'MarginAddCollateral'; message: MarginAddCollateralMsg }
+  | { primaryType: 'MarginClose'; message: MarginCloseMsg };
 
 export interface AuthConfig {
   sessionGrantTtlSec: number;
@@ -262,6 +282,51 @@ export class AuthService {
           });
           break;
         case 'Withdrawal':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: payload.primaryType,
+            message: payload.message,
+            signature,
+          });
+          break;
+        case 'MarginSupply':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: payload.primaryType,
+            message: payload.message,
+            signature,
+          });
+          break;
+        case 'MarginRedeem':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: payload.primaryType,
+            message: payload.message,
+            signature,
+          });
+          break;
+        case 'MarginOpen':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: payload.primaryType,
+            message: payload.message,
+            signature,
+          });
+          break;
+        case 'MarginAddCollateral':
+          recovered = await recoverTypedDataAddress({
+            domain,
+            types: EIP712_TYPES,
+            primaryType: payload.primaryType,
+            message: payload.message,
+            signature,
+          });
+          break;
+        case 'MarginClose':
           recovered = await recoverTypedDataAddress({
             domain,
             types: EIP712_TYPES,
