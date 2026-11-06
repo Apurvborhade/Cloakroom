@@ -36,7 +36,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] `envelope.ts` and shared browser sealing; Chromium-to-enclave transport tested with concurrent contexts
 - [x] Report data commits to `sha256(enclavePubKey || buildHash)`
 - [x] Bind attestation and decryption to the same sealed identity; see [key lifetime](../api.md#attestation-response-nitro-phase-0)
-- [x] Implement [the admin EOAs endpoint](../api.md#admin-seeding-contract); authenticated encrypted response, durable one-time disclosure, server mounting remains an API handoff
+- [x] Implement [the admin EOAs endpoint](../api.md#admin-seeding-contract); authenticated encrypted response, durable one-time disclosure, disabled in the application configuration
 
 ### Phase 2 (hours 12 to 22)
 
@@ -52,8 +52,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 ### Phase 4 (hours 29 to 36)
 
 - [x] Publish the verified bootstrap image digest, EIF digest and PCRs; application release remains pending
-- [ ] Build the final application image after API integration
-- [ ] Deploy, verify the quote, hand the EOA list to Apurva for seeding, then disable seeding
+- [x] Build application images with the private API and persistent custody; image self-tests passed
+- [ ] Authorize the application measurements in KMS, deploy and verify recovery before funding
 - [ ] Give Pradnyesh the final enclave URL
 
 ## You depend on

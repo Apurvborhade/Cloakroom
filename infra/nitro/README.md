@@ -80,7 +80,7 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 ## Remaining integration
 
-- Application API integration and live verification of the configured application image.
+- KMS authorization and live recovery verification of the configured application images; private API integration and image self-tests pass.
 - Public domain, HTTPS and frontend URL handoff.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
-- Funding after verified deployment, followed by disabling the seeding route.
+- Fund unlinked inventory after verified deployment. Operator seeding is optional and remains disabled in the current application configuration.
