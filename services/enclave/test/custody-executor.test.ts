@@ -56,7 +56,7 @@ describe('custody signer with the real executor', () => {
       const inventory = new Inventory({ chain, keys, tokens: [token], gasReserveWei: parseEther('0.01') });
       inventory.linkOwner(owner, linked.address);
       await log.journal.append({ t: 'DEPOSIT_SESSION_OPENED', id: 'deposit', owner,
-        eoa: linked.address, expiry: 4_000_000_000 });
+        eoa: linked.address, expiry: 4_000_000_000, baseline: 0n, baselineBlock: 0n });
       const [funder] = await anvil.getAddresses();
       for (const account of [linked, payout]) {
         await anvil.setBalance({ address: account.address, value: parseEther('2') });

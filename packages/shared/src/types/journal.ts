@@ -19,15 +19,15 @@ export type JournalEvent =
       owner: Address;
       eoa: Address;
       expiry: number;
-      baseline?: bigint;
-      baselineBlock?: bigint;
+      baseline: bigint;
+      baselineBlock: bigint;
     }
   | {
       t: 'DEPOSIT_CREDITED';
       id: string;
       amount: bigint;
       block: bigint;
-      owner?: Address;
+      owner: Address;
       txHash?: Hex;
     }
   | { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address }

@@ -955,6 +955,52 @@ This document is the canonical, chronological record of all backend and accounti
 
 ---
 
+## Task: Mandatory Deposit Journal Fields and Deterministic Replay
+
+- **Date:** 2026-11-06
+- **Owner:** Shreyas (API & Backend)
+- **Branch:** `feat/auth-session-nonce-integrated`
+- **Status:** Completed and Verified
+- **Objective:** Make deposit journal fields mandatory across contracts, validation schemas, watcher session lifecycle, and ledger replay to ensure 100% deterministic state reconstruction from journal history.
+
+### Changes
+
+1. **Shared Event Contracts (`packages/shared/src/types/journal.ts`):**
+   - In `DEPOSIT_SESSION_OPENED`: Made `baseline: bigint` and `baselineBlock: bigint` required (removed optional modifiers).
+   - In `DEPOSIT_CREDITED`: Made `owner: Address` required (removed optional modifier).
+2. **Shared Zod Validation Schemas (`packages/shared/src/schemas/journal.ts` & `packages/shared/src/index.ts`):**
+   - Created Zod schemas for deposit journal events (`DepositSessionOpenedEventSchema`, `DepositCreditedEventSchema`, `DepositSessionClosedEventSchema`).
+   - Exported journal schemas from `@cloakroom/shared`.
+3. **Deposit Watcher Lifecycle & Recovery (`services/enclave/src/watcher.ts`):**
+   - Extended `DepositSession` interface to record `baselineBlock: bigint`.
+   - Updated `openSession`: captures confirmed block and baseline balance on-chain, appends `DEPOSIT_SESSION_OPENED` to the journal, and stores `baselineBlock` in the session record.
+   - Hardened `replay`:
+     - Strictly validates `id`, `owner`, `eoa`, `expiry`, `baseline` (bigint), and `baselineBlock` (bigint) on `DEPOSIT_SESSION_OPENED`. Reconstructs session with `baselineBlock` and sets `lastCheckedBlock` to `baselineBlock`.
+     - Strictly validates `id`, `owner`, positive `amount`, and `block` on `DEPOSIT_CREDITED`. Validates that event `owner` matches session `owner`.
+     - Rejects any malformed historical events without silent defaults or substitutions.
+4. **Ledger Replay Validation (`services/enclave/src/ledger.ts`):**
+   - Updated `InMemoryLedger.apply`:
+     - Strictly validates that `DEPOSIT_SESSION_OPENED` contains valid `baseline` and `baselineBlock` bigints, records session ownership in internal `depositSessions` map, and rejects conflicting session ownership declarations.
+     - Strictly requires `owner` on `DEPOSIT_CREDITED`, validates positive `amount`, validates `block`, independently verifies that `DEPOSIT_CREDITED.owner` matches the recorded session owner, and credits the verified owner directly.
+5. **Fixture and Test Updates:**
+   - `services/enclave/test/keys.test.ts`, `services/enclave/test/custody-executor.test.ts`, and `services/enclave/test/inventory.test.ts`: Updated test fixtures for `DEPOSIT_SESSION_OPENED` to include `baseline: 0n, baselineBlock: 0n`.
+   - `packages/shared/test/schemas.test.ts`: Added tests verifying that schemas accept valid deposit events and reject events missing `baseline`, `baselineBlock`, or `owner`.
+   - `services/enclave/test/ledger.test.ts`: Added unit tests verifying rejection on replay when `baseline` or `baselineBlock` is missing on `DEPOSIT_SESSION_OPENED`, when `owner` is missing or `amount` is non-positive on `DEPOSIT_CREDITED`, and when a credit event references Alice's session but specifies Bob as owner (both via direct apply and full journal replay).
+   - `test/watcher.test.ts`: Added tests verifying that missing baseline, baselineBlock, or owner is rejected during replay, valid deposit sessions survive watcher restarts, the watcher resumes scanning from the original baseline block, replay reconstructs correct owner and balances, malformed historical events fail loudly, and a deposit arriving between block capture and balance capture is not swallowed into baseline and is credited.
+6. **Documentation Updates:**
+   - `docs/enclave.md`: Updated `JournalEvent` definition to reflect mandatory `baseline`, `baselineBlock`, and `owner`.
+   - `docs/decisions/2026-11-06-0258-deposit-journal-events.md`: Documented mandatory field requirements and compatibility/migration strategy.
+
+### Verification Results
+- `pnpm --filter @cloakroom/shared run build`: Clean (0 errors).
+- `pnpm --filter @cloakroom/enclave run build`: Clean (0 errors).
+- `pnpm typecheck`: Clean (0 errors across workspace packages).
+- `pnpm test`: 330 passed across 21 test suites.
+- `pnpm test:hpke:browser`: Passed (Chromium HPKE verification).
+- `python -m unittest discover -s test -p '*_test.py' -v`: 10 passed in 0.178s.
+- `git diff --check`: Clean (0 whitespace errors).
+- Emojis check: Zero emojis present.
+
 ## Task A13: Two-User Demo
 
 - **Date:** 2026-11-06
@@ -984,7 +1030,7 @@ This document is the canonical, chronological record of all backend and accounti
 
 ### Exact Verification Commands & Results
 - `pnpm demo:local` equivalent: 16 of 16 checks passed.
-- `pnpm test` on macOS: 3 failed | 524 passed (527). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm test` on macOS, after merging Shreyas's mandatory deposit fields: 3 failed | 543 passed (546). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
 - `pnpm typecheck`: Exited with code 0.
 
 ### Known Limitations & Unresolved Questions

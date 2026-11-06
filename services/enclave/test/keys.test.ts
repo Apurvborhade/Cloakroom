@@ -134,7 +134,15 @@ describe('KeyManager', () => {
 
   it('refuses an EOA previously linked to the withdrawing owner', async () => {
     const { keys, eoa, journal } = await setup();
-    await journal.append({ t: 'DEPOSIT_SESSION_OPENED', id: 'deposit', owner: OWNER, eoa: eoa.address, expiry: 1 });
+    await journal.append({
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 'deposit',
+      owner: OWNER,
+      eoa: eoa.address,
+      expiry: 1,
+      baseline: 0n,
+      baselineBlock: 0n,
+    });
     await journal.append({ t: 'WITHDRAWAL_LOCKED', id: 'withdrawal', owner: OWNER, token: NATIVE, amount: 10n, to: DESTINATION });
     await expect(keys.registerOp('withdrawal', { eoa: eoa.address, to: DESTINATION,
       value: 10n, dataHash: keccak256('0x') })).rejects.toThrow('SIGNING_DENIED');
