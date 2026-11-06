@@ -30,10 +30,6 @@ An order says "sell if the price is at least X". Taking slippage off the limit m
 
 - An order can stay pending when the price only just reaches its limit.
 - When the price is just above the limit, the public on-chain minimum sits close to the limit, which can reveal it. This replaces the earlier rule that the minimum must never equal the floor: a binding limit takes priority here. The swap's timing and price already hint at the limit.
-- The floor applies before our fee. See the open point below.
-- `IntentStore` and the API schema still accept comparator 1. They should refuse it when the order is created, so the user gets an error straight away.
-- The signer doesn't check the floor yet. `KeyManager` needs its swap path first.
-
-## Open point
-
-The floor is on the swap's output, and the fee comes out after it. With a 10 bps fee, a fill of exactly 300 USDC credits the user 299.7. If the limit should hold after the fee, the floor must be raised by the fee. Felix to decide.
+- The limit holds after our fee, as Felix decided: `limitFloor` raises the floor by `FEE_BPS`, so a 300 USDC limit needs about 300.3 USDC of output at 10 bps.
+- `POST /intents` refuses comparator 1 when the order is created, so the user gets an error straight away. `IntentStore` and the shared schema still accept it.
+- `KeyManager` also checks the floor before signing, using the journaled order and not the quote.

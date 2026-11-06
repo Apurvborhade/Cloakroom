@@ -127,7 +127,17 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 | `GET /health/reconcile` | none | `{ ok, perToken: [{ token, onChain, claims }] }` |
 | `POST /admin/eoas` | `AdminEoas` + admin signature | `{ addresses }` (one-time inventory disclosure) |
 
+Reads signed by a session key answer `EXPIRED` if the query itself has expired, and `UNKNOWN_SESSION` for every other failure, including a wrong signature or a wrong session key. Anyone can send a query naming any owner, so different errors would reveal who has an active session. Session grants live in memory, so after a restart reads answer `UNKNOWN_SESSION` until the user signs a new grant.
+
+`POST /intents` accepts only "price at or above" orders, from ETH to the configured output token, up to `MAX_AMOUNT_NATIVE_WEI`. These checks run before the nonce is spent. An expired order ends on its own and its funds are released. `POST /intents/cancel` answers `INTENT_NOT_FOUND` unless the order belongs to the signer and is still pending. `amountOut` in a status is what the owner was credited, after the fee.
+
+`POST /withdrawals` accepts ETH, up to `MAX_AMOUNT_NATIVE_WEI`, and the configured output token. It answers once an address is assigned to pay it, so follow `POST /withdrawals/status` for the result. A result that isn't known yet stays `sent` until recovery settles it. `NO_INVENTORY` means no single address not linked to the owner can pay the amount, and the funds are released.
+
+Each `POST /deposit-session` allocates a new address. `pending` in a balance is always `0` for now, because deposits are credited only once confirmed.
+
 `/health/reconcile` returns aggregates only, with no per-user data. Never return custody EOA addresses except the one assigned to a deposit session, and the one-time admin seeding call.
+
+**Deposit policy:** Allow ETH, or the configured USDC token accompanied by ETH for gas at the same deposit address. USDC is accepted only after both deposits are confirmed. The USDC path is pending implementation; see [the deposit decision](decisions/2026-11-06-0151-non-eth-deposits.md).
 
 ### Attestation response (Nitro, phase 0)
 

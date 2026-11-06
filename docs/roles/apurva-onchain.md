@@ -38,7 +38,7 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 - [x] Watcher: baseline on session open, read at `head - CONFIRMATIONS`, journal `DEPOSIT_CREDITED`, then credit
 - [x] Session expiry: one last check, close the session
 - [x] Relabel the EOA as inventory in `onSessionClosed`, and rebuild closed sessions into inventory on boot, because replay does not call it
-- [ ] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md))
+- [x] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md))
 - [x] `Inventory`: `refresh`, `pick` with exclusions, `hold`, `free`
 - [x] Connect `Inventory` to Felix's `KeyManager` and the watcher at boot, with settings from `loadConfig`
 - [x] Run `pnpm smoke:sepolia` on real Sepolia ([scripts/README.md](../../scripts/README.md))

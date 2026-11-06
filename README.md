@@ -228,7 +228,7 @@ If the RPC can't answer, the operation is reported as unresolved and nothing cha
 | A bad price from Uniswap | Slippage limits, the condition rechecked on the swap's own quote, and simulation | Built |
 | A crash mid-transaction running it twice | The journal is written before sending, and recovery resends only the identical transaction | Built |
 | A tampered journal | Each entry carries the hash of the one before | Built |
-| A fill below the order's limit | The minimum output can't go below amount times limit price, however much slippage is set | [Built in the executor, signer check to come](docs/decisions/2026-11-06-1555-binding-limit-floor.md) |
+| A fill below the order's limit | The minimum output can't fall below amount times limit price after the fee, however much slippage is set, and the signer checks this too | [Built](docs/decisions/2026-11-06-1555-binding-limit-floor.md) |
 | A signer asked to sign something unexpected | Each operation must be registered first, and signs only once | Built, swaps not yet allowed |
 
 ## Status
@@ -244,10 +244,10 @@ This is a work in progress. The core works end to end from the command line, but
 | Recovery after a restart | Working, tested on a local chain |
 | Signed requests, replay protection, ledger, encrypted journal | Working, tested |
 | Attestation and custody signer | Deployed Nitro service serves attestation and runs an unfunded self-test |
-| Signer allowing swaps | Not built. Swap runs so far use a stand-in signer |
+| Signer allowing swaps | Working, tested on a local chain with a mock router. Not yet run live on Sepolia |
 | Intent store, and pipeline from price checks to swaps | Working. The pipeline's own tests use a stand-in executor |
 | Server and boot lifecycle | Working in simulation mode, tested on a local chain. Not yet deployed to Nitro |
-| API routes | Only attestation and operator seeding. Session, deposit, intent, withdrawal and reconcile routes are not built |
+| API routes | Attestation, operator seeding, session, deposit, balance and intent routes work. Withdrawal and reconcile routes are not built. |
 | Frontend | In progress, not yet connected |
 | Anon-RPC | Not built |
 | Live KMS provisioning, public HTTPS | Not done |
@@ -274,7 +274,7 @@ Run the tests:
 pnpm test
 ```
 
-Three tests in `kms-sealing.test.ts` and `sealed-state.test.ts` currently fail on macOS.
+Some sealing tests are Linux-only, and are skipped on other platforms.
 
 To run against real Sepolia, or to see every command, read [scripts/README.md](scripts/README.md). Settings are described in [docs/deployment.md](docs/deployment.md).
 
