@@ -73,7 +73,7 @@ export interface ExecutorDeps {
   signer: TransactionSigner;
   inventory: Pick<
     Inventory,
-    'eoasLinkedTo' | 'free' | 'hold' | 'linkOwner' | 'pick' | 'refresh' | 'restoreHold'
+    'depositEoasOf' | 'eoasLinkedTo' | 'free' | 'hold' | 'linkOwner' | 'pick' | 'refresh' | 'restoreHold'
   >;
   journal: Pick<Journal, 'append'>;
   /** The withdrawal ID must be the ref the funds were reserved under. */
@@ -419,7 +419,8 @@ export class Executor {
     }
 
     const excluded = inventory.eoasLinkedTo(withdrawal.owner);
-    const chosen = inventory.pick(withdrawal.token, withdrawal.amount, excluded);
+    const chosen = inventory.pick(withdrawal.token, withdrawal.amount, excluded)
+      ?? inventory.pick(withdrawal.token, withdrawal.amount, inventory.depositEoasOf(withdrawal.owner));
     if (!chosen) {
       await this.failWithdrawal(withdrawal, ERROR_CODES.NO_INVENTORY);
       throw new Error(ERROR_CODES.NO_INVENTORY);

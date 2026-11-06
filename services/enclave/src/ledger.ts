@@ -1,4 +1,4 @@
-import { ERROR_CODES, NATIVE } from '@cloakroom/shared';
+import { DepositCompletedEventSchema, ERROR_CODES, NATIVE } from '@cloakroom/shared';
 import type {
   BalanceRecord,
   Journal,
@@ -51,6 +51,7 @@ export class InMemoryLedger implements Ledger {
   private readonly operationalGasSpent = new Map<Address, bigint>();
   private readonly bookedGasFees = new Map<string, OperationalGasRecord>();
   private readonly depositSessions = new Map<string, Address>();
+  private readonly depositFunding = new Map<string, Extract<JournalEvent, { t: 'DEPOSIT_SESSION_OPENED' }>>();
   readonly margin = new MarginFundingState(this);
   readonly marginPositions = new MarginPositionState(this);
 
@@ -366,9 +367,28 @@ export class InMemoryLedger implements Ledger {
           );
         }
         this.depositSessions.set(event.id, normOwner);
+        if (event.funding) this.depositFunding.set(event.id, event);
+        break;
+      }
+      case 'DEPOSIT_COMPLETED': {
+        DepositCompletedEventSchema.parse(event);
+        const opened = this.depositFunding.get(event.id);
+        if (!opened?.funding || getAddress(opened.owner) !== getAddress(event.owner)
+            || getAddress(opened.eoa) !== getAddress(event.eoa)
+            || getAddress(opened.funding.asset) !== getAddress(event.asset)
+            || opened.funding.gasReserveWei !== event.gasReserveWei) {
+          throw new Error('Deposit completion does not match session');
+        }
+        if (event.nativeAmount > 0n) {
+          this.credit(event.owner, NATIVE, event.nativeAmount, `deposit:${event.id}:native`);
+        }
+        if (event.tokenAmount > 0n) {
+          this.credit(event.owner, event.asset, event.tokenAmount, `deposit:${event.id}:token`);
+        }
         break;
       }
       case 'DEPOSIT_CREDITED': {
+        if (this.depositFunding.has(event.id)) throw new Error('Legacy credit for single-use deposit');
         if (!event.owner) {
           throw new Error(`Missing owner on DEPOSIT_CREDITED event: ${event.id}`);
         }

@@ -1,5 +1,9 @@
-import { NATIVE, type JournalEvent } from '@cloakroom/shared';
+import { DepositCompletedEventSchema, DepositSessionOpenedEventSchema, NATIVE, type JournalEvent,
+  type DepositStatusResponse } from '@cloakroom/shared';
+import { getAddress, parseAbi } from 'viem';
 import type { Address, PublicClient } from 'viem';
+
+const BALANCE_ABI = parseAbi(['function balanceOf(address owner) view returns (uint256)']);
 
 /**
  * The deposit-related subset of JournalEvent that the watcher reads and writes.
@@ -7,7 +11,7 @@ import type { Address, PublicClient } from 'viem';
  */
 export type DepositEvent = Extract<
   JournalEvent,
-  { t: 'DEPOSIT_SESSION_OPENED' | 'DEPOSIT_CREDITED' | 'DEPOSIT_SESSION_CLOSED' }
+  { t: 'DEPOSIT_SESSION_OPENED' | 'DEPOSIT_CREDITED' | 'DEPOSIT_SESSION_CLOSED' | 'DEPOSIT_COMPLETED' }
 >;
 
 /** The parts of Shreyas's Journal, Ledger and SerialQueue that the watcher uses. */
@@ -21,7 +25,8 @@ export interface WatcherQueue {
   run<T>(op: () => Promise<T>): Promise<T>;
 }
 
-export type WatcherChain = Pick<PublicClient, 'getBalance' | 'getBlock' | 'getBlockNumber'>;
+export type WatcherChain = Pick<PublicClient, 'getBalance' | 'getBlock' | 'getBlockNumber'>
+  & Partial<Pick<PublicClient, 'readContract'>>;
 
 export interface WatcherDeps {
   chain: WatcherChain;
@@ -37,16 +42,21 @@ export interface OpenSessionParams {
   id: string;
   owner: Address;
   eoa: Address;
-  /** Unix seconds. Blocks after this time are not credited. */
+  /** Unix seconds. A new deposit must start by this time; a partial pair may finish later. */
   expiry: number;
+  funding?: { asset: Address; gasReserveWei: bigint };
 }
 
 export interface DepositSession extends OpenSessionParams {
+  funding?: { asset: Address; gasReserveWei: bigint; tokenBaseline: bigint };
   baseline: bigint;
   baselineBlock: bigint;
   credited: bigint;
   lastCheckedBlock: bigint;
   open: boolean;
+  nativeReceived: bigint;
+  tokenReceived: bigint;
+  tokenCredited: bigint;
 }
 
 /**
@@ -69,6 +79,14 @@ export class DepositWatcher {
       address: params.eoa,
       blockNumber: baselineBlock,
     });
+    const funding = params.funding && {
+      ...params.funding,
+      asset: getAddress(params.funding.asset),
+      tokenBaseline: await this.tokenBalance(params.funding.asset, params.eoa, baselineBlock),
+    };
+    DepositSessionOpenedEventSchema.parse({
+      t: 'DEPOSIT_SESSION_OPENED', ...params, funding, baseline, baselineBlock,
+    });
 
     return this.deps.queue.run(async () => {
       if (this.sessions.has(params.id)) throw new Error('DUPLICATE_SESSION');
@@ -79,17 +97,22 @@ export class DepositWatcher {
       await this.deps.journal.append({
         t: 'DEPOSIT_SESSION_OPENED',
         ...params,
+        funding,
         baseline,
         baselineBlock,
       });
 
       const session: DepositSession = {
         ...params,
+        funding,
         baseline,
         baselineBlock,
         credited: 0n,
         lastCheckedBlock: baselineBlock,
         open: true,
+        nativeReceived: 0n,
+        tokenReceived: 0n,
+        tokenCredited: 0n,
       };
       this.sessions.set(params.id, session);
       return session;
@@ -98,6 +121,26 @@ export class DepositWatcher {
 
   getSession(id: string): Readonly<DepositSession> | undefined {
     return this.sessions.get(id);
+  }
+
+  listByOwner(owner: Address): DepositStatusResponse['deposits'] {
+    return [...this.sessions.values()]
+      .filter((session) => getAddress(session.owner) === getAddress(owner))
+      .map((session) => {
+        const asset = session.funding?.asset ?? NATIVE;
+        const reserve = session.funding?.gasReserveWei ?? 0n;
+        const credited = session.credited > 0n || session.tokenCredited > 0n;
+        const status = credited ? 'credited' : !session.open ? 'expired'
+          : session.nativeReceived === 0n && session.tokenReceived === 0n ? 'awaiting_funds'
+          : session.nativeReceived < reserve || (asset === NATIVE && session.nativeReceived <= reserve)
+            ? 'awaiting_gas' : 'awaiting_token';
+        return {
+          sessionId: session.id, depositAddress: session.eoa, expiresAt: session.expiry,
+          asset, gasReserveWei: reserve.toString(), singleUse: !!session.funding, status,
+          nativeReceived: session.nativeReceived.toString(), tokenReceived: session.tokenReceived.toString(),
+          nativeCredited: session.credited.toString(), tokenCredited: session.tokenCredited.toString(),
+        };
+      });
   }
 
   /**
@@ -140,6 +183,7 @@ export class DepositWatcher {
             `MISSING_BASELINE: missing or invalid baselineBlock on DEPOSIT_SESSION_OPENED: ${event.id}`,
           );
         }
+        if (event.funding) DepositSessionOpenedEventSchema.parse(event);
         this.sessions.set(event.id, {
           id: event.id,
           owner: event.owner,
@@ -147,14 +191,19 @@ export class DepositWatcher {
           expiry: event.expiry,
           baseline: event.baseline,
           baselineBlock: event.baselineBlock,
+          funding: event.funding && { ...event.funding, asset: getAddress(event.funding.asset) },
           credited: 0n,
           lastCheckedBlock: event.baselineBlock,
           open: true,
+          nativeReceived: 0n,
+          tokenReceived: 0n,
+          tokenCredited: 0n,
         });
         break;
       }
       case 'DEPOSIT_CREDITED': {
         const session = this.requireSession(event.id);
+        if (session.funding) throw new Error('MALFORMED_EVENT: legacy credit for single-use deposit');
         if (!event.owner) {
           throw new Error(`MALFORMED_EVENT: missing owner on DEPOSIT_CREDITED: ${event.id}`);
         }
@@ -172,7 +221,25 @@ export class DepositWatcher {
           );
         }
         session.credited += event.amount;
+        session.nativeReceived = session.credited;
         session.lastCheckedBlock = event.block;
+        break;
+      }
+      case 'DEPOSIT_COMPLETED': {
+        DepositCompletedEventSchema.parse(event);
+        const session = this.requireSession(event.id);
+        if (!session.funding || getAddress(event.owner) !== getAddress(session.owner)
+            || getAddress(event.eoa) !== getAddress(session.eoa)
+            || getAddress(event.asset) !== session.funding.asset
+            || event.gasReserveWei !== session.funding.gasReserveWei) {
+          throw new Error('MALFORMED_EVENT: deposit completion mismatch');
+        }
+        session.credited = event.nativeAmount;
+        session.tokenCredited = event.tokenAmount;
+        session.nativeReceived = event.nativeAmount + event.gasReserveWei;
+        session.tokenReceived = event.tokenAmount;
+        session.lastCheckedBlock = event.block;
+        session.open = false;
         break;
       }
       case 'DEPOSIT_SESSION_CLOSED': {
@@ -212,6 +279,8 @@ export class DepositWatcher {
     onError: (error: unknown) => void,
   ): () => void {
     return client.watchBlockNumber({
+      pollingInterval: 1_000,
+      emitOnBegin: true,
       emitMissed: false,
       onBlockNumber: () => {
         this.tick().catch(onError);
@@ -230,6 +299,10 @@ export class DepositWatcher {
   }
 
   private async checkSession(session: DepositSession, confirmed: bigint): Promise<void> {
+    if (session.funding) {
+      await this.checkFunding(session, confirmed);
+      return;
+    }
     const lastInWindow = await this.lastBlockBeforeExpiry(session, confirmed);
     const expired = lastInWindow < confirmed;
 
@@ -239,6 +312,63 @@ export class DepositWatcher {
     }
 
     if (expired) await this.closeSession(session);
+  }
+
+  private async tokenBalance(asset: Address, eoa: Address, blockNumber: bigint): Promise<bigint> {
+    if (getAddress(asset) === NATIVE) return 0n;
+    if (!this.deps.chain.readContract) throw new Error('TOKEN_READER_UNAVAILABLE');
+    return this.deps.chain.readContract({
+      address: asset, abi: BALANCE_ABI, functionName: 'balanceOf', args: [eoa], blockNumber,
+    });
+  }
+
+  private async received(session: DepositSession, block: bigint) {
+    const [native, token] = await Promise.all([
+      this.deps.chain.getBalance({ address: session.eoa, blockNumber: block }),
+      this.tokenBalance(session.funding!.asset, session.eoa, block),
+    ]);
+    return {
+      native: native > session.baseline ? native - session.baseline : 0n,
+      token: token > session.funding!.tokenBaseline ? token - session.funding!.tokenBaseline : 0n,
+    };
+  }
+
+  private async checkFunding(session: DepositSession, confirmed: bigint): Promise<void> {
+    // Unfinished pairs stay isolated. A transfer before expiry permits completing the pair later.
+    const cutoff = await this.lastBlockBeforeExpiry({ ...session, lastCheckedBlock: session.baselineBlock }, confirmed);
+    if (cutoff < confirmed) {
+      const beforeExpiry = await this.received(session, cutoff);
+      if (beforeExpiry.native === 0n && beforeExpiry.token === 0n) {
+        await this.closeSession(session);
+        return;
+      }
+    }
+    const received = await this.received(session, confirmed);
+    session.nativeReceived = received.native;
+    session.tokenReceived = received.token;
+    const { asset, gasReserveWei } = session.funding!;
+    const ready = asset === NATIVE ? received.native > gasReserveWei
+      : received.token > 0n && received.native >= gasReserveWei;
+    if (!ready) {
+      session.lastCheckedBlock = confirmed;
+      return;
+    }
+    const event = {
+      t: 'DEPOSIT_COMPLETED' as const, id: session.id, owner: session.owner, eoa: session.eoa,
+      asset, nativeAmount: received.native - gasReserveWei, tokenAmount: received.token,
+      gasReserveWei, block: confirmed,
+    };
+    await this.deps.queue.run(async () => {
+      await this.deps.journal.append(event);
+      if (event.nativeAmount > 0n) {
+        this.deps.ledger.credit(event.owner, NATIVE, event.nativeAmount, `deposit:${event.id}:native`);
+      }
+      if (event.tokenAmount > 0n) {
+        this.deps.ledger.credit(event.owner, asset, event.tokenAmount, `deposit:${event.id}:token`);
+      }
+      this.replay(event);
+      this.deps.onSessionClosed?.(session.eoa);
+    });
   }
 
   private async creditIncrease(session: DepositSession, block: bigint): Promise<void> {
@@ -259,6 +389,7 @@ export class DepositWatcher {
         block,
       });
       session.credited += amount;
+      session.nativeReceived = session.credited;
       this.deps.ledger.credit(
         session.owner,
         NATIVE,

@@ -20,14 +20,16 @@ Mirrored in [`.env.example`](../.env.example), and read by `loadConfig` in `serv
 
 Locally, use `SIM_MODE=true` and pass the file to Node with `--env-file=.env`. Nitro loads a private JSON file through the parent config service and checks its image-bound hash before startup; see the runbook above.
 
+Once single-use deposits have started, keep journal support for `funding` and `DEPOSIT_COMPLETED` in any rollback image. Older builds cannot safely resume these sessions.
+
 Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price scale, stay in `packages/shared`.
 
 | Variable | Example | Purpose |
 | --- | --- | --- |
 | `CHAIN_ID` | `11155111` | Execution network and EIP-712 domain |
 | `RPC_URL` | provider URL | Chain reads and broadcasts. Injected as a secret |
-| `CONFIRMATIONS` | `2` | Blocks before crediting or settling |
-| `GAS_RESERVE_WEI` | `10000000000000000` | Kept in each inventory EOA, excluded from claims |
+| `CONFIRMATIONS` | `0` | Credit and settle on the first mined block (demo) |
+| `GAS_RESERVE_WEI` | `10000000000000000` | Retained from each new deposit's ETH for operations; returned by the API and excluded from credited ETH |
 | `GAS_MARGIN_PERCENT` | `120` | Gas limit as a percentage of the estimate |
 | `RECEIPT_TIMEOUT_MS` | `180000` | How long to wait before a transaction's result counts as unresolved |
 | `INVENTORY_SETTLE_ATTEMPTS` | `3` | Balance refresh attempts before an EOA is freed |
@@ -39,12 +41,12 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 | `TOKEN_OUT_DECIMALS` | `6` | Decimals of `TOKEN_OUT_ADDRESS`, used to calculate prices |
 | `MAX_SLIPPAGE_BPS_CAP` | `100` | Upper limit on a user's slippage setting |
 | `FEE_BPS` | `10` | Fee: see [fee model](decisions/2026-11-06-0151-fee-model.md) |
-| `DEPOSIT_SESSION_TTL_SEC` | `900` | Lifetime of a deposit address |
+| `DEPOSIT_SESSION_TTL_SEC` | `900` | Deadline to start a deposit; a partial ETH/USDC pair can finish later |
 | `SESSION_GRANT_TTL_SEC` | `1800` | Lifetime of a browser session key |
 | `MAX_EXPIRY_FUTURE_SEC` | `300` | How far ahead a signed request's expiry may be |
 | `MAX_CLOCK_SKEW_SEC` | `60` | Clock difference allowed on a signed request |
 | `MAX_BODY_SIZE_BYTES` | `16384` | Largest request body accepted |
-| `PRICE_POLL_INTERVAL_SEC` | `60` | How often the enclave checks the price |
+| `PRICE_POLL_INTERVAL_SEC` | `5` | How often the enclave checks the price |
 | `PRICE_REFERENCE_AMOUNT_WEI` | `100000000000000000` | Input amount for each price check |
 | `PRICE_QUOTE_TIMEOUT_MS` | `10000` | How long to wait for a quote before the poll counts as failed |
 | `SIGNING_MAX_GAS` | `1200000` | Largest gas limit the signer accepts, including `GAS_MARGIN_PERCENT` |

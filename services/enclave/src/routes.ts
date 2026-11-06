@@ -65,7 +65,7 @@ export interface ApiDeps {
   inventory: Pick<Inventory, 'linkDeposit'>;
   keys: KeyManager;
   ledger: Pick<InMemoryLedger, 'getBalance'>;
-  watcher: Pick<DepositWatcher, 'openSession'>;
+  watcher: Pick<DepositWatcher, 'openSession' | 'listByOwner'>;
   withdrawalOrders: Pick<WithdrawalOrders, 'create'>;
   withdrawalStatuses: Pick<WithdrawalStatuses, 'listByOwner'>;
   /** Present only when MARGIN_ENABLED is set. Without it the margin routes do not exist. */
@@ -127,13 +127,6 @@ export async function authorizeRead(
   }
 }
 
-function depositInvalidCode(error: ZodError): ErrorCode {
-  const unsupported = error.issues.some(
-    (issue) => issue.path.join('.') === 'message.asset' && issue.message.startsWith('Only native'),
-  );
-  return unsupported ? ERROR_CODES.UNSUPPORTED_ASSET : ERROR_CODES.INVALID_PAYLOAD;
-}
-
 /** Refuses an order the executor could never run, before it spends the owner's nonce. */
 function assertRunnableIntent(intent: IntentMsg, config: EnclaveConfig): void {
   if (getAddress(intent.tokenIn) !== NATIVE || getAddress(intent.tokenOut) !== config.TOKEN_OUT_ADDRESS) {
@@ -186,6 +179,10 @@ export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
     '/deposit-session',
     SignedDepositRequestSchema,
     async ({ message, signature }) => {
+      const asset = getAddress(message.asset);
+      if (asset !== NATIVE && asset !== config.TOKEN_OUT_ADDRESS) {
+        throw new AuthError(ERROR_CODES.UNSUPPORTED_ASSET);
+      }
       const { owner } = await auth.verifyAndAuthorizeMutation(
         'DepositRequest',
         wireToDepositRequestMsg(message),
@@ -197,13 +194,19 @@ export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
         owner,
         eoa: address,
         expiry: nowSec() + config.DEPOSIT_SESSION_TTL_SEC,
+        funding: { asset, gasReserveWei: config.GAS_RESERVE_WEI },
       });
       // The same link replay rebuilds: an owner's payout must never come from their deposit address.
       inventory.linkDeposit(owner, address);
-      return { sessionId: session.id, depositAddress: address, expiresAt: session.expiry };
+      return { sessionId: session.id, depositAddress: address, expiresAt: session.expiry,
+        asset, gasReserveWei: config.GAS_RESERVE_WEI.toString(), singleUse: true };
     },
-    depositInvalidCode,
   );
+
+  privateRoute(app, keys, '/deposits/status', SignedSessionQuerySchema, async ({ message, signature }) => {
+    const owner = await authorizeRead(auth, wireToSessionQueryMsg(message), signature as Hex);
+    return { deposits: watcher.listByOwner(owner) };
+  });
 
   privateRoute(app, keys, '/balance', SignedSessionQuerySchema, async ({ message, signature }) => {
     const owner = await authorizeRead(auth, wireToSessionQueryMsg(message), signature as Hex);

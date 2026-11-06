@@ -157,6 +157,46 @@ describe('POST /session', () => {
 });
 
 describe('POST /deposit-session', () => {
+  it('accepts USDC with ETH, reports the missing gas, and keeps deposit status private', async () => {
+    const enclave = await harness.boot();
+    const api = client(enclave);
+    const { sessionKey } = await api.grant(alice);
+    const { sessionKey: bobKey } = await api.grant(bob);
+    const { body, status } = await api.deposit(alice, 1n, { asset: harness.token() });
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ asset: getAddress(harness.token()), singleUse: true,
+      gasReserveWei: harness.config().GAS_RESERVE_WEI.toString() });
+    const readStatus = async (owner: Address, signer: PrivateKeyAccount) => {
+      const expires = expiry();
+      const signature = await api.api.sign(signer, 'SessionQuery', { owner, expiry: BigInt(expires) } as never);
+      return api.api.post('/deposits/status', { message: { owner, expiry: String(expires) }, signature });
+    };
+
+    await harness.sendToken(body.depositAddress as Address, 10_000_000n);
+    await enclave.parts.watcher.tick();
+    expect((await readStatus(alice.address, sessionKey)).body.deposits).toEqual([
+      expect.objectContaining({ status: 'awaiting_gas', tokenReceived: '10000000', tokenCredited: '0' }),
+    ]);
+    expect(enclave.parts.ledger.getBalance(alice.address, harness.token()).available).toBe(0n);
+    expect((await readStatus(alice.address, bobKey)).status).toBe(401);
+    expect((await readStatus(bob.address, bobKey)).body.deposits).toEqual([]);
+
+    await harness.send(body.depositAddress as Address, BigInt(body.gasReserveWei as string));
+    await enclave.parts.watcher.tick();
+    expect((await readStatus(alice.address, sessionKey)).body.deposits).toEqual([
+      expect.objectContaining({ status: 'credited', tokenCredited: '10000000', nativeCredited: '0' }),
+    ]);
+    await enclave.parts.inventory.refresh();
+    expect(enclave.parts.inventory.pick(harness.token(), 10_000_000n, new Set())?.address).toBe(body.depositAddress);
+    expect(enclave.parts.inventory.pick(harness.token(), 10_000_000n,
+      enclave.parts.inventory.depositEoasOf(alice.address))).toBeNull();
+
+    await enclave.stop();
+    const restarted = await harness.boot();
+    expect(restarted.parts.ledger.getBalance(alice.address, harness.token()).available).toBe(10_000_000n);
+    expect(restarted.parts.ledger.getBalance(alice.address, NATIVE).available).toBe(0n);
+  });
+
   it('credits a real deposit, and the balance route shows it', async () => {
     const enclave = await harness.boot();
     const api = client(enclave);
@@ -170,7 +210,7 @@ describe('POST /deposit-session', () => {
     const { body: read } = await api.balance(alice.address, sessionKey);
     expect(read.balances).toContainEqual({
       token: NATIVE,
-      available: parseEther('0.5').toString(),
+      available: (parseEther('0.5') - BigInt(body.gasReserveWei as string)).toString(),
       reserved: '0',
       pending: '0',
     });
@@ -261,11 +301,11 @@ describe('POST /deposit-session', () => {
     expect((await api.deposit(alice, 1n)).status).toBe(200);
   });
 
-  it('refuses anything but native ETH, and keeps the nonce usable', async () => {
+  it('refuses an unconfigured token, and keeps the nonce usable', async () => {
     const enclave = await harness.boot();
     const api = client(enclave);
 
-    const { status, body } = await api.deposit(alice, 1n, { asset: harness.token() });
+    const { status, body } = await api.deposit(alice, 1n, { asset: bob.address });
 
     expect(status).toBe(400);
     expect(body).toEqual({ error: 'UNSUPPORTED_ASSET' });
@@ -292,7 +332,7 @@ describe('POST /deposit-session', () => {
 
     expect((await api.deposit(alice, 7n)).body).toEqual({ error: 'NONCE_USED' });
     expect([...second.parts.inventory.eoasLinkedTo(alice.address)]).toContain(body.depositAddress);
-    await harness.send(body.depositAddress as Address, 11n);
+    await harness.send(body.depositAddress as Address, 11n + BigInt(body.gasReserveWei as string));
     await second.parts.watcher.tick();
     expect(second.parts.ledger.getBalance(alice.address, NATIVE).available).toBe(11n);
   });
@@ -316,7 +356,7 @@ describe('POST /balance', () => {
     const enclave = await harness.boot();
     const api = client(enclave);
     const { body: session } = await api.deposit(alice, 1n);
-    await harness.send(session.depositAddress as Address, 9n);
+    await harness.send(session.depositAddress as Address, 9n + BigInt(session.gasReserveWei as string));
     await enclave.parts.watcher.tick();
     const { sessionKey: bobKey } = await api.grant(bob);
 
