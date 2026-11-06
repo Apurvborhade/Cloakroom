@@ -70,6 +70,18 @@ Start the service in another terminal, with `DEPOSIT_SESSION_TTL_SEC=120` in `.e
 pnpm test:roundtrip
 ```
 
+## Swap through the running service
+
+Alice signs an order to sell 0.001 ETH for the output token, and the running service swaps it through the real Uniswap router with the real signer. Run `pnpm test:roundtrip` first: this uses the balance and pool addresses it leaves. The limit is 90% of the current price, so the next price check triggers it.
+
+Add `--preview` to read the price and balance without signing an order.
+
+```bash
+pnpm test:swap
+```
+
+The tokens stay in the pool as Alice's balance. Withdrawing them needs a pool address she isn't linked to that holds tokens, so seed the pool first.
+
 ## Seeding the inventory
 
 `services/enclave/scripts/seed-inventory.ts` has two steps. It refuses to run anywhere except Sepolia or a local Anvil chain.
