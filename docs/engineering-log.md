@@ -706,3 +706,47 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `a92fd18dbd5b6e4c8c949658e0704d9ab79a0881` (`fix(enclave): make the watcher fit the real journal`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A8: Signing Limits in Configuration
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A8 (Apurva's workstream) — Signing Limits in Configuration
+- **Status:** Committed on branch `feat/signing-limits`. Not pushed by this entry.
+- **Objective:** Read the limits `KeyManager` enforces from environment variables.
+
+### Files Modified
+- `services/enclave/src/config.ts` (added four `SIGNING_MAX_*` variables, two cross-checks and `toSigningPolicy`)
+- `.env.example`
+- `services/enclave/test/config.test.ts`
+- `docs/deployment.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- Boot fails if the priority fee limit exceeds the max fee limit, because the signer would refuse those transactions.
+- Boot fails if `MAX_AMOUNT_NATIVE_WEI` exceeds `SIGNING_MAX_NATIVE_VALUE_WEI`, because the API would accept amounts the signer can never sign.
+- `SIGNING_MAX_GAS` is 1,000,000 in `.env.example`, because Sepolia Trading API quotes estimated about 816,000 to 891,000 gas for a swap.
+- The fee limits in `.env.example` follow the values in Felix's custody test.
+
+### Tests Added
+- `services/enclave/test/config.test.ts`: covers the limits, both cross-checks, the policy mapping, and acceptance by the real `KeyManager` constructor.
+- Seven deliberate bugs were introduced, and each one made a test fail.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 332 passed and 3 failed in `kms-sealing.test.ts` and `sealed-state.test.ts`. These are the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Nothing calls `toSigningPolicy` yet, because the enclave has no custody boot code using `loadConfig`.
+- `custody-selftest.ts` keeps its own limits, including a gas limit too low for swaps. That file is Felix's.
+- Existing local `.env` files need the new variables.
+
+### Integration Handoffs
+- **Felix:** pass `toSigningPolicy(loadConfig(process.env))` to `KeyManager` at boot, and inject the new variables into the TEE.
+
+### Commit Reference
+- **Commit:** `8a2a01ab17a027331b0c5fb92a4d73f4b94c075d` (`feat(enclave): add signing limits to the environment config`)
+- **Pushed to Remote:** No

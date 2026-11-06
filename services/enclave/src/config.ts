@@ -2,6 +2,7 @@ import { BPS_DENOMINATOR } from '@cloakroom/shared';
 import { getAddress, isAddress } from 'viem';
 import type { Address } from 'viem';
 import { z } from 'zod';
+import type { SigningPolicy } from './keys.js';
 
 const wholeNumber = z
   .string()
@@ -11,6 +12,7 @@ const wholeNumber = z
 const positiveNumber = wholeNumber.refine((value) => value > 0);
 const bps = wholeNumber.refine((value) => value <= BPS_DENOMINATOR);
 const wei = z.string().regex(/^\d+$/).transform(BigInt);
+const positiveWei = wei.refine((value) => value > 0n);
 const address = z
   .string()
   .refine((value) => isAddress(value, { strict: false }))
@@ -43,7 +45,12 @@ const ENV_SCHEMA = z.object({
   MAX_AMOUNT_NATIVE_WEI: wei,
 
   PRICE_POLL_INTERVAL_SEC: positiveNumber,
-  PRICE_REFERENCE_AMOUNT_WEI: wei.refine((value) => value > 0n),
+  PRICE_REFERENCE_AMOUNT_WEI: positiveWei,
+
+  SIGNING_MAX_GAS: positiveWei,
+  SIGNING_MAX_FEE_PER_GAS: positiveWei,
+  SIGNING_MAX_PRIORITY_FEE_PER_GAS: positiveWei,
+  SIGNING_MAX_NATIVE_VALUE_WEI: positiveWei,
 
   ADMIN_ADDRESS: address,
   SEEDING_ENABLED: flag,
@@ -67,5 +74,31 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): E
     const names = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];
     throw new Error(`Missing or invalid environment variables: ${names.join(', ')}`);
   }
-  return result.data;
+
+  const config = result.data;
+  const conflicts = [
+    // The signer would refuse every transaction carrying this priority fee.
+    config.SIGNING_MAX_PRIORITY_FEE_PER_GAS > config.SIGNING_MAX_FEE_PER_GAS
+      ? 'SIGNING_MAX_PRIORITY_FEE_PER_GAS'
+      : null,
+    // The API would accept amounts the signer can never sign.
+    config.MAX_AMOUNT_NATIVE_WEI > config.SIGNING_MAX_NATIVE_VALUE_WEI
+      ? 'MAX_AMOUNT_NATIVE_WEI'
+      : null,
+  ].filter((name) => name !== null);
+  if (conflicts.length > 0) {
+    throw new Error(`Environment variables exceed their limits: ${conflicts.join(', ')}`);
+  }
+  return config;
+}
+
+/** The limits KeyManager enforces on every transaction it signs. */
+export function toSigningPolicy(config: EnclaveConfig): SigningPolicy {
+  return {
+    chainId: config.CHAIN_ID,
+    maxGas: config.SIGNING_MAX_GAS,
+    maxFeePerGas: config.SIGNING_MAX_FEE_PER_GAS,
+    maxPriorityFeePerGas: config.SIGNING_MAX_PRIORITY_FEE_PER_GAS,
+    maxNativeValue: config.SIGNING_MAX_NATIVE_VALUE_WEI,
+  };
 }
