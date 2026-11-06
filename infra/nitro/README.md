@@ -1,6 +1,6 @@
 # Nitro operations
 
-The shipped entrypoint is an attestation bootstrap with an unfunded custody self-test. It does not serve the deposit, intent or withdrawal API. Custody modules are packaged and tested; live custody stays disabled until the application bootstrap is wired and KMS recovery is verified.
+The shipped entrypoint is an attestation bootstrap with an unfunded custody self-test. It does not serve the deposit, intent or withdrawal API. Live Nitro/KMS recovery is verified with an isolated test image; funded custody still requires application integration and verification of the final image.
 
 ## Build and launch
 
@@ -19,12 +19,14 @@ Verify a fresh quote with `scripts/verify-attestation.py`, trusted `measurements
 
 ## Persistent custody
 
-1. Supply trusted PCR0–2, a stable random public `VaultId` and an existing key administrator role to `kms.template.json`. The template creates a retained KMS key, EC2 role and instance profile. Validate the CloudFormation template in the target account before creating the stack. Live provisioning has not been performed.
+1. Supply trusted PCR0–2, a stable random public `VaultId` and an existing key administrator role to `kms.template.json`. The template creates a retained KMS key, EC2 role and instance profile. Validate the CloudFormation template in the target account before creating the stack. Demo resources were provisioned through the console; the template has not been deployed as a stack.
 2. Attach the resulting instance profile to the parent. Its credentials alone cannot obtain a plaintext wrapping key. The policy requires recipient attestation and the selected measurements and encryption context. The key administrator remains trusted because it can edit policy.
 3. Run `storage.py --cid 16 --directory /var/lib/cloakroom` and `kms-relay.py parent --region REGION --cid 16` on the parent. Both listen on vsock only, restricted to that enclave CID. The enclave bridge starts the matching internal relays.
-4. Call `openNitroCustody({ keyArn, region, vaultId, journal, policy, allowCreate })`. Initial provisioning explicitly opts into creation. Ordinary restarts omit `allowCreate`. Parent role credentials are fetched through IMDSv2; no static AWS keys are required.
-5. Open the encrypted journal with `keys.journalCipher()`, replay application state, then call `keys.restoreSigningState()`. Inject `keys` into attestation, custody routes, inventory and executor. Mount the application only after all steps succeed.
-6. Test an actual enclave restart with the same state and KMS policy before funding. Both the wrapped data key and custody blob must survive. Back them up together; journal persistence remains an API workstream integration.
+4. Call `openNitroRuntime({ keyArn, region, vaultId, buildHash, allowCreate })`. It validates the enclave environment with `loadConfig` and derives signing limits with `toSigningPolicy`; an explicit `policy` remains supported for isolated tests. Initial provisioning explicitly opts into creation and requires all three blobs absent. Ordinary restarts omit `allowCreate`. Parent role credentials are fetched through IMDSv2; no static AWS keys are required.
+5. Use the returned `keys`, `journal`, `ledger` and `attestation`. Restore remaining application state and executor operations before mounting routes. Journal snapshots are capped at 4 MiB; failed or uncertain storage writes require a runtime restart.
+6. Test an actual enclave restart with the same state and KMS policy before funding. Preserve `wrapping.blob`, `custody.blob` and `journal.blob` together; take backups with writes stopped. Missing or damaged blobs stop startup.
+
+An unfunded, non-debug Nitro test verified KMS-backed state creation and recovery after enclave and storage-service restarts: identity, cached transaction, journal and balances matched; duplicate signing and seeding disclosure stayed blocked. Fresh AWS quotes verified before and after recovery. Parent `GenerateDataKey` and `Decrypt` calls without recipient attestation were denied. The demo KMS policy permits the test image; update its trusted PCRs for the final application image and repeat recovery before funding.
 
 AWS API behavior follows [GenerateDataKey recipient responses](https://docs.aws.amazon.com/kms/latest/APIReference/API_GenerateDataKey.html) and [Nitro attestation conditions](https://docs.aws.amazon.com/kms/latest/developerguide/conditions-nitro-enclave.html).
 
@@ -48,8 +50,7 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 ## Remaining integration
 
-- Live IAM/KMS provisioning, policy validation and Nitro restart recovery.
-- Application server, encrypted journal persistence, swap authorization and RPC egress.
+- Application server wiring and RPC/Uniswap HTTPS egress. Uniswap TLS inside Nitro is not yet deployed or live-verified.
 - Public domain, HTTPS and frontend URL handoff.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Funding after verified deployment, followed by disabling the seeding route.

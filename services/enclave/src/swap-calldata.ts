@@ -34,14 +34,15 @@ export interface SwapCalldataRules {
 /** Wei per ETH multiplied by the 18-decimal scale of a trigger price. */
 const PRICE_AND_NATIVE_SCALE = 10n ** 36n;
 
-/**
- * The least output an order may accept: amount times limit price, with no slippage taken off.
- * It rounds up, because rounding down would allow a fill just under the limit.
- * 0.1 ETH at 3,000 USDC per ETH gives 300 USDC.
- */
-export function limitFloor(amountIn: bigint, triggerPrice: bigint, tokenOutDecimals: number): bigint {
+/** Gross output required to honor the limit after fees. Both divisions round up. */
+export function limitFloor(amountIn: bigint, triggerPrice: bigint, tokenOutDecimals: number, feeBps = 0): bigint {
+  if (amountIn <= 0n || triggerPrice <= 0n || !Number.isInteger(tokenOutDecimals)
+      || tokenOutDecimals < 0 || tokenOutDecimals > 255 || !Number.isInteger(feeBps)
+      || feeBps < 0 || feeBps >= 10_000) throw new Error('INVALID_SWAP_LIMIT');
   const numerator = amountIn * triggerPrice * 10n ** BigInt(tokenOutDecimals);
-  return (numerator + PRICE_AND_NATIVE_SCALE - 1n) / PRICE_AND_NATIVE_SCALE;
+  const net = (numerator + PRICE_AND_NATIVE_SCALE - 1n) / PRICE_AND_NATIVE_SCALE;
+  const retained = 10_000n - BigInt(feeBps);
+  return (net * 10_000n + retained - 1n) / retained;
 }
 
 function unsafe(reason: string): Error {

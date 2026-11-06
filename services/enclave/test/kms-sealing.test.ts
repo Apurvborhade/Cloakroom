@@ -57,7 +57,7 @@ async function mockKms() {
   return { options, kms, store, dataKey, publicKeys, counts: () => ({ generated, decrypted }) };
 }
 
-describe('Nitro KMS sealing', () => {
+describe.skipIf(process.platform !== 'linux')('Nitro KMS sealing (Linux memfd)', () => {
   it('generates and restores an attested data key through real RSA-OAEP CMS, storing only wrapped bytes', async () => {
     const { options, store, dataKey, publicKeys, counts } = await mockKms();
     const first = new NitroKmsSealingKey({ ...options, allowCreate: true });

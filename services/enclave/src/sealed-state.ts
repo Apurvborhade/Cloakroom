@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
 
-const MAX_BLOB_BYTES = 4 * 1024 * 1024;
+export const MAX_BLOB_BYTES = 4 * 1024 * 1024;
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 export interface CipherBlobStore {
@@ -29,8 +29,8 @@ export interface StateVault {
 /** The host receives ciphertext only. This transport cannot prevent whole-store rollback. */
 export class RemoteCipherBlobStore implements CipherBlobStore {
   readonly #path: string;
-  constructor(readonly socketPath: string, vaultId: string, name: 'custody' | 'wrapping') {
-    if (!/^[a-f0-9]{64}$/.test(vaultId) || !['custody', 'wrapping'].includes(name)) throw new Error('INVALID_STORE');
+  constructor(readonly socketPath: string, vaultId: string, name: 'custody' | 'wrapping' | 'journal') {
+    if (!/^[a-f0-9]{64}$/.test(vaultId) || !['custody', 'wrapping', 'journal'].includes(name)) throw new Error('INVALID_STORE');
     this.#path = `/blobs/${vaultId}/${name}`;
   }
   async #request(method: 'GET' | 'POST', bytes?: Uint8Array, expected?: string | null): Promise<Uint8Array | undefined> {

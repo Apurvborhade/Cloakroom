@@ -35,10 +35,10 @@ const ENV_SCHEMA = z.object({
   TOKEN_OUT_ADDRESS: address,
   UNISWAP_API_KEY: secret,
   UNISWAP_API_URL: z.string().url(),
-  TOKEN_OUT_DECIMALS: wholeNumber,
+  TOKEN_OUT_DECIMALS: wholeNumber.refine((value) => value <= 255),
 
   MAX_SLIPPAGE_BPS_CAP: bps,
-  FEE_BPS: bps,
+  FEE_BPS: bps.refine((value) => value < BPS_DENOMINATOR),
   DEPOSIT_SESSION_TTL_SEC: positiveNumber,
   SESSION_GRANT_TTL_SEC: positiveNumber,
   MAX_EXPIRY_FUTURE_SEC: positiveNumber,
@@ -109,5 +109,11 @@ export function toSigningPolicy(config: EnclaveConfig): SigningPolicy {
     maxFeePerGas: config.SIGNING_MAX_FEE_PER_GAS,
     maxPriorityFeePerGas: config.SIGNING_MAX_PRIORITY_FEE_PER_GAS,
     maxNativeValue: config.SIGNING_MAX_NATIVE_VALUE_WEI,
+    swaps: {
+      routerAddress: config.UNIVERSAL_ROUTER_ADDRESS,
+      tokenOut: config.TOKEN_OUT_ADDRESS,
+      tokenOutDecimals: config.TOKEN_OUT_DECIMALS,
+      feeBps: config.FEE_BPS,
+    },
   };
 }

@@ -33,9 +33,11 @@ export interface ExpectedTransaction {
   to: Address;
   value: bigint;
   dataHash: Hex;
+  /** Required for swaps; the signer checks the router commands itself. */
+  data?: Hex;
 }
 
-/** The part of Felix's KeyManager that the executor uses. */
+/** The custody signing interface used by the executor. */
 export interface TransactionSigner {
   registerOp(opId: string, expected: ExpectedTransaction): void | Promise<void>;
   /** Returns the serialized signed transaction. Refuses anything not registered. */
@@ -420,7 +422,7 @@ export class Executor {
     const eoa = chosen.address;
     inventory.hold(eoa, NATIVE, intent.amountIn, opId);
 
-    const floor = limitFloor(intent.amountIn, intent.triggerPrice, swaps.tokenOutDecimals);
+    const floor = limitFloor(intent.amountIn, intent.triggerPrice, swaps.tokenOutDecimals, swaps.feeBps);
     const requestQuote = (slippageBps: number) =>
       swaps.quoter.quote({
         tokenIn: NATIVE,
@@ -502,6 +504,7 @@ export class Executor {
         to: transaction.to,
         value: transaction.value,
         dataHash: keccak256(transaction.data),
+        data: transaction.data,
       });
       raw = await signer.sign(
         eoa,

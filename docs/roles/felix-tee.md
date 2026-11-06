@@ -31,7 +31,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 1 (hours 3 to 12)
 
-- [x] `KeyManager`: sealed state, HD derivation, durable `allocate`, `list`, `sign`; live KMS configuration remains open
+- [x] `KeyManager`: sealed state, HD derivation, durable `allocate`, `list`, `sign`
 - [x] Withdrawal signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
 - [x] `envelope.ts` and shared browser sealing; Chromium-to-enclave transport tested with concurrent contexts
 - [x] Report data commits to `sha256(enclavePubKey || buildHash)`
@@ -77,9 +77,9 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] TEE provider access and non-debug enclave startup
 - [x] Provider pricing checked
 - [x] Attestation format, retrieval through NSM, and independent verification
-- [x] KMS recipient adapter, in-enclave TLS, external ciphertext CAS store and PCR-restricted policy template; live IAM/KMS provisioning remains open
-- [x] Custody seed, HPKE identity, allocations and seeding flag survive external storage process restart in integration tests; journal cipher is stable. Live Nitro/KMS recovery and external rollback checkpoint remain open
+- [x] KMS recipient adapter, in-enclave TLS and external ciphertext CAS store; demo IAM/KMS provisioned and host calls without recipient attestation refused
+- [x] Live Nitro/KMS recovery: identity, allocations, cached signatures, journal and balances survive enclave and storage-service restarts; seeding stays disabled. External rollback checkpoint remains open
 
-## Needed for swaps
+## Swap integration
 
-`KeyManager.#authorize` only accepts `WITHDRAWAL_LOCKED`, so it refuses every swap. `Executor.runIntent` calls `registerOp` with the opId `exec:<intentId>`, `to` set to `UNIVERSAL_ROUTER_ADDRESS` and `value` set to `amountIn`. Authorizing it needs the matching `INTENT_CREATED`, and should refuse the EOAs linked to the owner. The calldata comes from Uniswap, so it cannot be recomputed the way a payout is: `assertSafeSwapCalldata` in `swap-calldata.ts` is the check to reuse. Pass it the order's floor from `limitFloor`, as both `minOut` and `floor`: see the [binding limit floor](../decisions/2026-11-06-1555-binding-limit-floor.md). `SIGNING_MAX_GAS` must fit a swap of about 900,000 gas plus the 20% margin, so the example is 1,200,000.
+The signer enforces journaled limit swaps and the minimum credited after fees; see [the custody handoff](../enclave.md#custody-implementation-handoff). Executor integration is covered on Anvil with the real `KeyManager`. Sepolia smoke with that signer and in-enclave Uniswap HTTPS egress remain open.

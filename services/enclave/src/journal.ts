@@ -1,68 +1,45 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
+import { constants } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import type { JournalCipher } from './keys.js';
 import type { Journal, JournalEntry, JournalEvent } from '@cloakroom/shared';
 import { concat, encodePacked, keccak256, stringToHex, type Hex } from 'viem';
-import type { JournalCipher } from './keys.js';
 
 export const GENESIS_HASH: Hex = '0x0000000000000000000000000000000000000000000000000000000000000000';
 export const DEFAULT_MAX_RECORD_BYTES = 4 * 1024 * 1024; // 4 MB
 
-export interface JournalOptions {
+export type JournalOptions = {
   filePath: string;
-  /** A raw key, for tests and scripts. Pass exactly one of key or cipher. */
-  key?: Buffer | Uint8Array | Hex;
-  /** KeyManager.journalCipher(), so the running service never holds the key itself. */
-  cipher?: JournalCipher;
   maxRecordBytes?: number;
-}
+} & (
+  | { key: Buffer | Uint8Array | Hex; cipher?: never }
+  | { cipher: JournalCipher; key?: never }
+);
 
-interface SealedRecord {
-  iv: Buffer;
-  ciphertext: Buffer;
-  authTag: Buffer;
-}
-
-interface RecordSealer {
-  seal(plaintext: Buffer): SealedRecord;
-  open(record: SealedRecord): Buffer;
-}
-
-function keySealer(key: Buffer): RecordSealer {
+function keyCipher(input: Buffer | Uint8Array | Hex): JournalCipher {
+  if (typeof input === 'string' && !/^(?:0x)?[a-fA-F0-9]{64}$/.test(input)) {
+    throw new Error('JOURNAL_KEY_INVALID');
+  }
+  const bytes = typeof input === 'string'
+    ? Buffer.from(input.replace(/^0x/, ''), 'hex') : Buffer.from(input);
+  if (bytes.length !== 32) throw new Error('JOURNAL_KEY_INVALID');
+  const key = crypto.createSecretKey(bytes);
+  bytes.fill(0);
   return {
-    seal(plaintext) {
+    encrypt(plaintext, aad) {
       const iv = crypto.randomBytes(12);
       const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      cipher.setAAD(aad);
       const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-      return { iv, ciphertext, authTag: cipher.getAuthTag() };
+      return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
     },
-    open({ iv, ciphertext, authTag }) {
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAuthTag(authTag);
-      return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    },
-  };
-}
-
-const CIPHER_ASSOCIATED_DATA = Buffer.from('cloakroom/journal/v1');
-const CIPHER_IV_BYTES = 12;
-const CIPHER_TAG_BYTES = 16;
-
-/** JournalCipher returns nonce, tag, then ciphertext. Records keep the same layout on disk. */
-function cipherSealer(journalCipher: JournalCipher): RecordSealer {
-  return {
-    seal(plaintext) {
-      const sealed = Buffer.from(journalCipher.encrypt(plaintext, CIPHER_ASSOCIATED_DATA));
-      return {
-        iv: sealed.subarray(0, CIPHER_IV_BYTES),
-        authTag: sealed.subarray(CIPHER_IV_BYTES, CIPHER_IV_BYTES + CIPHER_TAG_BYTES),
-        ciphertext: sealed.subarray(CIPHER_IV_BYTES + CIPHER_TAG_BYTES),
-      };
-    },
-    open({ iv, ciphertext, authTag }) {
-      const sealed = Buffer.concat([iv, authTag, ciphertext]);
-      return Buffer.from(journalCipher.decrypt(sealed, CIPHER_ASSOCIATED_DATA));
+    decrypt(sealed, aad) {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, sealed.subarray(0, 12));
+      decipher.setAAD(aad);
+      decipher.setAuthTag(sealed.subarray(12, 28));
+      return Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]);
     },
   };
 }
@@ -112,333 +89,226 @@ export function computeEntryHash(
   return keccak256(concat([packedHeader, prevHash, eventHex]));
 }
 
-/**
- * Production append-only, AES-256-GCM encrypted, hash-chained journal.
- *
- * Each record on disk is framed as:
- * [payloadLength: 4 bytes BE uint32]
- * [iv: 12 bytes]
- * [ciphertext: N bytes]
- * [authTag: 16 bytes]
- */
+export function validateJournalEntry(value: unknown, sequence: number, prevHash: Hex): JournalEntry {
+  const entry = value as JournalEntry;
+  if (!entry || !Number.isSafeInteger(entry.sequence) || !Number.isSafeInteger(entry.timestamp)
+      || entry.timestamp < 0 || !/^0x[a-fA-F0-9]{64}$/.test(entry.prevHash)
+      || !/^0x[a-fA-F0-9]{64}$/.test(entry.entryHash) || !entry.event || typeof entry.event.t !== 'string') {
+    throw new Error('JOURNAL_CORRUPT: malformed payload');
+  }
+  if (entry.sequence !== sequence) throw new Error('JOURNAL_CORRUPT: sequence gap');
+  if (entry.prevHash !== prevHash) throw new Error('JOURNAL_CORRUPT: broken hash chain');
+  if (computeEntryHash(entry.sequence, entry.timestamp, entry.prevHash, entry.event) !== entry.entryHash) {
+    throw new Error('JOURNAL_CORRUPT: entry hash mismatch');
+  }
+  return entry;
+}
+
+function parseEntry(plaintext: Buffer): unknown {
+  try { return parseCanonicalJson(plaintext.toString('utf8')); }
+  catch { throw new Error('JOURNAL_CORRUPT: malformed payload'); }
+}
+
+/** AES-GCM records: [length:u32][iv:12][ciphertext:length][tag:16]. Single writer. */
 export class EncryptedJournal implements Journal {
   private readonly filePath: string;
-  private readonly sealer: RecordSealer;
+  private readonly cipher: JournalCipher;
+  private readonly associatedData: Uint8Array;
   private readonly maxRecordBytes: number;
   private fileHandle: FileHandle | null = null;
   private currentSequence = 0;
   private currentHash: Hex = GENESIS_HASH;
   private confirmedFileSize = 0;
-  private initialized = false;
+  private opening: Promise<FileHandle> | undefined;
   private closed = false;
+  private faulted = false;
   private appendTail: Promise<void> = Promise.resolve();
 
   constructor(options: JournalOptions) {
-    if (!options.filePath) {
-      throw new Error('JOURNAL_PATH_REQUIRED: filePath must not be empty');
-    }
-    this.filePath = options.filePath;
+    if (!options.filePath) throw new Error('JOURNAL_PATH_REQUIRED');
+    this.filePath = resolve(options.filePath);
     this.maxRecordBytes = options.maxRecordBytes ?? DEFAULT_MAX_RECORD_BYTES;
-
+    if (!Number.isSafeInteger(this.maxRecordBytes) || this.maxRecordBytes <= 0
+        || this.maxRecordBytes > 0xffffffff) throw new Error('JOURNAL_RECORD_LIMIT_INVALID');
     if ((options.key === undefined) === (options.cipher === undefined)) {
-      throw new Error('JOURNAL_KEY_INVALID: pass exactly one of key or cipher');
+      throw new Error('JOURNAL_KEY_INVALID: provide exactly one key or cipher');
     }
-    if (options.cipher) {
-      this.sealer = cipherSealer(options.cipher);
-      return;
-    }
-
-    let keyBytes: Buffer;
-    if (typeof options.key === 'string') {
-      const cleanHex = options.key.startsWith('0x') ? options.key.slice(2) : options.key;
-      keyBytes = Buffer.from(cleanHex, 'hex');
-    } else {
-      keyBytes = Buffer.from(options.key as Buffer | Uint8Array);
-    }
-
-    if (keyBytes.length !== 32) {
-      throw new Error(`JOURNAL_KEY_INVALID: encryption key must be exactly 32 bytes, got ${keyBytes.length}`);
-    }
-    this.sealer = keySealer(keyBytes);
+    this.cipher = options.cipher ?? keyCipher(options.key!);
+    this.associatedData = options.cipher ? Buffer.from('cloakroom/journal/v1') : new Uint8Array(0);
   }
 
-  /**
-   * Factory method to open an encrypted journal and initialize its state from disk.
-   */
   static async open(options: JournalOptions): Promise<EncryptedJournal> {
     const journal = new EncryptedJournal(options);
     await journal.init();
     return journal;
   }
 
-  /**
-   * Initializes the file handle and recovers in-memory sequence and hash state from disk.
-   */
-  async init(): Promise<void> {
-    await this.ensureOpen();
-  }
+  async init(): Promise<void> { await this.ensureOpen(); }
+  lastEntryHash(): Hex { return this.currentHash; }
+  sequence(): number { return this.currentSequence; }
 
-  /**
-   * Returns the hash of the latest persisted entry, or GENESIS_HASH if empty.
-   */
-  lastEntryHash(): Hex {
-    return this.currentHash;
-  }
-
-  /**
-   * Returns the current monotonically incremented sequence number.
-   */
-  sequence(): number {
-    return this.currentSequence;
-  }
-
-  /**
-   * Appends an event to the journal with durability guarantees.
-   * Serializes, constructs next sequence and hash, encrypts with AES-256-GCM,
-   * writes the framed record to disk, calls fsync, and returns the persisted JournalEntry.
-   */
   append(event: JournalEvent): Promise<JournalEntry> {
-    if (this.closed) {
-      return Promise.reject(new Error('JOURNAL_CLOSED: cannot append to closed journal'));
-    }
+    if (this.closed) return Promise.reject(new Error('JOURNAL_CLOSED: cannot append to closed journal'));
+    const snapshot = structuredClone(event);
+    const result = this.appendTail.then(async () => {
+      const handle = await this.ensureOpen();
+      const sequence = this.currentSequence + 1;
+      const timestamp = Math.floor(Date.now() / 1000);
+      const prevHash = this.currentHash;
+      const entry: JournalEntry = {
+        sequence, timestamp, prevHash, event: snapshot,
+        entryHash: computeEntryHash(sequence, timestamp, prevHash, snapshot),
+      };
+      const plaintext = Buffer.from(canonicalJson(entry), 'utf8');
+      if (plaintext.length > this.maxRecordBytes) throw new Error('JOURNAL_RECORD_TOO_LARGE');
+      const sealed = Buffer.from(this.cipher.encrypt(plaintext, this.associatedData));
+      if (sealed.length !== plaintext.length + 28) throw new Error('JOURNAL_CIPHER_INVALID');
+      const frame = Buffer.alloc(4 + sealed.length);
+      frame.writeUInt32BE(plaintext.length, 0);
+      sealed.copy(frame, 4, 0, 12);
+      sealed.copy(frame, 16, 28);
+      sealed.copy(frame, 16 + plaintext.length, 12, 28);
 
-    return new Promise<JournalEntry>((resolve, reject) => {
-      this.appendTail = this.appendTail.then(async () => {
-        if (this.closed) {
-          throw new Error('JOURNAL_CLOSED: cannot append to closed journal');
-        }
-
-        const handle = await this.ensureOpen();
-        const seq = this.currentSequence + 1;
-        const ts = Math.floor(Date.now() / 1000);
-        const prevHash = this.currentHash;
-
-        const entryHash = computeEntryHash(seq, ts, prevHash, event);
-        const entry: JournalEntry = {
-          sequence: seq,
-          timestamp: ts,
-          prevHash,
-          event,
-          entryHash,
-        };
-
-        const serializedEntry = canonicalJson(entry);
-        const plaintext = Buffer.from(serializedEntry, 'utf8');
-
-        const { iv, ciphertext, authTag } = this.sealer.seal(plaintext);
-
-        const fullFrameLength = 4 + 12 + ciphertext.length + 16;
-        const frame = Buffer.alloc(fullFrameLength);
-        frame.writeUInt32BE(ciphertext.length, 0);
-        iv.copy(frame, 4);
-        ciphertext.copy(frame, 16);
-        authTag.copy(frame, 16 + ciphertext.length);
-
-        const writeOffset = this.confirmedFileSize;
-        try {
-          await handle.write(frame, 0, frame.length, writeOffset);
-          await handle.sync();
-        } catch (writeErr) {
-          try {
-            await handle.truncate(writeOffset);
-            await handle.sync();
-          } catch {
-            // Best effort rollback of partial append
+      const writeOffset = this.confirmedFileSize;
+      if ((await handle.stat()).size !== writeOffset) {
+        this.faulted = true;
+        throw new Error('JOURNAL_CORRUPT: file size changed');
+      }
+      try {
+        let written = 0;
+        while (written < frame.length) {
+          const { bytesWritten } = await handle.write(frame, written, frame.length - written, writeOffset + written);
+          if (!Number.isSafeInteger(bytesWritten) || bytesWritten <= 0 || bytesWritten > frame.length - written) {
+            throw new Error('JOURNAL_WRITE_FAILED');
           }
-          throw writeErr;
+          written += bytesWritten;
         }
-
-        this.confirmedFileSize += frame.length;
-        this.currentSequence = seq;
-        this.currentHash = entryHash;
-        return entry;
-      }).then(resolve, reject);
+        await handle.sync();
+      } catch (error) {
+        try {
+          await handle.truncate(writeOffset);
+          await handle.sync();
+        } catch {
+          this.faulted = true;
+        }
+        throw error;
+      }
+      this.confirmedFileSize += frame.length;
+      this.currentSequence = sequence;
+      this.currentHash = entry.entryHash;
+      return entry;
     });
+    this.appendTail = result.then(() => undefined, () => undefined);
+    return result;
   }
 
-  /**
-   * Replays all entries from the beginning of the journal in chronological order.
-   * Validates frame framing, auth tag, sequence continuity, previous hash, and recomputed hash.
-   */
   async *replay(): AsyncIterable<JournalEntry> {
-    if (this.closed) {
-      throw new Error('JOURNAL_CLOSED: cannot replay closed journal');
-    }
-
+    await this.appendTail;
     const handle = await this.ensureOpen();
-    let offset = 0;
-    let expectedSeq = 1;
-    let expectedPrevHash: Hex = GENESIS_HASH;
-
-    while (offset < this.confirmedFileSize) {
-      const headerBuf = Buffer.alloc(4);
-      await handle.read(headerBuf, 0, 4, offset);
-      const payloadLength = headerBuf.readUInt32BE(0);
-
-      const fullFrameLength = 4 + 12 + payloadLength + 16;
-      const frameBuf = Buffer.alloc(fullFrameLength - 4);
-      await handle.read(frameBuf, 0, fullFrameLength - 4, offset + 4);
-
-      const iv = frameBuf.subarray(0, 12);
-      const ciphertext = frameBuf.subarray(12, 12 + payloadLength);
-      const authTag = frameBuf.subarray(12 + payloadLength, 12 + payloadLength + 16);
-
-      let plaintextBuf: Buffer;
-      try {
-        plaintextBuf = this.sealer.open({ iv, ciphertext, authTag });
-      } catch (err) {
-        throw new Error(
-          `JOURNAL_CORRUPT: authentication tag verification failed at sequence ${expectedSeq} (offset ${offset}): ${(err as Error).message}`
-        );
-      }
-
-      let entry: JournalEntry;
-      try {
-        entry = parseCanonicalJson<JournalEntry>(plaintextBuf.toString('utf8'));
-      } catch (err) {
-        throw new Error(
-          `JOURNAL_CORRUPT: malformed payload at sequence ${expectedSeq} (offset ${offset}): ${(err as Error).message}`
-        );
-      }
-
-      if (entry.sequence !== expectedSeq) {
-        throw new Error(
-          `JOURNAL_CORRUPT: sequence gap during replay at offset ${offset}: expected ${expectedSeq}, got ${entry.sequence}`
-        );
-      }
-      if (entry.prevHash !== expectedPrevHash) {
-        throw new Error(
-          `JOURNAL_CORRUPT: broken hash chain during replay at sequence ${entry.sequence}: expected ${expectedPrevHash}, got ${entry.prevHash}`
-        );
-      }
-
-      const recomputedHash = computeEntryHash(entry.sequence, entry.timestamp, entry.prevHash, entry.event);
-      if (entry.entryHash !== recomputedHash) {
-        throw new Error(
-          `JOURNAL_CORRUPT: entry hash mismatch during replay at sequence ${entry.sequence}: expected ${recomputedHash}, got ${entry.entryHash}`
-        );
-      }
-
-      offset += fullFrameLength;
-      expectedSeq = entry.sequence + 1;
-      expectedPrevHash = entry.entryHash;
-      yield entry;
+    const size = this.confirmedFileSize;
+    try {
+      if ((await handle.stat()).size < size) throw new Error('JOURNAL_CORRUPT: file truncated');
+      yield* this.readEntries(handle, size);
+    } catch (error) {
+      this.faulted = true;
+      throw error;
     }
   }
 
-  /**
-   * Flushes and closes the underlying file handle. Idempotent.
-   */
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    await this.appendTail.catch(() => {});
+    await this.appendTail;
+    await this.opening?.catch(() => undefined);
     if (this.fileHandle) {
       await this.fileHandle.close();
       this.fileHandle = null;
     }
   }
 
-  private async ensureOpen(): Promise<FileHandle> {
-    if (this.closed) throw new Error('JOURNAL_CLOSED: journal is closed');
-    if (!this.fileHandle) {
-      await fs.mkdir(dirname(this.filePath), { recursive: true });
-      this.fileHandle = await fs.open(this.filePath, 'a+');
-    }
-    if (!this.initialized) {
-      await this.recoverAndRestoreState();
-      this.initialized = true;
-    }
-    return this.fileHandle;
+  private ensureOpen(): Promise<FileHandle> {
+    if (this.closed) return Promise.reject(new Error('JOURNAL_CLOSED: journal is closed'));
+    if (this.faulted) return Promise.reject(new Error('JOURNAL_UNAVAILABLE'));
+    this.opening ??= this.openFile();
+    return this.opening;
   }
 
-  private async recoverAndRestoreState(): Promise<void> {
-    const handle = this.fileHandle!;
-    const stat = await handle.stat();
-    let offset = 0;
-    let expectedSeq = 1;
-    let expectedPrevHash: Hex = GENESIS_HASH;
-
-    while (offset < stat.size) {
-      const remaining = stat.size - offset;
-      if (remaining < 4) {
-        // Incomplete length header at EOF. Truncate partial write.
-        await handle.truncate(offset);
-        await handle.sync();
-        break;
+  private async openFile(): Promise<FileHandle> {
+    let handle: FileHandle | undefined;
+    try {
+      const created = await fs.mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+      handle = await fs.open(this.filePath, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+      const stat = await handle.stat();
+      if (!stat.isFile()) throw new Error('JOURNAL_CORRUPT: not a regular file');
+      // Persist the file entry and any newly created parent directories.
+      const lastDirectory = created ? dirname(created) : dirname(this.filePath);
+      for (let path = dirname(this.filePath); ; path = dirname(path)) {
+        const directory = await fs.open(path, constants.O_RDONLY | constants.O_DIRECTORY);
+        try { await directory.sync(); } finally { await directory.close(); }
+        if (path === lastDirectory) break;
       }
-
-      const headerBuf = Buffer.alloc(4);
-      await handle.read(headerBuf, 0, 4, offset);
-      const payloadLength = headerBuf.readUInt32BE(0);
-
-      if (payloadLength > this.maxRecordBytes) {
-        throw new Error(
-          `JOURNAL_CORRUPT: record size ${payloadLength} exceeds maximum allowed size ${this.maxRecordBytes}`
-        );
+      let sequence = 0;
+      let hash = GENESIS_HASH;
+      for await (const entry of this.readEntries(handle, stat.size)) {
+        sequence = entry.sequence;
+        hash = entry.entryHash;
       }
-
-      const fullFrameLength = 4 + 12 + payloadLength + 16;
-      if (remaining < fullFrameLength) {
-        // Incomplete frame body at EOF. Truncate partial write.
-        await handle.truncate(offset);
-        await handle.sync();
-        break;
-      }
-
-      const frameBuf = Buffer.alloc(fullFrameLength - 4);
-      await handle.read(frameBuf, 0, fullFrameLength - 4, offset + 4);
-
-      const iv = frameBuf.subarray(0, 12);
-      const ciphertext = frameBuf.subarray(12, 12 + payloadLength);
-      const authTag = frameBuf.subarray(12 + payloadLength, 12 + payloadLength + 16);
-
-      let plaintextBuf: Buffer;
-      try {
-        plaintextBuf = this.sealer.open({ iv, ciphertext, authTag });
-      } catch (err) {
-        throw new Error(
-          `JOURNAL_CORRUPT: authentication tag verification failed at sequence ${expectedSeq} (offset ${offset}): ${(err as Error).message}`
-        );
-      }
-
-      let entry: JournalEntry;
-      try {
-        entry = parseCanonicalJson<JournalEntry>(plaintextBuf.toString('utf8'));
-      } catch (err) {
-        throw new Error(
-          `JOURNAL_CORRUPT: malformed payload at sequence ${expectedSeq} (offset ${offset}): ${(err as Error).message}`
-        );
-      }
-
-      if (typeof entry !== 'object' || entry === null) {
-        throw new Error(`JOURNAL_CORRUPT: entry is not an object at sequence ${expectedSeq}`);
-      }
-      if (entry.sequence !== expectedSeq) {
-        throw new Error(
-          `JOURNAL_CORRUPT: sequence gap at offset ${offset}: expected ${expectedSeq}, got ${entry.sequence}`
-        );
-      }
-      if (entry.prevHash !== expectedPrevHash) {
-        throw new Error(
-          `JOURNAL_CORRUPT: broken hash chain at sequence ${entry.sequence}: expected prevHash ${expectedPrevHash}, got ${entry.prevHash}`
-        );
-      }
-
-      const recomputedHash = computeEntryHash(entry.sequence, entry.timestamp, entry.prevHash, entry.event);
-      if (entry.entryHash !== recomputedHash) {
-        throw new Error(
-          `JOURNAL_CORRUPT: entry hash mismatch at sequence ${entry.sequence}: expected ${recomputedHash}, got ${entry.entryHash}`
-        );
-      }
-
-      offset += fullFrameLength;
-      expectedSeq = entry.sequence + 1;
-      expectedPrevHash = entry.entryHash;
+      this.currentSequence = sequence;
+      this.currentHash = hash;
+      this.confirmedFileSize = stat.size;
+      this.fileHandle = handle;
+      return handle;
+    } catch (error) {
+      this.faulted = true;
+      await handle?.close().catch(() => undefined);
+      throw error;
     }
+  }
 
-    this.confirmedFileSize = offset;
-    this.currentSequence = expectedSeq - 1;
-    this.currentHash = expectedPrevHash;
+  private async readExact(handle: FileHandle, length: number, position: number): Promise<Buffer> {
+    const buffer = Buffer.alloc(length);
+    let read = 0;
+    while (read < length) {
+      const { bytesRead } = await handle.read(buffer, read, length - read, position + read);
+      if (!Number.isSafeInteger(bytesRead) || bytesRead <= 0 || bytesRead > length - read) {
+        throw new Error('JOURNAL_CORRUPT: incomplete record');
+      }
+      read += bytesRead;
+    }
+    return buffer;
+  }
+
+  private async *readEntries(handle: FileHandle, size: number) {
+    let offset = 0;
+    let sequence = 1;
+    let prevHash = GENESIS_HASH;
+    while (offset < size) {
+      // An incomplete tail might be a damaged committed record. Never truncate it automatically.
+      if (size - offset < 4) throw new Error('JOURNAL_CORRUPT: incomplete header');
+      const header = await this.readExact(handle, 4, offset);
+      const length = header.readUInt32BE(0);
+      if (length > this.maxRecordBytes) throw new Error('JOURNAL_CORRUPT: record exceeds maximum allowed size');
+      const frameLength = 4 + 12 + length + 16;
+      if (frameLength > size - offset) throw new Error('JOURNAL_CORRUPT: incomplete record');
+      const frame = await this.readExact(handle, frameLength - 4, offset + 4);
+      let plaintext: Buffer;
+      try {
+        const sealed = Buffer.concat([frame.subarray(0, 12), frame.subarray(12 + length), frame.subarray(12, 12 + length)]);
+        try {
+          plaintext = Buffer.from(this.cipher.decrypt(sealed, this.associatedData));
+        } catch (error) {
+          if (this.associatedData.length === 0) throw error;
+          // Earlier cipher-backed journals authenticated with empty associated data.
+          plaintext = Buffer.from(this.cipher.decrypt(sealed, new Uint8Array(0)));
+        }
+      } catch {
+        throw new Error('JOURNAL_CORRUPT: authentication tag verification failed');
+      }
+      const entry = validateJournalEntry(parseEntry(plaintext), sequence, prevHash);
+      offset += frameLength;
+      sequence++;
+      prevHash = entry.entryHash;
+      yield entry;
+    }
   }
 }

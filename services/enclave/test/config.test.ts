@@ -85,6 +85,8 @@ describe('loadConfig', () => {
     ['UNISWAP_API_KEY', ''],
     ['MAX_SLIPPAGE_BPS_CAP', '10001'],
     ['FEE_BPS', '10001'],
+    ['FEE_BPS', '10000'],
+    ['TOKEN_OUT_DECIMALS', '256'],
     ['PRICE_REFERENCE_AMOUNT_WEI', '0'],
     ['SIGNING_MAX_GAS', '0'],
     ['SIGNING_MAX_FEE_PER_GAS', '0'],
@@ -139,11 +141,15 @@ describe('loadConfig', () => {
       maxFeePerGas: 4n,
       maxPriorityFeePerGas: 3n,
       maxNativeValue: 5n,
+      swaps: { routerAddress: config.UNIVERSAL_ROUTER_ADDRESS, tokenOut: config.TOKEN_OUT_ADDRESS,
+        tokenOutDecimals: config.TOKEN_OUT_DECIMALS, feeBps: config.FEE_BPS },
     });
   });
 
-  it('allows swap-sized gas with the example values', () => {
-    expect(loadConfig(validEnv()).SIGNING_MAX_GAS).toBeGreaterThanOrEqual(1_080_000n);
+  it('allows swap-sized gas including the executor margin with the example values', () => {
+    const config = loadConfig(validEnv());
+    const gasLimit = (900_000n * BigInt(config.GAS_MARGIN_PERCENT)) / 100n;
+    expect(config.SIGNING_MAX_GAS).toBeGreaterThanOrEqual(gasLimit);
   });
 
   it('builds a policy the real KeyManager accepts', () => {
