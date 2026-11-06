@@ -135,7 +135,7 @@ export class MarginFundingState {
       if (typeof event.borrow.amount !== 'bigint' || event.borrow.amount < 0n) throw new Error('MARGIN_AMOUNT_INVALID');
       const collateral = getAddress(event.collateral.token), borrowed = getAddress(event.borrow.token);
       if (this.ledger.getReservation(collateralRef(event.opId))) throw new Error('MARGIN_OP_CONFLICT');
-      if (this.ledger.getBalance(owner, collateral).available < event.collateral.amount) throw new Error('INSUFFICIENT_BALANCE');
+      if (this.ledger.getBalance(owner, collateral).available < event.collateral.amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_BALANCE);
       if (this.pool(borrowed).available < event.borrow.amount) throw new AuthError(ERROR_CODES.INSUFFICIENT_LIQUIDITY, 'INSUFFICIENT_LENDING_LIQUIDITY');
     } else {
       positive(event.amount);
