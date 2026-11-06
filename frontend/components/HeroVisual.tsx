@@ -187,7 +187,7 @@ export function HeroVisual({
         ? Math.min(width, height) / 540
         : Math.min(width, height) / 500;
 
-      // Extremely subtle, dark ambient gradient (NO heavy blue glow, quiet center)
+      // Subtle ambient gradient matching titanium slate
       const radialGlow = ctx.createRadialGradient(
         centerX,
         centerY,
@@ -196,10 +196,10 @@ export function HeroVisual({
         centerY,
         280 * scale
       );
-      radialGlow.addColorStop(0, "rgba(166, 220, 248, 0.018)");
-      radialGlow.addColorStop(0.35, "rgba(16, 16, 22, 0.2)");
-      radialGlow.addColorStop(0.7, "rgba(12, 12, 12, 0.85)");
-      radialGlow.addColorStop(1, "rgba(12, 12, 12, 0)");
+      radialGlow.addColorStop(0, "rgba(59, 130, 246, 0.03)");
+      radialGlow.addColorStop(0.35, "rgba(22, 27, 34, 0.2)");
+      radialGlow.addColorStop(0.7, "rgba(15, 19, 24, 0.85)");
+      radialGlow.addColorStop(1, "rgba(15, 19, 24, 0)");
       ctx.fillStyle = radialGlow;
       ctx.fillRect(0, 0, width, height);
 

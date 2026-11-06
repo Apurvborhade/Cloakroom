@@ -6,14 +6,15 @@ import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { AttestationBadge } from "./AttestationBadge";
 import { WalletModal } from "./WalletModal";
-import { Menu, X, ArrowUpRight } from "lucide-react";
+import { useWallet } from "@/hooks/useWallet";
+import { Menu, X, Wallet, Shield } from "lucide-react";
 
 export function Navigation() {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+  const { account, networkName, isConnecting } = useWallet();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -26,10 +27,10 @@ export function Navigation() {
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-200 ${
           isScrolled
-            ? "bg-[#0C0C0C]/90 backdrop-blur-md border-b border-[#292930]/80 py-3.5 shadow-lg shadow-black/40"
-            : "bg-transparent border-b border-transparent py-5"
+            ? "bg-[#161B22]/95 backdrop-blur-md border-b border-[#232B36] py-3.5 shadow-md shadow-black/30"
+            : "bg-[#0F1318]/80 backdrop-blur-sm border-b border-[#232B36]/60 py-4"
         }`}
       >
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10 flex items-center justify-between">
@@ -40,116 +41,156 @@ export function Navigation() {
           >
             <Logo size={24} />
             <div className="flex items-center gap-2">
-              <span className="font-sans font-semibold tracking-[0.22em] text-xs sm:text-sm text-[#F5F5F7] uppercase">
-                CLOAKROOM
+              <span className="font-sans font-bold tracking-[0.2em] text-sm sm:text-base text-[#F0F4F8] uppercase">
+                NONY
               </span>
-              <span className="hidden sm:inline-block text-[9px] font-mono tracking-widest text-[#A6DCF8]/80 px-1.5 py-0.5 rounded border border-[#A6DCF8]/20 bg-[#A6DCF8]/5 uppercase">
-                v0.1 TEE
+              <span className="hidden sm:inline-block text-[9px] font-mono tracking-widest text-[#3B82F6] px-1.5 py-0.5 rounded border border-[#3B82F6]/30 bg-[#3B82F6]/10 uppercase">
+                TEE Enclave
               </span>
             </div>
           </Link>
 
-          {/* Right: Desktop Navigation Links & Action */}
-          <nav className="hidden md:flex items-center gap-8">
-            <div className="flex items-center gap-7">
-              <a
-                href="/#protocol"
-                className="text-xs font-medium tracking-wide text-[#92929B] hover:text-[#F5F5F7] transition-colors relative py-1 after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-[#A6DCF8] hover:after:w-full after:transition-all after:duration-200"
-              >
-                Protocol
-              </a>
-              <a
-                href="/#how-it-works"
-                className="text-xs font-medium tracking-wide text-[#92929B] hover:text-[#F5F5F7] transition-colors relative py-1 after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-[#A6DCF8] hover:after:w-full after:transition-all after:duration-200"
-              >
-                How It Works
-              </a>
-              <a
-                href="https://github.com/Apurvborhade/Cloakroom/tree/main/docs"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs font-medium tracking-wide text-[#92929B] hover:text-[#F5F5F7] transition-colors group"
-              >
-                <span>Documentation</span>
-                <ArrowUpRight
-                  size={12}
-                  className="text-[#666672] group-hover:text-[#A6DCF8] transition-colors"
-                />
-              </a>
-            </div>
-
-            <div className="h-4 w-[1px] bg-[#292930]" />
-
-            <div className="flex items-center gap-3">
-              <AttestationBadge />
-
-              <button
-                onClick={() => setWalletModalOpen(true)}
-                className="group relative inline-flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-medium tracking-wide transition-all duration-200 border border-[#3A3A46] bg-[#141418] hover:bg-[#1A1A22] hover:border-[#A6DCF8]/50 text-[#F5F5F7] active:scale-[0.98] shadow-sm hover:shadow-[0_0_12px_rgba(166,220,248,0.15)]"
-              >
-                {connectedAddress ? (
-                  <span className="font-mono text-xs text-[#A6DCF8]">
-                    {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
-                  </span>
-                ) : (
-                  <span>Connect Wallet</span>
-                )}
-              </button>
-            </div>
+          {/* Center: Navigation Links */}
+          <nav className="hidden md:flex items-center gap-6 text-xs font-mono">
+            <Link
+              href="/deposit"
+              className={`hover:text-[#F0F4F8] transition-colors py-1 ${
+                pathname === "/deposit" ? "text-[#3B82F6] font-semibold" : "text-[#94A3B8]"
+              }`}
+            >
+              Deposit
+            </Link>
+            <Link
+              href="/execution"
+              className={`hover:text-[#F0F4F8] transition-colors py-1 ${
+                pathname === "/execution" ? "text-[#3B82F6] font-semibold" : "text-[#94A3B8]"
+              }`}
+            >
+              Strategy
+            </Link>
+            <Link
+              href="/pool"
+              className={`hover:text-[#F0F4F8] transition-colors py-1 ${
+                pathname.startsWith("/pool") ? "text-[#3B82F6] font-semibold" : "text-[#94A3B8]"
+              }`}
+            >
+              Pool Trading
+            </Link>
+            <Link
+              href="/mix"
+              className={`hover:text-[#F0F4F8] transition-colors py-1 ${
+                pathname.startsWith("/mix") ? "text-[#3B82F6] font-semibold" : "text-[#94A3B8]"
+              }`}
+            >
+              Privacy Mix
+            </Link>
+            <Link
+              href="/wallet"
+              className={`hover:text-[#F0F4F8] transition-colors py-1 ${
+                pathname.startsWith("/wallet") ? "text-[#3B82F6] font-semibold" : "text-[#94A3B8]"
+              }`}
+            >
+              Portfolio
+            </Link>
           </nav>
+
+          {/* Right: Attestation & Wallet */}
+          <div className="hidden md:flex items-center gap-3">
+            <AttestationBadge />
+
+            {account ? (
+              <button
+                type="button"
+                onClick={() => setWalletModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1C222B] border border-[#232B36] hover:border-[#3A4759] text-xs font-mono text-[#F0F4F8] transition-colors focus:outline-none"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                <span>
+                  {account.slice(0, 6)}...{account.slice(-4)}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setWalletModalOpen(true)}
+                disabled={isConnecting}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white text-xs font-semibold tracking-wide transition-colors focus:outline-none shadow-sm"
+              >
+                <Wallet size={13} />
+                <span>{isConnecting ? "Connecting..." : "Connect"}</span>
+              </button>
+            )}
+          </div>
 
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 md:hidden">
             <AttestationBadge />
             <button
+              type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg text-[#92929B] hover:text-[#F5F5F7] hover:bg-[#141418] transition-colors"
-              aria-label="Toggle Menu"
+              className="p-1.5 rounded-lg text-[#94A3B8] hover:text-[#F0F4F8] hover:bg-[#1C222B] transition-colors focus:outline-none"
+              aria-label="Toggle menu"
             >
               {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
         </div>
 
-        {/* Mobile Dropdown Menu */}
+        {/* Mobile Dropdown */}
         {mobileMenuOpen && (
-          <div className="md:hidden px-4 pt-4 pb-6 bg-[#0C0C0C]/95 backdrop-blur-xl border-b border-[#292930] animate-fade-in">
-            <div className="flex flex-col space-y-4">
-              <a
-                href="/#protocol"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-sm font-medium text-[#92929B] hover:text-[#F5F5F7] py-1"
-              >
-                Protocol
-              </a>
-              <a
-                href="/#how-it-works"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-sm font-medium text-[#92929B] hover:text-[#F5F5F7] py-1"
-              >
-                How It Works
-              </a>
-              <a
-                href="https://github.com/Apurvborhade/Cloakroom/tree/main/docs"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-between text-sm font-medium text-[#92929B] hover:text-[#F5F5F7] py-1"
-              >
-                <span>Documentation</span>
-                <ArrowUpRight size={14} className="text-[#666672]" />
-              </a>
-
-              <div className="pt-2 border-t border-[#202026]">
+          <div className="md:hidden border-t border-[#232B36] bg-[#161B22] px-4 py-4 space-y-3 font-mono text-xs">
+            <Link
+              href="/deposit"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block py-2 text-[#94A3B8] hover:text-[#F0F4F8]"
+            >
+              Deposit
+            </Link>
+            <Link
+              href="/execution"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block py-2 text-[#94A3B8] hover:text-[#F0F4F8]"
+            >
+              Strategy Selection
+            </Link>
+            <Link
+              href="/pool"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block py-2 text-[#94A3B8] hover:text-[#F0F4F8]"
+            >
+              Pool Trading
+            </Link>
+            <Link
+              href="/mix"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block py-2 text-[#94A3B8] hover:text-[#F0F4F8]"
+            >
+              Privacy Mix
+            </Link>
+            <Link
+              href="/wallet"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block py-2 text-[#94A3B8] hover:text-[#F0F4F8]"
+            >
+              Portfolio &amp; Cash Out
+            </Link>
+            <div className="pt-2 border-t border-[#232B36]">
+              {account ? (
+                <div className="py-2 text-[#10B981] font-semibold">
+                  Connected: {account.slice(0, 8)}...{account.slice(-4)}
+                </div>
+              ) : (
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     setWalletModalOpen(true);
                   }}
-                  className="w-full py-2.5 rounded-full text-xs font-medium tracking-wide border border-[#3A3A46] bg-[#141418] text-[#F5F5F7] text-center"
+                  className="w-full py-2.5 rounded-lg bg-[#3B82F6] text-white font-semibold text-center"
                 >
-                  {connectedAddress ? connectedAddress.slice(0, 8) + "..." : "Connect Wallet"}
+                  Connect Wallet
                 </button>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -158,9 +199,7 @@ export function Navigation() {
       <WalletModal
         isOpen={walletModalOpen}
         onClose={() => setWalletModalOpen(false)}
-        onConnect={(addr) => setConnectedAddress(addr)}
       />
     </>
   );
 }
-

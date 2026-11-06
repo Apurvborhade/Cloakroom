@@ -22,9 +22,8 @@ export function AttestationBadge() {
         <span className="text-[11px] text-[#A6DCF8] hidden sm:inline">Nitro PCR0</span>
         <ChevronDown
           size={12}
-          className={`text-[#92929B] transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={`text-[#92929B] transition-transform duration-200 ${isOpen ? "rotate-180" : ""
+            }`}
         />
       </button>
 

@@ -1,11 +1,13 @@
+"use client";
+
 import React from "react";
 
 interface LogoProps {
-  className?: string;
   size?: number;
+  className?: string;
 }
 
-export function Logo({ className = "", size = 26 }: LogoProps) {
+export function Logo({ size = 24, className = "" }: LogoProps) {
   return (
     <div className={`relative flex items-center justify-center ${className}`}>
       <svg
@@ -16,36 +18,30 @@ export function Logo({ className = "", size = 26 }: LogoProps) {
         xmlns="http://www.w3.org/2000/svg"
         className="transition-transform duration-300 ease-out group-hover:scale-105"
       >
-        {/* Outer subtle shield border */}
+        {/* Outer Shield Hexagon */}
         <polygon
           points="16,2 29,9.5 29,22.5 16,30 3,22.5 3,9.5"
-          stroke="#292930"
-          strokeWidth="1.25"
-          fill="#141418"
-          fillOpacity="0.8"
+          stroke="#232B36"
+          strokeWidth="1.5"
+          fill="#161B22"
         />
-
-        {/* Intermediate cryptographic veil geometry */}
+        {/* Inner Attestation Wireframe */}
         <path
           d="M16 6L25 11.2V20.8L16 26L7 20.8V11.2L16 6Z"
-          stroke="#383844"
+          stroke="#3A4759"
           strokeWidth="1"
           strokeDasharray="2 2"
           fill="none"
         />
-
-        {/* Inner protected confidential core */}
+        {/* Center Enclave Nucleus */}
         <polygon
           points="16,10 21,13.5 21,18.5 16,22 11,18.5 11,13.5"
-          stroke="#A6DCF8"
+          stroke="#3B82F6"
           strokeWidth="1.2"
-          fill="#0C0C0C"
+          fill="#0F1318"
         />
-
-        {/* Central shielded node */}
-        <circle cx="16" cy="16" r="2" fill="#A6DCF8" />
+        <circle cx="16" cy="16" r="2.2" fill="#3B82F6" />
       </svg>
     </div>
   );
 }
-
