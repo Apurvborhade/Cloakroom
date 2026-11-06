@@ -857,3 +857,49 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commits:** `9445d3751e43f5d951fa8933b8943ee12d73e7f1` (`feat(enclave): check Universal Router calldata before signing`), `1814aed8768fa97eb3ac7910774b63bbf0399fca` (`feat(enclave): add swap execution, and book withdrawal gas live`)
 - **Pushed to Remote:** No
+
+---
+
+## Task A11: Recovery on Boot
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task A11 (Apurva's workstream) — Recovery on Boot
+- **Status:** Committed on branch `feat/executor-recover`. Not pushed by this entry.
+- **Objective:** Finish what a restart interrupted, without ever sending a payment twice.
+
+### Files Created
+- `services/enclave/test/executor-recover.test.ts`
+- `docs/decisions/2026-11-06-1330-recovery-rules.md`
+
+### Files Modified
+- `services/enclave/src/executor.ts` (added `recover`, and moved settlement into `settleIntent` and `settleWithdrawal` so recovery uses the same code)
+- `services/enclave/src/inventory.ts` (added `restoreHold`)
+- `docs/chain-logic.md`, `docs/enclave.md`, `docs/testing.md`, `docs/decisions/README.md`, `docs/roles/apurva-onchain.md`, `README.md`
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- See `docs/decisions/2026-11-06-1330-recovery-rules.md`. A moved nonce with no receipt is flagged for review with funds reserved, which departs from the spec, because releasing could pay twice.
+
+### Tests Added
+- `services/enclave/test/executor-recover.test.ts`: 29 tests on a local Anvil chain. Each restart closes the journal, reopens it from disk, and rebuilds the ledger and inventory.
+- Twenty-three deliberate bugs were introduced. Four escaped at first, which led to new tests, and all are now caught.
+
+### Exact Verification Commands & Results
+- `pnpm test` on macOS: 3 failed | 487 passed (490). The 3 failures are in `kms-sealing.test.ts` and `sealed-state.test.ts`, the same 3 that failed on a clean `origin/main` before this work.
+- `pnpm typecheck`: Exited with code 0.
+
+### Known Limitations & Unresolved Questions
+- Tests simulate a crash by stopping the process's work and reopening the journal. No test kills a real process with `kill -9`, and this has not run on Sepolia.
+- Tests use the stand-in signer. Recovery signs nothing, so Felix's signer is only involved through the normal run before a crash.
+- Nothing calls `recover` at boot yet, because no boot file exists.
+- There is no tool for working through operations flagged for review.
+
+### Integration Handoffs
+- **Boot file owner:** journal, then `replayLedger`, then `IntentStore` and `inventory.replay`, then `watcher.replay`, then `executor.recover(journal.replay())`, and only then start the server, watcher and price poller.
+- **Felix:** `recover` does not use `recoverSigned`. A transaction signed but not journaled was never sent, so its withdrawal fails and the user asks again.
+
+### Commit Reference
+- **Commit:** `657e7e05227878be119bfd2362876f357387a03f` (`feat(enclave): add Executor.recover`)
+- **Pushed to Remote:** No

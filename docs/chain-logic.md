@@ -77,13 +77,14 @@ Before the demo, fund 4 to 6 EOAs with ETH and the output token so withdrawals n
 
 ## Recovery on boot (`executor.recover`)
 
-For each broadcast without a terminal event, look up the receipt by hash.
+Runs once on boot, after replay and before anything else starts. Unfinished operations get their holds back before any network call. For each broadcast without a final event:
 
-- **Found:** settle or fail it.
-- **Not found and the EOA nonce has not moved:** rebroadcast the identical raw transaction.
-- **The nonce moved:** mark the operation failed for manual review.
+- **Receipt found:** settle or fail it, through the same code as a normal run.
+- **No receipt, and the EOA nonce has not moved:** send the identical raw transaction again, then settle.
+- **No receipt, and the nonce moved:** flag it for review, and keep the funds reserved.
+- **The chain cannot be reached:** leave it unresolved, and try again on the next boot.
 
-This is why the raw signed transaction is stored in the BROADCAST journal events.
+A withdrawal locked but never broadcast has its funds released, because the broadcast is journaled before sending. This is why the raw signed transaction is stored in the BROADCAST journal events. See [Recovery rules](decisions/2026-11-06-1330-recovery-rules.md).
 
 ## Known gaps
 

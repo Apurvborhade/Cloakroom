@@ -2,6 +2,7 @@ import { ERROR_CODES, NATIVE } from '@cloakroom/shared';
 import type {
   IntentStore,
   Journal,
+  JournalEvent,
   Ledger,
   LockedWithdrawal,
   SerialQueue,
@@ -48,6 +49,7 @@ export type ExecutorChain = Pick<
   | 'call'
   | 'estimateGas'
   | 'getTransactionCount'
+  | 'getTransactionReceipt'
   | 'sendRawTransaction'
   | 'waitForTransactionReceipt'
 >;
@@ -56,7 +58,10 @@ export interface ExecutorDeps {
   chain: ExecutorChain;
   chainId: number;
   signer: TransactionSigner;
-  inventory: Pick<Inventory, 'eoasLinkedTo' | 'free' | 'hold' | 'linkOwner' | 'pick' | 'refresh'>;
+  inventory: Pick<
+    Inventory,
+    'eoasLinkedTo' | 'free' | 'hold' | 'linkOwner' | 'pick' | 'refresh' | 'restoreHold'
+  >;
   journal: Pick<Journal, 'append'>;
   /** The withdrawal ID must be the ref the funds were reserved under. */
   ledger: Pick<Ledger, 'consume' | 'release'> & Partial<Pick<InMemoryLedger, 'bookOperationalGas'>>;
@@ -101,6 +106,34 @@ export type WithdrawalOutcome =
    */
   | { status: 'unresolved'; txHash: Hex };
 
+export type RecoveryStatus =
+  /** Reached a final state during recovery. */
+  | 'settled'
+  | 'failed'
+  /** Locked but never broadcast, so nothing was sent and the funds went back. */
+  | 'released'
+  /** The result is still unknown. Funds stay reserved, and the next recovery tries again. */
+  | 'unresolved'
+  /**
+   * The EOA's nonce moved but the transaction has no receipt, so a person must check it. Funds
+   * stay reserved, because releasing them would pay twice if the transaction did land.
+   */
+  | 'review';
+
+export interface RecoveredOperation {
+  opId: string;
+  status: RecoveryStatus;
+}
+
+type Receipt = Awaited<ReturnType<ExecutorChain['waitForTransactionReceipt']>>;
+
+interface OpenBroadcast {
+  eoa: Address;
+  nonce: number;
+  txHash: Hex;
+  raw: Hex;
+}
+
 export interface StartedWithdrawal {
   finished: Promise<WithdrawalOutcome>;
 }
@@ -118,6 +151,186 @@ export class Executor {
   private readonly runningIntents = new Set<string>();
 
   constructor(private readonly deps: ExecutorDeps) {}
+
+  /**
+   * Finishes what a restart interrupted. Call it once on boot, after the ledger, intent store and
+   * inventory have replayed the journal, and before the server, watcher or price poller start.
+   *
+   * Every broadcast is journaled before it is sent, so an operation with no broadcast event sent
+   * nothing. An identical signed transaction has the same hash, so sending it again cannot pay
+   * twice. Operations that stay open keep their funds reserved and their EOA busy.
+   */
+  async recover(history: AsyncIterable<{ event: JournalEvent }>): Promise<RecoveredOperation[]> {
+    const { inventory } = this.deps;
+    const locked = new Map<string, LockedWithdrawal>();
+    const withdrawalBroadcasts = new Map<string, OpenBroadcast>();
+    const intents = new Map<string, StoredIntent>();
+    const swapBroadcasts = new Map<string, OpenBroadcast & { intentId: string }>();
+
+    const trackNonce = (eoa: Address, nonce: number) => {
+      this.nextNonces.set(eoa, Math.max(this.nextNonces.get(eoa) ?? 0, nonce + 1));
+    };
+
+    for await (const { event } of history) {
+      switch (event.t) {
+        case 'WITHDRAWAL_LOCKED':
+          locked.set(event.id, {
+            id: event.id,
+            owner: event.owner,
+            token: event.token,
+            amount: event.amount,
+            to: event.to,
+            status: 'locked',
+          });
+          break;
+        case 'WITHDRAWAL_BROADCAST':
+          withdrawalBroadcasts.set(event.id, event);
+          trackNonce(event.eoa, event.nonce);
+          break;
+        case 'WITHDRAWAL_CONFIRMED':
+        case 'WITHDRAWAL_FAILED':
+          locked.delete(event.id);
+          withdrawalBroadcasts.delete(event.id);
+          break;
+        case 'INTENT_CREATED':
+          intents.set(event.id, {
+            id: event.id,
+            owner: event.owner,
+            intent: event.intent,
+            status: 'executing',
+            createdAt: 0,
+          });
+          break;
+        case 'EXEC_BROADCAST':
+          swapBroadcasts.set(event.opId, {
+            ...event,
+            intentId: event.intentId ?? event.opId.replace(/^exec:/, ''),
+          });
+          trackNonce(event.eoa, event.nonce);
+          break;
+        case 'EXEC_SETTLED':
+        case 'EXEC_FAILED':
+          swapBroadcasts.delete(event.opId);
+          break;
+        default:
+          break;
+      }
+    }
+
+    if (swapBroadcasts.size > 0 && !this.deps.swaps) throw new Error('SWAPS_NOT_CONFIGURED');
+
+    // Hold everything before any network call, so nothing can spend these funds meanwhile.
+    for (const [id, broadcast] of withdrawalBroadcasts) {
+      const withdrawal = locked.get(id);
+      if (withdrawal) inventory.restoreHold(broadcast.eoa, withdrawal.token, withdrawal.amount, id);
+    }
+    for (const [opId, broadcast] of swapBroadcasts) {
+      const stored = intents.get(broadcast.intentId);
+      if (!stored) continue;
+      inventory.restoreHold(broadcast.eoa, NATIVE, stored.intent.amountIn, opId);
+      inventory.linkOwner(stored.owner, broadcast.eoa);
+      // The poller must not run this intent again while its transaction may still land.
+      this.runningIntents.add(stored.id);
+      this.deps.swaps?.intents.mark(stored.id, 'executing');
+    }
+
+    const report: RecoveredOperation[] = [];
+    for (const [id, withdrawal] of locked) {
+      if (withdrawalBroadcasts.has(id)) continue;
+      await this.failWithdrawal(withdrawal, 'INTERRUPTED');
+      report.push({ opId: id, status: 'released' });
+    }
+
+    const recoveries: Array<Promise<RecoveredOperation>> = [];
+    for (const [id, broadcast] of withdrawalBroadcasts) {
+      const withdrawal = locked.get(id);
+      if (!withdrawal) {
+        report.push({ opId: id, status: 'review' });
+        continue;
+      }
+      recoveries.push(
+        this.recoverBroadcast(id, broadcast, async (receipt) => {
+          const outcome = await this.settleWithdrawal(withdrawal, receipt, broadcast.txHash);
+          return outcome.status === 'confirmed' ? 'settled' : 'failed';
+        }),
+      );
+    }
+    for (const [opId, broadcast] of swapBroadcasts) {
+      const stored = intents.get(broadcast.intentId);
+      const swaps = this.deps.swaps;
+      if (!stored || !swaps) {
+        report.push({ opId, status: 'review' });
+        continue;
+      }
+      recoveries.push(
+        this.recoverBroadcast(opId, broadcast, async (receipt) => {
+          const outcome = await this.settleIntent(
+            stored,
+            opId,
+            broadcast.eoa,
+            swaps,
+            receipt,
+            broadcast.txHash,
+          );
+          this.runningIntents.delete(stored.id);
+          return outcome.status === 'settled' ? 'settled' : 'failed';
+        }),
+      );
+    }
+    report.push(...(await Promise.all(recoveries)));
+    return report;
+  }
+
+  private async recoverBroadcast(
+    opId: string,
+    broadcast: OpenBroadcast,
+    settle: (receipt: Receipt) => Promise<'settled' | 'failed'>,
+  ): Promise<RecoveredOperation> {
+    const { chain, confirmations } = this.deps;
+    const { eoa, nonce, raw, txHash } = broadcast;
+
+    let landed = false;
+    let nonceMoved = false;
+    try {
+      // Read the nonce first. A transaction mined between the two reads then shows its receipt.
+      const chainNonce = await chain.getTransactionCount({ address: eoa, blockTag: 'latest' });
+      nonceMoved = chainNonce > nonce;
+      landed = await this.hasReceipt(txHash);
+    } catch {
+      return { opId, status: 'unresolved' };
+    }
+
+    if (!landed) {
+      if (nonceMoved) return { opId, status: 'review' };
+      try {
+        await chain.sendRawTransaction({ serializedTransaction: raw });
+      } catch {
+        // It may already be known to the node, so only the receipt decides the outcome.
+      }
+    }
+
+    let receipt: Receipt;
+    try {
+      receipt = await chain.waitForTransactionReceipt({
+        hash: txHash,
+        confirmations: Number(confirmations) + 1,
+        timeout: this.deps.receiptTimeoutMs,
+      });
+    } catch {
+      return { opId, status: 'unresolved' };
+    }
+    return { opId, status: await settle(receipt) };
+  }
+
+  private async hasReceipt(hash: Hex): Promise<boolean> {
+    try {
+      await this.deps.chain.getTransactionReceipt({ hash });
+      return true;
+    } catch (error) {
+      if ((error as Error).name === 'TransactionReceiptNotFoundError') return false;
+      throw error;
+    }
+  }
 
   /**
    * Pays out a withdrawal whose funds are already reserved and journaled as locked.
@@ -331,6 +544,19 @@ export class Executor {
       return { status: 'unresolved', txHash };
     }
 
+    return this.settleIntent(stored, opId, eoa, swaps, receipt, txHash);
+  }
+
+  private async settleIntent(
+    stored: StoredIntent,
+    opId: string,
+    eoa: Address,
+    swaps: SwapDeps,
+    receipt: Receipt,
+    txHash: Hex,
+  ): Promise<SwapOutcome> {
+    const { journal, queue } = this.deps;
+    const { owner } = stored;
     const gasCost = receipt.gasUsed * receipt.effectiveGasPrice;
     if (receipt.status !== 'success') {
       const reason = 'REVERTED';
@@ -444,6 +670,15 @@ export class Executor {
       return { status: 'unresolved', txHash };
     }
 
+    return this.settleWithdrawal(withdrawal, receipt, txHash);
+  }
+
+  private async settleWithdrawal(
+    withdrawal: LockedWithdrawal,
+    receipt: Receipt,
+    txHash: Hex,
+  ): Promise<WithdrawalOutcome> {
+    const { journal, queue } = this.deps;
     const gasCost = receipt.gasUsed * receipt.effectiveGasPrice;
     if (receipt.status === 'success') {
       await queue.run(async () => {
