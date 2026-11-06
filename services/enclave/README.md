@@ -44,4 +44,4 @@ This bundles the shared sealing function for Chromium, checks concurrent request
 
 The full production dependency tree is packaged with `pnpm deploy --prod --legacy`. The bootstrap runs an unfunded signing/restart/HPKE self-test before serving attestation. See [the Nitro runbook](../../infra/nitro/README.md) for KMS recipient sealing, ciphertext persistence, services and the remaining live configuration.
 
-Verified ARM64 bootstrap image: `sha256:caa509c87ceb024fab1e7723bc72feb679075b4a9b3b709adb96700324262515`. [Build hash, EIF digest and trusted PCRs](../../infra/nitro/bootstrap-release.json). This release serves attestation; it does not enable live custody.
+The deployed ARM64 [application release](../../infra/nitro/application-release.json) includes trusted build/EIF hashes and PCRs. KMS-backed custody, encrypted API access and restart recovery are verified; seeding is disabled. The earlier [bootstrap release](../../infra/nitro/bootstrap-release.json) serves attestation only.

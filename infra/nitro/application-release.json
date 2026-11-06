@@ -1,0 +1,15 @@
+{
+  "architecture": "arm64",
+  "entrypoint": "application",
+  "liveCustodyEnabled": true,
+  "configSha256": "f334afc5b7f4aa2dac1fd2036e323b482a517519e2f743f9d10de58b8fb651e3",
+  "dockerImageId": "sha256:2bf736d6982aca172d880112de53a0503c9458f9dce7a7b1dc613872b024bbef",
+  "buildHash": "3ed16463174410385cb02c130e524ed48b7275e87d153d2710d46d8878ef1b18",
+  "eifSha256": "f2aa5c8c907e14652c7f468d3ab7815a941c34b3a24afea259013a0ff60b2213",
+  "measurements": {
+    "HashAlgorithm": "Sha512_48 { .. }",
+    "PCR0": "8e736be76ecea647868ea82f73e3c326da921de7fc4ead713997a11b48fd260cf28a45ac3e3b64bc2219ba1e001bde57",
+    "PCR1": "3b4a7e1b5f13c5a1000b3ed32ef8995ee13e9876329f9bc72650b918329ef9cf4e2e4d1e1e37375dab0ba56ba0974d03",
+    "PCR2": "c1cb6d884ec714cb1d6f7df2cbe623190f68f489cee1b370fcc970f22c237aef4cbfed2fd2a038e6af5400b2ff6b2efd"
+  }
+}

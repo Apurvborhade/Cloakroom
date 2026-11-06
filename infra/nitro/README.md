@@ -1,6 +1,6 @@
 # Nitro operations
 
-Images built without configuration serve the attestation bootstrap. A configured image starts the application server with persistent custody. The deployed release is still the bootstrap; the application image needs its own KMS policy measurements and live recovery verification before funding.
+The deployed [application release](application-release.json) serves the private API with KMS-backed custody. Live attestation, encrypted requests and recovery after enclave, storage and config-service restarts are verified. Seeding and state creation are disabled; public HTTPS and funding remain pending. Images built without configuration serve the attestation bootstrap.
 
 ## Build and launch
 
@@ -30,7 +30,7 @@ sudo systemctl enable --now cloakroom-config
 
 Install the supplied helpers and service units first. Only the file's SHA-256 enters the image and build hash. At startup, the bridge selects `main.js --nitro`; it fetches the private file through the CID-restricted config service on vsock 8004 and rejects any mismatch before opening custody. Values are parsed as configuration, never shell environment overrides. HTTP uses the existing enclave socket and parent ingress.
 
-Changing any configuration bytes requires rebuilding the image and updating trusted KMS measurements. Use `CUSTODY_ALLOW_CREATE=true` only for initial provisioning; the funded release must use `false`. The parent holds API credentials in this private file, while custody keys remain inside the enclave.
+Changing any configuration bytes requires rebuilding the image and updating trusted KMS measurements. Use `CUSTODY_ALLOW_CREATE=true` only for initial provisioning; the funded release must use `false`. After verifying runtime recovery, remove the provisioning image's KMS policy statement and retain the runtime's `Decrypt` permission. The parent holds API credentials in this private file, while custody keys remain inside the enclave.
 
 ## Persistent custody
 
@@ -41,7 +41,7 @@ Changing any configuration bytes requires rebuilding the image and updating trus
 5. `bootEnclave` uses the returned `keys`, snapshot `journal`, restored `ledger` and `attestation`, then restores intents, inventory, watcher and executor operations before listening. Journal snapshots are capped at 4 MiB; failed or uncertain storage writes require a runtime restart.
 6. Test an actual enclave restart with the same state and KMS policy before funding. Preserve `wrapping.blob`, `custody.blob` and `journal.blob` together; take backups with writes stopped. Missing or damaged blobs stop startup.
 
-An unfunded, non-debug Nitro test verified KMS-backed state creation and recovery after enclave and storage-service restarts: identity, cached transaction, journal and balances matched; duplicate signing and seeding disclosure stayed blocked. Fresh AWS quotes verified before and after recovery. Parent `GenerateDataKey` and `Decrypt` calls without recipient attestation were denied. The demo KMS policy permits the test image; update its trusted PCRs for the final application image and repeat recovery before funding.
+An unfunded, non-debug Nitro test verified KMS-backed state creation and recovery after enclave and storage-service restarts: identity, cached transaction, journal and balances matched; duplicate signing and seeding disclosure stayed blocked. Parent `GenerateDataKey` and `Decrypt` calls without recipient attestation were denied. The deployed application also preserves its identity and consumed API nonces across restarts, with fresh AWS quotes verified before and after. Session grants must be registered again after restart.
 
 AWS API behavior follows [GenerateDataKey recipient responses](https://docs.aws.amazon.com/kms/latest/APIReference/API_GenerateDataKey.html) and [Nitro attestation conditions](https://docs.aws.amazon.com/kms/latest/developerguide/conditions-nitro-enclave.html).
 
@@ -80,7 +80,6 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 ## Remaining integration
 
-- KMS authorization and live recovery verification of the configured application images; private API integration and image self-tests pass.
 - Public domain, HTTPS and frontend URL handoff.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Fund unlinked inventory after verified deployment. Operator seeding is optional and remains disabled in the current application configuration.

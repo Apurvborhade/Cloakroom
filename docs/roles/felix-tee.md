@@ -51,9 +51,9 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 
 ### Phase 4 (hours 29 to 36)
 
-- [x] Publish the verified bootstrap image digest, EIF digest and PCRs; application release remains pending
+- [x] Publish the verified [application image, EIF digest and PCRs](../../infra/nitro/application-release.json)
 - [x] Build application images with the private API and persistent custody; image self-tests passed
-- [ ] Authorize the application measurements in KMS, deploy and verify recovery before funding
+- [x] Authorize the application measurements in KMS, deploy and verify recovery before funding; identity and API nonces survive enclave, storage and config-service restarts
 - [ ] Give Pradnyesh the final enclave URL
 
 ## You depend on
