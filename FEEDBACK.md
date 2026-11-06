@@ -11,8 +11,9 @@ Cloakroom is a private intent network. Users hold a confidential balance inside 
 | Trading API, `POST /quote` | Price checks, swap quotes and the swap transaction |
 | Universal Router 2.1.2 on Sepolia | Executes each swap |
 | V2 and V3 routes | The routes we could verify before signing |
+| Permit2 | One-time on-chain approvals, so a custody address can sell USDC |
 
-**Result:** a real swap settled on Sepolia. 0.001 ETH became 26.172175 USDC, read back from the receipt's Transfer logs ([transaction](https://sepolia.etherscan.io/tx/0x350ea3b0af02aeb7cb56c9bc7a00c2e8f210e0f7d9193734a6a6dd62e88ea557)). The README links to the code.
+**Result:** real swaps settled on Sepolia. The first, using a stand-in signer, turned 0.001 ETH into 26.172175 USDC, read back from the receipt's Transfer logs ([transaction](https://sepolia.etherscan.io/tx/0x350ea3b0af02aeb7cb56c9bc7a00c2e8f210e0f7d9193734a6a6dd62e88ea557)). A later swap went through the real API and our real signer: 0.001 ETH became 25.188361 USDC ([transaction](https://sepolia.etherscan.io/tx/0x749e037765df655095b4205bfee238bb9c1a70585bc16371e6f4728dca829d9b)). The README links to the code.
 
 ## Why our use case is unusual
 
@@ -21,7 +22,7 @@ A service holds the keys and signs automatically, with no person checking a wall
 ## What worked well
 
 - **The swap transaction comes back with the quote.** `POST /quote` returned a ready `swapTransaction`, so one call gave us everything we needed. We never had to call a second endpoint.
-- **Quotes work for any address.** Quotes came back for new addresses holding no funds, including `swapTransaction`. This let us check prices without sending our custody addresses to the API on every poll, which matters for a privacy product.
+- **Quotes work for any address when selling ETH.** Quotes came back for new addresses holding no funds, including `swapTransaction`. This let us check prices without sending our custody addresses to the API on every poll, which matters for a privacy product. Selling a token is different: see point 6.
 - **Native ETH input is simple.** `permitData` was null and `isTokenApprovalApplicable` was false, so a custody address needed no approvals or Permit2 signature. The router wrapped the ETH itself.
 - **Speed.** Six quotes in a row took about 0.7 to 1.4 seconds each on Sepolia, and none were rejected.
 - **The response explains itself.** `routeString`, `route` and `aggregatedOutputs` made it easy to see what a quote would do while debugging.
@@ -70,12 +71,40 @@ The docs list several Universal Router addresses for Sepolia across different pa
 
 **Suggestion:** state clearly which router the Trading API targets on each chain, which the supported chains page mostly does already.
 
+### 6. A token sale can return a quote with no transaction
+
+Selling USDC for ETH from an address with no approvals returned a normal quote with `permitData`, `permitTransaction: null` and no `swapTransaction`. Nothing said why, so code expecting a transaction simply gets none.
+
+A custody service would have to add typed-data signing to use a permit. We tried on-chain approvals instead, `USDC.approve(Permit2)` then `Permit2.approve(USDC, router)` ([first](https://sepolia.etherscan.io/tx/0x15e4df580128e484dd31aff6d40a291394d2360794d08678c9641d175ed64202), [second](https://sepolia.etherscan.io/tx/0xff4874c3bc4a734220c538bdea20d7b665109122bcf8a319b3dfab8bab04b01b)). The same request then returned `permitData: null` and a normal `swapTransaction`. That suits us well, but we only found it by experimenting.
+
+It also has a privacy cost for us. A usable transaction depends on the swapper's real approvals, so a token sale has to send the custody address to the API. A throwaway address, which we use for price checks, can't get one.
+
+**Suggestion:** document the on-chain approval path, and have the response say why a transaction is missing.
+
+### 7. This route adds another calldata shape, and limits the spend differently
+
+| Route | Commands we saw | Who is paid | Where the minimum is |
+| --- | --- | --- | --- |
+| USDC to ETH, single pool, after approvals | `V3_SWAP_EXACT_IN`, `UNWRAP_WETH`, `SWEEP` | Router, then `UNWRAP_WETH` pays the recipient | `UNWRAP_WETH`, while the swap has 0 |
+
+Selling ETH, the transaction value limits what can be spent. Selling a token, the value is 0 and the router pulls funds through Permit2, so we also add up the swap amounts in the calldata and check them against the approved amount. This adds to point 1.
+
+### 8. ETH output is hard to read from a receipt
+
+ETH paid out leaves no `Transfer` log, so the approach we used for USDC doesn't work. We read the router's `Withdrawal` event on WETH instead. On a local fork of Sepolia, that matched the swapper's actual balance change after gas, but we worked it out ourselves and don't know whether it holds for every route.
+
+**Suggestion:** document how to read the output of a swap that ends in ETH.
+
+### 9. Buy and sell quotes disagreed on testnet
+
+In one round of quotes, selling ETH got about 25,820 USDC per ETH while buying cost about 25,660, so a round trip looked profitable. Sepolia's four USDC/WETH V3 pools ranged from about 25,645 to 25,932 at the time. We think this comes from testnet pools drifting apart, as in point 4, and it means a single quote direction isn't a reliable reference price here.
+
 ## What we did not test
 
 So this feedback is not read as more than it is:
 
-- ERC-20 input swaps, Permit2 flows and UniswapX. Our custody addresses only sign ordinary transactions, and the docs list no testnet for UniswapX.
+- UniswapX, and permit signatures. Our custody addresses only sign ordinary transactions, and the docs list no testnet for UniswapX.
+- A token sale on live Sepolia. We ran the USDC to ETH swap on a local fork of Sepolia, using live Trading API calldata and Uniswap's real contracts. The approvals above were real, but that wallet held no USDC.
 - V4 hooks, or the `/swap` endpoint, since `/quote` already gave us a transaction.
 - Long-running rate limits. We only ran short bursts, so we cannot comment on them.
-- Mainnet. Everything here happened on Sepolia.
-- Our real signer. The swap above used a stand-in signer and journal, because the enclave's signing guard does not allow swaps yet.
+- Mainnet. Everything here happened on Sepolia or a local fork of it.
