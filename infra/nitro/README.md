@@ -32,6 +32,14 @@ AWS API behavior follows [GenerateDataKey recipient responses](https://docs.aws.
 
 KMS TLS terminates inside the enclave. The parent relays encrypted bytes to a fixed regional AWS endpoint. Recipient CMS by itself does not authenticate the KMS server. The RSA key is generated inside the enclave, supplied to NSM, and passed to the CMS helper through a private pipe and anonymous memory descriptor. The host sees wrapped KMS keys and authenticated custody ciphertext only.
 
+## Uniswap egress
+
+`createNitroUniswapClient(config)` uses `\0cloakroom-uniswap` and vsock port 8002. `main.ts` selects it when `SIM_MODE=false`. Enable `cloakroom-uniswap.service` on the parent; the enclave bridge starts its internal relay. The only destination is `trade-api.gateway.uniswap.org:443`, with `UNISWAP_API_URL=https://trade-api.gateway.uniswap.org/v1`.
+
+TLS certificate and hostname checks run inside the enclave. Redirects are refused, responses are capped at 1 MiB, and the quote timeout covers the response body. A missing relay fails the quote; there is no direct-network fallback. RPC egress remains separate.
+
+Live verification used a non-debug Nitro test image with independently verified AWS attestation. Uniswap returned HTTP 401 for an intentionally invalid API key. An authenticated quote still requires valid credentials.
+
 Revision CAS and the signing journal catch stale concurrent writers and vault rollback relative to the journal. A malicious host rolling back all stored state together still needs an external trusted checkpoint. Missing or corrupt state causes refusal; do not repair it by silently generating a new seed.
 
 ## Services and HTTPS
@@ -50,7 +58,7 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 ## Remaining integration
 
-- Application server wiring and RPC/Uniswap HTTPS egress. Uniswap TLS inside Nitro is not yet deployed or live-verified.
+- Nitro application bootstrap with persistent journal storage, and RPC egress.
 - Public domain, HTTPS and frontend URL handoff.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Funding after verified deployment, followed by disabling the seeding route.

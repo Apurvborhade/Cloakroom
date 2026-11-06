@@ -11,6 +11,7 @@ import { AesGcmStateVault, FileCipherBlobStore, simulationSealingKey } from './s
 import { bootEnclave } from './server.js';
 import type { BootOptions } from './server.js';
 import { UniswapClient } from './uniswap.js';
+import { createNitroUniswapClient } from './nitro-uniswap.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -48,12 +49,12 @@ async function main(): Promise<void> {
   const running = await bootEnclave({
     config,
     chain: createPublicClient({ transport: http(config.RPC_URL) }),
-    quoter: new UniswapClient({
+    quoter: config.SIM_MODE ? new UniswapClient({
       apiUrl: config.UNISWAP_API_URL,
       apiKey: config.UNISWAP_API_KEY,
       chainId: config.CHAIN_ID,
       timeoutMs: config.PRICE_QUOTE_TIMEOUT_MS,
-    }),
+    }) : createNitroUniswapClient(config),
     openKeys: custody(config),
     attestation: config.SIM_MODE
       ? undefined
