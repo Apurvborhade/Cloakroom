@@ -6,12 +6,12 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Cloakroom',
-  description: 'Private balances and conditional swaps executed by an enclave. Not a mixer: amounts and timing remain public.',
+  description: 'Swap and withdraw without tying your new wallet to the one you deposited from.',
   referrer: 'no-referrer',
   robots: { index: false, follow: false },
 };
 
-export const viewport: Viewport = { themeColor: '#0a0a0b', width: 'device-width', initialScale: 1 };
+export const viewport: Viewport = { themeColor: '#131313', width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

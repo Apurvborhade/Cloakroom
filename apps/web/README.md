@@ -37,7 +37,7 @@ Tests: `pnpm --filter @cloakroom/web test`. They also run as part of the root `p
 3. `components/trading/signing-review`: a readable review. The wallet popup opens only from its confirm button.
 4. `lib/crypto/transport`: `sealEnvelopeWithResponse` from the shared package, bound to the chain, the route path and the enclave key.
 5. `lib/api/client`: POST `{ enc, ct }`, open the single-use reply, validate it with the shared zod schema, and map plaintext `{ error }` codes. A 404 `INVALID_PAYLOAD` from the server's not-found handler becomes `ROUTE_NOT_FOUND`, which is how a disabled margin looks from outside.
-6. `lib/session`: a read-only session key from `generatePrivateKey`, held in memory only and never persisted. One `SessionGrant`, at most 29 minutes. It signs `SessionQuery` reads only. A refresh, account change, chain change, enclave-key change, or `UNKNOWN_SESSION` drops it.
+6. `lib/session`: a read-only session key from `generatePrivateKey`, kept in `sessionStorage` until the tab closes or the grant expires, so a refresh needs no new signature. It can read balances but never move funds. One `SessionGrant`, at most 29 minutes. It signs `SessionQuery` reads only. A refresh, account change, chain change, enclave-key change, or `UNKNOWN_SESSION` drops it.
 
 Nonces come from the millisecond clock and always increase, because the API cannot report the last accepted nonce.
 
