@@ -21,6 +21,7 @@ import { PricePoller } from './price-poller.js';
 import { DepositWatcher } from './watcher.js';
 import { trackWithdrawals, WithdrawalOrders, WithdrawalStatuses } from './withdrawal-orders.js';
 import type { Journal } from '@cloakroom/shared';
+import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import type { PublicClient } from 'viem';
@@ -83,6 +84,11 @@ export async function buildApp(options: {
   const { api, attestation } = options;
   const { config, keys } = api;
   const app = Fastify({ logger: false });
+  const origin = new URL(config.ALLOWED_ORIGIN).origin;
+  await app.register(cors, {
+    origin: (requestOrigin, done) => done(null, requestOrigin === origin),
+    methods: ['GET', 'POST'], allowedHeaders: ['content-type'], credentials: false,
+  });
 
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'INVALID_PAYLOAD' }));
   app.setErrorHandler((error: { statusCode?: number }, _request, reply) => {

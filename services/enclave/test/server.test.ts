@@ -6,7 +6,7 @@ import { NATIVE } from '@cloakroom/shared';
 import type { StoredIntent } from '@cloakroom/shared';
 import { createPublicClient, createWalletClient, http, parseEther } from 'viem';
 import type { Address, Hex, PublicClient } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { foundry } from 'viem/chains';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config.js';
@@ -20,6 +20,7 @@ import { bootEnclave } from '../src/server.js';
 import type { BootOptions, RunningEnclave } from '../src/server.js';
 import type { Quote, QuoteRequest } from '../src/uniswap.js';
 import { TEST_TOKEN_ABI, TEST_TOKEN_BYTECODE } from './fixtures/test-token.js';
+import { apiClient } from './helpers/enclave.js';
 
 const ANVIL_PORT = 18_793;
 const API_PORT = 18_794;
@@ -265,6 +266,15 @@ describe('persistent runtime boot', () => {
 
   it('restores ledger, intents and watcher from the snapshot without opening a local journal', async () => {
     const first = await boot({ openKeys: undefined, openRuntime: persistent(true) });
+    const sessionKey = privateKeyToAccount(generatePrivateKey());
+    const expiry = BigInt(Math.floor(Date.now() / 1000) + 120);
+    const api = apiClient(first);
+    const signature = await api.sign(FUNDER, 'SessionGrant', {
+      owner: FUNDER.address, sessionKey: sessionKey.address, expiry,
+    } as never);
+    expect((await api.post('/session', { message: {
+      owner: FUNDER.address, sessionKey: sessionKey.address, expiry: expiry.toString(),
+    }, signature })).status).toBe(200);
     await credit(first, 'persistent-credit', parseEther('1'));
     const order = { t: 'INTENT_CREATED', id: 'persistent-order', owner: OWNER,
       intent: intent({ triggerPrice: 10n ** 30n }) } as const;
@@ -289,6 +299,16 @@ describe('persistent runtime boot', () => {
       available: parseEther('0.9'), reserved: parseEther('0.1'),
     });
     expect(second.parts.intents.get('persistent-order')?.status).toBe('pending');
+    const restoredApi = apiClient(second);
+    const readSignature = await restoredApi.sign(sessionKey, 'SessionQuery', { owner: FUNDER.address, expiry } as never);
+    const readBalance = () => restoredApi.post('/balance', {
+      message: { owner: FUNDER.address, expiry: expiry.toString() }, signature: readSignature,
+    });
+    expect((await readBalance()).status).toBe(401);
+    expect((await restoredApi.post('/session', { message: {
+      owner: FUNDER.address, sessionKey: sessionKey.address, expiry: expiry.toString(),
+    }, signature })).status).toBe(200);
+    expect((await readBalance()).status).toBe(200);
     expect((await second.app.inject({ url: '/attestation' })).json()).toMatchObject({
       enclavePubKey: identity, quote: Buffer.from('runtime-quote').toString('base64'),
     });
@@ -349,6 +369,17 @@ describe('persistent runtime boot', () => {
 });
 
 describe('routes', () => {
+  it('permits browser requests from the configured origin only', async () => {
+    const enclave = await boot();
+    for (const origin of ['https://app.example', 'https://another.example']) {
+      const response = await enclave.app.inject({ method: 'OPTIONS', url: '/session', headers: {
+        origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type',
+      } });
+      expect(response.headers['access-control-allow-origin']).toBe(origin === 'https://app.example' ? origin : undefined);
+      if (origin === 'https://app.example') expect(response.statusCode).toBe(204);
+    }
+  });
+
   it('serves a quote for the key manager, and only with a valid nonce', async () => {
     const provider = vi.fn(async () => Buffer.from('quote'));
     const enclave = await boot({ attestation: { buildHash: BUILD_HASH, provider } });
