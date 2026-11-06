@@ -1,10 +1,12 @@
-import { ERROR_CODES, NATIVE } from '@cloakroom/shared';
+import { ERROR_CODES, NATIVE, PERMIT2_ADDRESS } from '@cloakroom/shared';
 import type {
   IntentStore,
   Journal,
   JournalEvent,
   Ledger,
   LockedWithdrawal,
+  MarginAccounting,
+  MarginOperation,
   SerialQueue,
   StoredIntent,
 } from '@cloakroom/shared';
@@ -12,13 +14,23 @@ import { encodeFunctionData, getAddress, keccak256, parseAbi, parseEventLogs } f
 import type { Address, Hex, PublicClient, TransactionSerializableEIP1559 } from 'viem';
 import type { Inventory } from './inventory.js';
 import type { InMemoryLedger } from './ledger.js';
-import { assertSafeSwapCalldata, limitFloor } from './swap-calldata.js';
+import { assertSafeSwapCalldata, assertSafeTokenToNativeCalldata, limitFloor } from './swap-calldata.js';
 import type { Quote, QuoteRequest } from './uniswap.js';
 
 const ERC20_ABI = parseAbi(['function transfer(address to, uint256 amount) returns (bool)']);
 const TRANSFER_EVENT = parseAbi([
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 ]);
+const WETH_WITHDRAWAL_EVENT = parseAbi(['event Withdrawal(address indexed src, uint256 wad)']);
+const ALLOWANCE_ABI = parseAbi([
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function allowance(address owner, address token, address spender) view returns (uint160, uint48, uint48)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function approve(address token, address spender, uint160 amount, uint48 expiration)',
+]);
+const MAX_UINT256 = 2n ** 256n - 1n;
+const MAX_UINT160 = 2n ** 160n - 1n;
+const MAX_UINT48 = 2 ** 48 - 1;
 const BPS_SCALE = 10_000n;
 const BPS_PER_PERCENT = 100;
 const MS_PER_SECOND = 1000;
@@ -75,7 +87,28 @@ export interface ExecutorDeps {
   inventorySettleAttempts: number;
   /** Required for runIntent. */
   swaps?: SwapDeps;
+  /** Required for runMarginOperation. */
+  margin?: MarginExecutionDeps;
 }
+
+export interface MarginExecutionDeps {
+  accounting: Pick<MarginAccounting, 'settle' | 'fail'>;
+  quoter: { quote(request: QuoteRequest): Promise<Quote> };
+  inventory: Pick<Inventory, 'depositEoasOf'>;
+  /** Books the gas of the one-time approvals. */
+  ledger: Pick<InMemoryLedger, 'apply'>;
+  reader: Pick<PublicClient, 'readContract'>;
+  routerAddress: Address;
+  wethAddress: Address;
+  maxSlippageBpsCap: number;
+  nowMs?: () => number;
+}
+
+export type MarginOutcome =
+  | { status: 'settled'; txHash: Hex; amountIn: bigint; amountOut: bigint }
+  | { status: 'failed'; reason: string; txHash?: Hex }
+  /** Broadcast with an unknown result. Funds stay reserved until recovery settles it. */
+  | { status: 'unresolved'; txHash: Hex };
 
 export interface SwapDeps {
   quoter: { quote(request: QuoteRequest): Promise<Quote> };
@@ -167,6 +200,8 @@ export class Executor {
     const withdrawalBroadcasts = new Map<string, OpenBroadcast>();
     const intents = new Map<string, StoredIntent>();
     const swapBroadcasts = new Map<string, OpenBroadcast & { intentId: string }>();
+    const marginApproved = new Map<string, MarginOperation>();
+    const marginBroadcasts = new Map<string, OpenBroadcast>();
 
     const trackNonce = (eoa: Address, nonce: number) => {
       this.nextNonces.set(eoa, Math.max(this.nextNonces.get(eoa) ?? 0, nonce + 1));
@@ -213,12 +248,25 @@ export class Executor {
         case 'EXEC_FAILED':
           swapBroadcasts.delete(event.opId);
           break;
+        case 'MARGIN_OP_APPROVED':
+          marginApproved.set(event.opId, { ...event, positionId: event.positionId as Hex });
+          break;
+        case 'MARGIN_OP_BROADCAST':
+          marginBroadcasts.set(event.opId, event);
+          trackNonce(event.eoa, event.nonce);
+          break;
+        case 'MARGIN_OP_SETTLED':
+        case 'MARGIN_OP_FAILED':
+          marginApproved.delete(event.opId);
+          marginBroadcasts.delete(event.opId);
+          break;
         default:
           break;
       }
     }
 
     if (swapBroadcasts.size > 0 && !this.deps.swaps) throw new Error('SWAPS_NOT_CONFIGURED');
+    if (marginApproved.size > 0 && !this.deps.margin) throw new Error('MARGIN_NOT_CONFIGURED');
 
     // Hold everything before any network call, so nothing can spend these funds meanwhile.
     for (const [id, broadcast] of withdrawalBroadcasts) {
@@ -233,6 +281,10 @@ export class Executor {
       // The poller must not run this intent again while its transaction may still land.
       this.runningIntents.add(stored.id);
       this.deps.swaps?.intents.mark(stored.id, 'executing');
+    }
+    for (const [opId, broadcast] of marginBroadcasts) {
+      const operation = marginApproved.get(opId);
+      if (operation) inventory.restoreHold(broadcast.eoa, operation.tokenIn, operation.amountIn, opId);
     }
 
     const report: RecoveredOperation[] = [];
@@ -274,6 +326,21 @@ export class Executor {
             broadcast.txHash,
           );
           this.runningIntents.delete(stored.id);
+          return outcome.status === 'settled' ? 'settled' : 'failed';
+        }),
+      );
+    }
+    for (const [opId, operation] of marginApproved) {
+      const broadcast = marginBroadcasts.get(opId);
+      if (!broadcast) {
+        // Nothing was sent, so accounting can release what it reserved.
+        await this.deps.margin?.accounting.fail(opId, { reason: 'INTERRUPTED' });
+        report.push({ opId, status: 'released' });
+        continue;
+      }
+      recoveries.push(
+        this.recoverBroadcast(opId, broadcast, async (receipt) => {
+          const outcome = await this.settleMargin(operation, broadcast.eoa, receipt, broadcast.txHash);
           return outcome.status === 'settled' ? 'settled' : 'failed';
         }),
       );
@@ -562,6 +629,276 @@ export class Executor {
     }
 
     return this.settleIntent(stored, opId, eoa, swaps, receipt, txHash);
+  }
+
+  /**
+   * Runs one swap accounting has approved, and reports the result back to it.
+   *
+   * It stays away from the spot order rules on purpose: it never links the EOA to the owner, so
+   * margin can't use up the addresses their withdrawals need, and it only avoids their deposit
+   * addresses, so a liquidation can always find one. Everything before the broadcast event is a
+   * definite failure, because nothing was sent.
+   */
+  async runMarginOperation(operation: MarginOperation): Promise<MarginOutcome> {
+    const margin = this.deps.margin;
+    if (!margin) throw new Error('MARGIN_NOT_CONFIGURED');
+    const { chain, chainId, confirmations, inventory, journal, queue, signer } = this.deps;
+    const { amountIn, minAmountOut, opId, owner, tokenIn, tokenOut } = operation;
+    const nativeIn = getAddress(tokenIn) === getAddress(NATIVE);
+
+    const fail = async (reason: string): Promise<MarginOutcome> => {
+      await margin.accounting.fail(opId, { reason });
+      inventory.free(opId);
+      return { status: 'failed', reason };
+    };
+
+    try {
+      await inventory.refresh();
+    } catch {
+      return fail('INVENTORY_UNAVAILABLE');
+    }
+    const chosen = inventory.pick(tokenIn, amountIn, margin.inventory.depositEoasOf(owner));
+    if (!chosen) return fail(ERROR_CODES.NO_INVENTORY);
+    const eoa = chosen.address;
+    inventory.hold(eoa, tokenIn, amountIn, opId);
+
+    if (!nativeIn) {
+      try {
+        await this.ensureApprovals(eoa, tokenIn, amountIn, margin);
+      } catch {
+        return fail('APPROVAL_FAILED');
+      }
+    }
+
+    const nowSec = BigInt(Math.floor((margin.nowMs ?? Date.now)() / MS_PER_SECOND));
+    if (BigInt(operation.expiry) <= nowSec) return fail(ERROR_CODES.EXPIRED);
+
+    const requestQuote = (slippageBps: number) =>
+      margin.quoter.quote({
+        tokenIn,
+        tokenOut,
+        amountIn,
+        swapper: eoa,
+        slippagePercent: slippageBps / BPS_PER_PERCENT,
+        protocols: SWAP_PROTOCOLS,
+      });
+    const minimumAfter = (amountOut: bigint, slippageBps: number) =>
+      (amountOut * (BPS_SCALE - BigInt(slippageBps))) / BPS_SCALE;
+
+    let slippageBps = Math.min(operation.maxSlippageBps, margin.maxSlippageBpsCap);
+    let quote: Quote;
+    try {
+      quote = await requestQuote(slippageBps);
+      if (quote.amountOut < minAmountOut) return fail('LIMIT_NOT_MET');
+      // Slippage may only use the room above the approved minimum.
+      if (minimumAfter(quote.amountOut, slippageBps) < minAmountOut) {
+        slippageBps = Number(((quote.amountOut - minAmountOut) * BPS_SCALE) / quote.amountOut);
+        if (slippageBps === 0) return fail('LIMIT_NOT_MET');
+        quote = await requestQuote(slippageBps);
+      }
+    } catch {
+      return fail('QUOTE_UNAVAILABLE');
+    }
+    const minOut = minimumAfter(quote.amountOut, slippageBps);
+    const transaction = quote.transaction;
+    if (minOut < minAmountOut) return fail('LIMIT_NOT_MET');
+    if (!transaction) return fail('NO_TRANSACTION');
+    if (
+      transaction.to !== getAddress(margin.routerAddress) ||
+      transaction.from !== getAddress(eoa) ||
+      transaction.value !== (nativeIn ? amountIn : 0n)
+    ) {
+      return fail('UNEXPECTED_TRANSACTION');
+    }
+    try {
+      if (nativeIn) {
+        assertSafeSwapCalldata({ data: transaction.data, eoa, tokenOut, minOut, floor: minAmountOut, nowSec });
+      } else {
+        assertSafeTokenToNativeCalldata({
+          data: transaction.data,
+          eoa,
+          tokenIn,
+          wethAddress: margin.wethAddress,
+          amountIn,
+          minOut,
+          nowSec,
+        });
+      }
+    } catch {
+      return fail('UNSAFE_CALLDATA');
+    }
+
+    let raw: Hex;
+    let txHash: Hex;
+    let nonce: number;
+    try {
+      const prepared = await this.prepareCall(eoa, transaction);
+      nonce = prepared.nonce;
+      await signer.registerOp(opId, {
+        eoa,
+        to: transaction.to,
+        value: transaction.value,
+        dataHash: keccak256(transaction.data),
+        data: transaction.data,
+      });
+      raw = await signer.sign(eoa, { ...prepared, chainId }, opId);
+      txHash = keccak256(raw);
+      await queue.run(() => journal.append({ t: 'MARGIN_OP_BROADCAST', opId, eoa, nonce, txHash, raw }));
+    } catch {
+      return fail('PREPARE_FAILED');
+    }
+
+    this.nextNonces.set(eoa, nonce + 1);
+    try {
+      await chain.sendRawTransaction({ serializedTransaction: raw });
+    } catch {
+      // A send can fail after the node accepted it, so only the receipt decides the outcome.
+    }
+
+    let receipt;
+    try {
+      receipt = await chain.waitForTransactionReceipt({
+        hash: txHash,
+        confirmations: Number(confirmations) + 1,
+        timeout: this.deps.receiptTimeoutMs,
+      });
+    } catch {
+      return { status: 'unresolved', txHash };
+    }
+    return this.settleMargin(operation, eoa, receipt, txHash);
+  }
+
+  private async settleMargin(
+    operation: MarginOperation,
+    eoa: Address,
+    receipt: Receipt,
+    txHash: Hex,
+  ): Promise<MarginOutcome> {
+    const margin = this.deps.margin;
+    if (!margin) throw new Error('MARGIN_NOT_CONFIGURED');
+    const { opId, tokenIn, tokenOut } = operation;
+    const gasCost = receipt.gasUsed * receipt.effectiveGasPrice;
+
+    if (receipt.status !== 'success') {
+      await margin.accounting.fail(opId, { reason: 'REVERTED', gasCost, txHash });
+      await this.releaseEoa(opId);
+      return { status: 'failed', reason: 'REVERTED', txHash };
+    }
+
+    const transfers = parseEventLogs({ abi: TRANSFER_EVENT, logs: receipt.logs, eventName: 'Transfer' });
+    const nativeIn = getAddress(tokenIn) === getAddress(NATIVE);
+    const amountIn = nativeIn
+      ? operation.amountIn
+      : transfers
+          .filter((log) => getAddress(log.address) === getAddress(tokenIn) && getAddress(log.args.from) === getAddress(eoa))
+          .reduce((sum, log) => sum + log.args.value, 0n);
+    // ETH paid out leaves no Transfer event, but the router's unwrap shows on WETH.
+    const amountOut = getAddress(tokenOut) === getAddress(NATIVE)
+      ? parseEventLogs({ abi: WETH_WITHDRAWAL_EVENT, logs: receipt.logs, eventName: 'Withdrawal' })
+          .filter(
+            (log) =>
+              getAddress(log.address) === getAddress(margin.wethAddress) &&
+              getAddress(log.args.src) === getAddress(margin.routerAddress),
+          )
+          .reduce((sum, log) => sum + log.args.wad, 0n)
+      : transfers
+          .filter((log) => getAddress(log.address) === getAddress(tokenOut) && getAddress(log.args.to) === getAddress(eoa))
+          .reduce((sum, log) => sum + log.args.value, 0n);
+
+    await margin.accounting.settle(opId, { amountIn, amountOut, gasCost, txHash });
+    await this.releaseEoa(opId);
+    return { status: 'settled', txHash, amountIn, amountOut };
+  }
+
+  /**
+   * An EOA spending a token needs two approvals, once: the token to Permit2, then Permit2 to the
+   * router. With both in place the Trading API returns an ordinary swap with no permit to sign.
+   * Only the router gets the allowance, and it can only pull funds when this EOA calls it.
+   */
+  private async ensureApprovals(
+    eoa: Address,
+    token: Address,
+    amount: bigint,
+    margin: MarginExecutionDeps,
+  ): Promise<void> {
+    const { reader, routerAddress } = margin;
+    const toPermit2 = (await reader.readContract({
+      address: token,
+      abi: ALLOWANCE_ABI,
+      functionName: 'allowance',
+      args: [eoa, PERMIT2_ADDRESS],
+    })) as bigint;
+    if (toPermit2 < amount) {
+      await this.sendApproval(eoa, token, encodeFunctionData({
+        abi: ALLOWANCE_ABI,
+        functionName: 'approve',
+        args: [PERMIT2_ADDRESS, MAX_UINT256],
+      }), margin);
+    }
+
+    const [toRouter, expiration] = (await reader.readContract({
+      address: PERMIT2_ADDRESS,
+      abi: ALLOWANCE_ABI,
+      functionName: 'allowance',
+      args: [eoa, token, routerAddress],
+    })) as readonly [bigint, number, number];
+    const nowSec = Math.floor((margin.nowMs ?? Date.now)() / MS_PER_SECOND);
+    if (toRouter < amount || expiration <= nowSec) {
+      await this.sendApproval(eoa, PERMIT2_ADDRESS, encodeFunctionData({
+        abi: ALLOWANCE_ABI,
+        functionName: 'approve',
+        args: [token, routerAddress, MAX_UINT160, MAX_UINT48],
+      }), margin);
+    }
+  }
+
+  private async sendApproval(eoa: Address, to: Address, data: Hex, margin: MarginExecutionDeps): Promise<void> {
+    const { chain, chainId, confirmations, journal, queue, signer } = this.deps;
+    const prepared = await this.prepareCall(eoa, { to, data, value: 0n });
+    // The signer never signs one opId twice, so a retry after a failure needs a new one.
+    const opId = `approval:${eoa}:${prepared.nonce}:${to.slice(2, 10)}`;
+    await signer.registerOp(opId, { eoa, to, value: 0n, dataHash: keccak256(data), data });
+    const raw = await signer.sign(eoa, { ...prepared, chainId }, opId);
+    this.nextNonces.set(eoa, prepared.nonce + 1);
+    const hash = await chain.sendRawTransaction({ serializedTransaction: raw });
+    const receipt = await chain.waitForTransactionReceipt({
+      hash,
+      confirmations: Number(confirmations) + 1,
+      timeout: this.deps.receiptTimeoutMs,
+    });
+    await queue.run(async () => {
+      const booked = {
+        t: 'FEE_BOOKED',
+        opId,
+        token: NATIVE,
+        feeAmount: receipt.gasUsed * receipt.effectiveGasPrice,
+      } as const;
+      await journal.append(booked);
+      margin.ledger.apply(booked);
+    });
+    if (receipt.status !== 'success') throw new Error('APPROVAL_REVERTED');
+  }
+
+  /** Simulates a call, then fills in the gas and nonce needed to sign it. */
+  private async prepareCall(eoa: Address, call: { to: Address; data: Hex; value: bigint }) {
+    const { chain, gasMarginPercent } = this.deps;
+    const request = { account: eoa, ...call };
+    await chain.call(request);
+    const [estimatedGas, fees, chainNonce] = await Promise.all([
+      chain.estimateGas(request),
+      chain.estimateFeesPerGas(),
+      chain.getTransactionCount({ address: eoa, blockTag: 'pending' }),
+    ]);
+    return {
+      type: 'eip1559' as const,
+      nonce: Math.max(chainNonce, this.nextNonces.get(eoa) ?? 0),
+      gas: (estimatedGas * gasMarginPercent) / 100n,
+      maxFeePerGas: fees.maxFeePerGas,
+      maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+      to: call.to,
+      value: call.value,
+      data: call.data,
+    };
   }
 
   private async settleIntent(

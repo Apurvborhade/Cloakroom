@@ -302,7 +302,12 @@ export class InMemoryLedger implements Ledger {
         break;
       }
       case 'SIGNING_REGISTERED':
-      case 'SIGNING_COMPLETED': {
+      case 'SIGNING_COMPLETED':
+      // Margin balances belong to margin accounting, which replays these itself.
+      case 'MARGIN_OP_APPROVED':
+      case 'MARGIN_OP_BROADCAST':
+      case 'MARGIN_OP_SETTLED':
+      case 'MARGIN_OP_FAILED': {
         break;
       }
       case 'DEPOSIT_SESSION_OPENED': {

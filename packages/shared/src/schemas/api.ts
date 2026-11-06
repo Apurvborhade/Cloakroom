@@ -17,6 +17,11 @@ import type {
   IntentMsg,
   CancelIntentMsg,
   WithdrawalMsg,
+  MarginSupplyMsg,
+  MarginRedeemMsg,
+  MarginOpenMsg,
+  MarginAddCollateralMsg,
+  MarginCloseMsg,
 } from '../eip712.js';
 import type { PriceReport } from '../types/oracle.js';
 
@@ -97,6 +102,46 @@ export const PriceReportWireSchema = z.object({
 });
 export type PriceReportWire = z.infer<typeof PriceReportWireSchema>;
 
+export const MarginSupplyWireSchema = z.object({
+  owner: addressSchema,
+  token: addressSchema,
+  amount: uint256StringSchema,
+  nonce: uint64StringSchema,
+  expiry: uint64StringSchema,
+});
+export type MarginSupplyWire = z.infer<typeof MarginSupplyWireSchema>;
+
+export const MarginOpenWireSchema = z.object({
+  owner: addressSchema,
+  side: z.enum(['long', 'short']),
+  collateral: uint256StringSchema,
+  leverageBps: z.number().int().min(10_000).max(1_000_000),
+  limitPrice: uint256StringSchema,
+  maxSlippageBps: z.number().int().min(0).max(10_000),
+  nonce: uint64StringSchema,
+  expiry: uint64StringSchema,
+});
+export type MarginOpenWire = z.infer<typeof MarginOpenWireSchema>;
+
+export const MarginAddCollateralWireSchema = z.object({
+  owner: addressSchema,
+  positionId: hex32Schema,
+  amount: uint256StringSchema,
+  nonce: uint64StringSchema,
+  expiry: uint64StringSchema,
+});
+export type MarginAddCollateralWire = z.infer<typeof MarginAddCollateralWireSchema>;
+
+export const MarginCloseWireSchema = z.object({
+  owner: addressSchema,
+  positionId: hex32Schema,
+  limitPrice: uint256StringSchema,
+  maxSlippageBps: z.number().int().min(0).max(10_000),
+  nonce: uint64StringSchema,
+  expiry: uint64StringSchema,
+});
+export type MarginCloseWire = z.infer<typeof MarginCloseWireSchema>;
+
 // Signed wrapper schemas
 export const SignedSessionGrantSchema = createSignedRequestSchema(SessionGrantWireSchema);
 export const SignedSessionQuerySchema = createSignedRequestSchema(SessionQueryWireSchema);
@@ -104,6 +149,10 @@ export const SignedDepositRequestSchema = createSignedRequestSchema(DepositReque
 export const SignedIntentSchema = createSignedRequestSchema(IntentWireSchema);
 export const SignedCancelIntentSchema = createSignedRequestSchema(CancelIntentWireSchema);
 export const SignedWithdrawalSchema = createSignedRequestSchema(WithdrawalWireSchema);
+export const SignedMarginSupplySchema = createSignedRequestSchema(MarginSupplyWireSchema);
+export const SignedMarginOpenSchema = createSignedRequestSchema(MarginOpenWireSchema);
+export const SignedMarginAddCollateralSchema = createSignedRequestSchema(MarginAddCollateralWireSchema);
+export const SignedMarginCloseSchema = createSignedRequestSchema(MarginCloseWireSchema);
 export const AdminEoasWireSchema = z.object({
   admin: addressSchema, nonce: uint64StringSchema, expiry: uint64StringSchema,
 }).strict();
@@ -162,6 +211,41 @@ export const WithdrawalStatusResponseSchema = z.object({
   withdrawals: z.array(WithdrawalStatusItemSchema),
 });
 export type WithdrawalStatusResponse = z.infer<typeof WithdrawalStatusResponseSchema>;
+
+export const MarginOrderResponseSchema = z.object({
+  positionId: hex32Schema,
+  status: z.enum(['opening', 'closing']),
+});
+export type MarginOrderResponse = z.infer<typeof MarginOrderResponseSchema>;
+
+export const PositionItemSchema = z.object({
+  id: hex32Schema,
+  side: z.enum(['long', 'short']),
+  status: z.enum(['opening', 'open', 'closing', 'liquidating', 'closed', 'liquidated', 'failed']),
+  collateral: decimalStringSchema,
+  sizeUsd: decimalStringSchema,
+  debtToken: addressSchema,
+  debt: decimalStringSchema,
+  assetToken: addressSchema,
+  asset: decimalStringSchema,
+  entryPrice: decimalStringSchema.optional(),
+  liquidationPrice: decimalStringSchema.optional(),
+  equity: z.string().regex(/^-?\d+$/).optional(),
+  payout: decimalStringSchema.optional(),
+  shortfall: decimalStringSchema.optional(),
+});
+export type PositionItem = z.infer<typeof PositionItemSchema>;
+
+export const PositionsResponseSchema = z.object({ positions: z.array(PositionItemSchema) });
+export type PositionsResponse = z.infer<typeof PositionsResponseSchema>;
+
+export const LendingItemSchema = z.object({
+  token: addressSchema,
+  supplied: decimalStringSchema,
+  available: decimalStringSchema,
+});
+export const LendingResponseSchema = z.object({ lending: z.array(LendingItemSchema) });
+export type LendingResponse = z.infer<typeof LendingResponseSchema>;
 
 export const StandardErrorResponseSchema = z.object({
   error: z.string(),
@@ -232,6 +316,50 @@ export function wireToWithdrawalMsg(wire: WithdrawalWire): WithdrawalMsg {
     token: wire.token,
     amount: BigInt(wire.amount),
     to: wire.to,
+    nonce: BigInt(wire.nonce),
+    expiry: BigInt(wire.expiry),
+  };
+}
+
+export function wireToMarginSupplyMsg(wire: MarginSupplyWire): MarginSupplyMsg & MarginRedeemMsg {
+  return {
+    owner: wire.owner,
+    token: wire.token,
+    amount: BigInt(wire.amount),
+    nonce: BigInt(wire.nonce),
+    expiry: BigInt(wire.expiry),
+  };
+}
+
+export function wireToMarginOpenMsg(wire: MarginOpenWire): MarginOpenMsg {
+  return {
+    owner: wire.owner,
+    side: wire.side === 'long' ? 0 : 1,
+    collateral: BigInt(wire.collateral),
+    leverageBps: wire.leverageBps,
+    limitPrice: BigInt(wire.limitPrice),
+    maxSlippageBps: wire.maxSlippageBps,
+    nonce: BigInt(wire.nonce),
+    expiry: BigInt(wire.expiry),
+  };
+}
+
+export function wireToMarginAddCollateralMsg(wire: MarginAddCollateralWire): MarginAddCollateralMsg {
+  return {
+    owner: wire.owner,
+    positionId: wire.positionId,
+    amount: BigInt(wire.amount),
+    nonce: BigInt(wire.nonce),
+    expiry: BigInt(wire.expiry),
+  };
+}
+
+export function wireToMarginCloseMsg(wire: MarginCloseWire): MarginCloseMsg {
+  return {
+    owner: wire.owner,
+    positionId: wire.positionId,
+    limitPrice: BigInt(wire.limitPrice),
+    maxSlippageBps: wire.maxSlippageBps,
     nonce: BigInt(wire.nonce),
     expiry: BigInt(wire.expiry),
   };

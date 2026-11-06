@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createSecretKey, hkdfSync, randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
-import { createTransportSuite, NATIVE } from '@cloakroom/shared';
+import { createTransportSuite, NATIVE, PERMIT2_ADDRESS } from '@cloakroom/shared';
 import type { CustodyEOA, Envelope, Journal, JournalEvent } from '@cloakroom/shared';
 import { encodeFunctionData, getAddress, keccak256, parseAbi, serializeTransaction } from 'viem';
 import type { Address, Hex, TransactionSerializableEIP1559 } from 'viem';
@@ -10,7 +10,7 @@ import type { ExpectedTransaction, TransactionSigner } from './executor.js';
 import { openEnvelopeWithResponse } from './envelope.js';
 import { FifoSerialQueue } from './queue.js';
 import type { StateVault } from './sealed-state.js';
-import { assertSafeSwapCalldata, limitFloor } from './swap-calldata.js';
+import { assertSafeSwapCalldata, assertSafeTokenToNativeCalldata, limitFloor } from './swap-calldata.js';
 
 const HEX = z.string().regex(/^0x(?:[a-fA-F0-9]{2})*$/);
 const STATE_SCHEMA = z.object({
@@ -24,6 +24,13 @@ const STATE_SCHEMA = z.object({
 }).strict();
 type State = z.infer<typeof STATE_SCHEMA>;
 const TRANSFER_ABI = parseAbi(['function transfer(address to, uint256 amount) returns (bool)']);
+const APPROVAL_ABI = parseAbi([
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function approve(address token, address spender, uint160 amount, uint48 expiration)',
+]);
+const MAX_UINT256 = 2n ** 256n - 1n;
+const MAX_UINT160 = 2n ** 160n - 1n;
+const MAX_UINT48 = 2 ** 48 - 1;
 const denied = () => new Error('SIGNING_DENIED');
 
 /** Attestation-only bootstrap. Full custody uses KeyManager's sealed identity instead. */
@@ -46,6 +53,8 @@ export interface SigningPolicy {
     tokenOutDecimals: number;
     feeBps: number;
   };
+  /** Present only when margin trading is switched on. */
+  margin?: { wethAddress: Address };
 }
 
 export interface JournalCipher {
@@ -277,6 +286,8 @@ export class KeyManager implements TransactionSigner {
   async #authorize(opId: string, expected: ExpectedTransaction): Promise<void> {
     if (!/^[A-Za-z0-9:_-]{1,128}$/.test(opId)) throw denied();
     if (opId.startsWith('exec:')) return this.#authorizeSwap(opId, expected);
+    if (opId.startsWith('margin:')) return this.#authorizeMargin(opId, expected);
+    if (opId.startsWith('approval:')) return this.#authorizeApproval(expected);
     let locked: Extract<JournalEvent, { t: 'WITHDRAWAL_LOCKED' }> | undefined;
     const deposits: Extract<JournalEvent, { t: 'DEPOSIT_SESSION_OPENED' }>[] = [];
     for await (const { event } of this.#journal.replay()) {
@@ -348,6 +359,65 @@ export class KeyManager implements TransactionSigner {
       assertSafeSwapCalldata({ data: expected.data, eoa: expected.eoa, tokenOut: swaps.tokenOut,
         minOut: floor, floor, nowSec });
     } catch { throw denied(); }
+  }
+
+  /**
+   * Signs a margin swap only against the operation accounting journaled. No fresh user signature
+   * exists for a liquidation, so the journaled amounts and minimum are what bound the spend.
+   */
+  async #authorizeMargin(opId: string, expected: ExpectedTransaction): Promise<void> {
+    try {
+      const { margin, swaps } = this.#policy;
+      if (!margin || !swaps || expected.data === undefined
+          || keccak256(expected.data) !== expected.dataHash) throw denied();
+      let approved: Extract<JournalEvent, { t: 'MARGIN_OP_APPROVED' }> | undefined;
+      const deposits: Extract<JournalEvent, { t: 'DEPOSIT_SESSION_OPENED' }>[] = [];
+      for await (const { event } of this.#journal.replay()) {
+        if (event.t === 'MARGIN_OP_APPROVED' && event.opId === opId) {
+          if (approved) throw denied();
+          approved = event;
+        }
+        if ((event.t === 'MARGIN_OP_BROADCAST' || event.t === 'MARGIN_OP_SETTLED'
+            || event.t === 'MARGIN_OP_FAILED') && event.opId === opId) throw denied();
+        if (event.t === 'DEPOSIT_SESSION_OPENED') deposits.push(event);
+      }
+      if (!approved) throw denied();
+      const nowSec = BigInt(Math.floor(Date.now() / 1000));
+      const { amountIn, minAmountOut } = approved;
+      if (BigInt(approved.expiry) <= nowSec || amountIn <= 0n || minAmountOut <= 0n
+          || expected.to !== swaps.routerAddress) throw denied();
+      const owner = getAddress(approved.owner);
+      if (deposits.some((event) => getAddress(event.owner) === owner
+          && getAddress(event.eoa) === expected.eoa)) throw denied();
+
+      const tokenIn = getAddress(approved.tokenIn);
+      const tokenOut = getAddress(approved.tokenOut);
+      if (tokenIn === getAddress(NATIVE) && tokenOut === swaps.tokenOut) {
+        if (expected.value !== amountIn || amountIn > this.#policy.maxNativeValue) throw denied();
+        assertSafeSwapCalldata({ data: expected.data, eoa: expected.eoa, tokenOut,
+          minOut: minAmountOut, floor: minAmountOut, nowSec });
+      } else if (tokenIn === swaps.tokenOut && tokenOut === getAddress(NATIVE)) {
+        if (expected.value !== 0n) throw denied();
+        assertSafeTokenToNativeCalldata({ data: expected.data, eoa: expected.eoa, tokenIn,
+          wethAddress: margin.wethAddress, amountIn, minOut: minAmountOut, nowSec });
+      } else {
+        throw denied();
+      }
+    } catch { throw denied(); }
+  }
+
+  /** The two one-time approvals that let the router, and nothing else, spend an EOA's token. */
+  async #authorizeApproval(expected: ExpectedTransaction): Promise<void> {
+    const { margin, swaps } = this.#policy;
+    if (!margin || !swaps || expected.value !== 0n) throw denied();
+    const permit2 = getAddress(PERMIT2_ADDRESS);
+    const allowed = expected.to === swaps.tokenOut
+      ? encodeFunctionData({ abi: APPROVAL_ABI, functionName: 'approve', args: [permit2, MAX_UINT256] })
+      : expected.to === permit2
+        ? encodeFunctionData({ abi: APPROVAL_ABI, functionName: 'approve',
+          args: [swaps.tokenOut, swaps.routerAddress, MAX_UINT160, MAX_UINT48] })
+        : undefined;
+    if (!allowed || keccak256(allowed) !== expected.dataHash) throw denied();
   }
 
   registerOp(opId: string, input: ExpectedTransaction): Promise<void> {
