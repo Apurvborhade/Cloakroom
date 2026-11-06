@@ -26,7 +26,8 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 - [x] Publish `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces so Apurva can code against them (Task 2)
 - [x] Fastify server and boot lifecycle: `server.ts`, `main.ts`
 - [x] Session, deposit-session and balance routes, with envelope decryption: `routes.ts`
-- [ ] Intent and withdrawal routes
+- [x] Intent create, status and cancel routes, with the pipeline started at boot
+- [ ] Withdrawal routes
 
 ### Phase 1 (hours 3 to 12)
 
