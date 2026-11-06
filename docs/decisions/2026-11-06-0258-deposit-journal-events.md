@@ -64,3 +64,7 @@ In `services/enclave/src/watcher.ts`:
 
 - Resolves the blocking conflict between `watcher.ts` and `packages/shared`.
 - Deposit replay is deterministic and requires zero RPC queries.
+
+## Implementation note
+
+`baseline` and `baselineBlock` are optional in `JournalEvent`, but `watcher.ts` always writes them. `DepositWatcher.replay` throws `MISSING_BASELINE` if an opened session lacks either one, rather than assuming zero, which could credit funds the address already held.
