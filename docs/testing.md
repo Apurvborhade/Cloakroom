@@ -42,7 +42,7 @@ TEE verification suites are implemented alongside the enclave package:
 | Deposit after session expiry | Not credited |
 | Condition no longer met on the swap's own quote | Intent stays pending and does not execute |
 
-The plan also listed "deposit from the wrong sender: not credited". The spec's balance-based crediting replaces that behaviour: see [the spec wins over the plan](decisions/2026-11-06-0151-spec-over-plan.md).
+A deposit is credited by the balance arriving at its address, so who sent it does not matter.
 
 ## Security checklist
 

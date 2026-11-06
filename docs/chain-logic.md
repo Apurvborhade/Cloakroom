@@ -50,7 +50,7 @@ The enclave checks the price every `PRICE_POLL_INTERVAL_SEC` from its own Uniswa
 1. Refreshes inventory, picks an EOA not linked to the owner, and calls `inventory.hold`.
 2. Gets a quote for exactly `amountIn` from the Trading API, limited to V2 and V3 routes, with the chosen EOA as `swapper`. Sets `minOut = quote.out * (1 - slippageBps / 10000)`, where the owner's slippage is capped by `MAX_SLIPPAGE_BPS_CAP`.
 3. Rechecks the intent's condition using this quote's implied price, because a larger amount can get a worse price than the poll did.
-4. Treats the API's transaction as untrusted. Requires `to === UNIVERSAL_ROUTER_ADDRESS`, `from` to be the EOA and `value` to equal `amountIn`, then decodes the router commands to prove the EOA receives at least `minOut`. See [Swap safety rules](decisions/2026-11-06-1304-swap-safety-rules.md).
+4. Treats the API's transaction as untrusted. Requires `to === UNIVERSAL_ROUTER_ADDRESS`, `from` to be the EOA and `value` to equal `amountIn`, then decodes the router commands to prove the EOA receives at least `minOut`.
 5. Runs the transaction through `eth_call`.
 6. Registers it with the signing guard, signs, computes the hash from the serialized transaction, journals `EXEC_BROADCAST`, then sends the raw transaction.
 7. After `CONFIRMATIONS` blocks, sums the output token's Transfer logs to the EOA in the receipt. That sum is `amountOut`.
@@ -86,7 +86,7 @@ Runs once on boot, after replay and before anything else starts. Unfinished oper
 - **No receipt, and the nonce moved:** flag it for review, and keep the funds reserved.
 - **The chain cannot be reached:** leave it unresolved, and try again on the next boot.
 
-A withdrawal locked but never broadcast has its funds released, because the broadcast is journaled before sending. This is why the raw signed transaction is stored in the BROADCAST journal events. See [Recovery rules](decisions/2026-11-06-1330-recovery-rules.md).
+A withdrawal locked but never broadcast has its funds released, because the broadcast is journaled before sending. This is why the raw signed transaction is stored in the BROADCAST journal events.
 
 ## Known gaps
 

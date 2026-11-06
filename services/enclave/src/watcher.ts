@@ -7,7 +7,6 @@ const BALANCE_ABI = parseAbi(['function balanceOf(address owner) view returns (u
 
 /**
  * The deposit-related subset of JournalEvent that the watcher reads and writes.
- * See docs/decisions/2026-11-06-0258-deposit-journal-events.md.
  */
 export type DepositEvent = Extract<
   JournalEvent,

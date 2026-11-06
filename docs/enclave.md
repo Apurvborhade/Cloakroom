@@ -56,7 +56,7 @@ export class FifoSerialQueue implements SerialQueue {
 
 ## Journal (Shreyas)
 
-Append-only, hash-chained, and encrypted at rest with AES-256-GCM. Every append operation calls `fsync()` before returning. Replaying the journal from sequence 1 deterministically reconstructs the in-memory ledger and state after a restart. See [journal durability and replay](decisions/2026-11-06-0745-journal-durability-and-replay.md).
+Append-only, hash-chained, and encrypted at rest with AES-256-GCM. Every append operation calls `fsync()` before returning. Replaying the journal from sequence 1 deterministically reconstructs the in-memory ledger and state after a restart.
 
 ```ts
 // packages/shared/src/types/journal.ts

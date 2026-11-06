@@ -25,7 +25,7 @@ A Next.js app that never shows a private key and never needs a custom wallet. Th
 
 Route chain reads (wallet balance, transaction receipts, token reads) through the Anon-RPC browser harness by default, instead of a normal RPC provider. Follow the [wallet and app guide](https://ethereum.github.io/anon-rpc/wallets/) and use [`@anon-rpc/browser-harness`](https://www.npmjs.com/package/@anon-rpc/browser-harness). How the harness plugs into viem has not been checked yet.
 
-EF judges weigh how much app traffic goes through Anon-RPC, so prefer a chain read over an API call where both would work. See [prizes.md](prizes.md).
+EF judges weigh how much app traffic goes through Anon-RPC, so prefer a chain read over an API call where both would work.
 
 Anything left out, such as the wallet's own signing RPC, goes in the README leak list with the reason.
 

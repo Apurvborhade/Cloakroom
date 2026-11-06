@@ -75,7 +75,7 @@ The service holds every custody key and the private ledger. Users sign requests 
 - Uniswap's response isn't trusted. We decode the router calldata before signing and refuse anything we can't check, and the signer separately checks the journaled order. An order can't fill below its limit, even after our fee.
 - Payouts and swaps never come from an address linked to that user.
 
-The details are in [docs/enclave.md](docs/enclave.md) and [docs/chain-logic.md](docs/chain-logic.md). Decisions and why we made them are in [docs/decisions/](docs/decisions/README.md).
+The details are in [docs/enclave.md](docs/enclave.md) and [docs/chain-logic.md](docs/chain-logic.md).
 
 ## Status
 
@@ -129,7 +129,7 @@ pnpm test:roundtrip
 pnpm test:swap
 ```
 
-[scripts/README.md](scripts/README.md) covers every command, and [docs/deployment.md](docs/deployment.md) covers the settings.
+[scripts/README.md](scripts/README.md) covers every command, and [.env.example](.env.example) lists the settings.
 
 ## Uniswap integration
 

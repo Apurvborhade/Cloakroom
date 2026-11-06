@@ -55,10 +55,8 @@ Use plain, technical, and precise English.
 
 Maintaining documentation is a continuous engineering obligation:
 Whenever code, schemas, interfaces, or configurations are created or modified:
-1. Update the author's role ownership document (`docs/roles/<name>.md`).
-2. Update shared API or interface contracts if changes affect team boundaries.
-3. Update team handoffs in `docs/README.md` or role documents when another teammate depends on the changes.
-4. Never mark a task as completed or pushed unless the command actually succeeded.
+1. Update shared API or interface contracts if changes affect team boundaries.
+2. Never mark a task as completed or pushed unless the command actually succeeded.
 
 ## 8. Git Commit Conventions
 

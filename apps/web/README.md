@@ -14,7 +14,7 @@ cp apps/web/.env.example apps/web/.env.local   # then fill it in
 pnpm --filter @cloakroom/web dev                # http://localhost:3000
 ```
 
-Start the enclave from the repo root with `pnpm start:enclave`, using a root `.env` (see `.env.example` and `docs/deployment.md`). Set `ALLOWED_ORIGIN=http://localhost:3000`. For local testing use `SIM_MODE=true` together with `NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE=true`, and add `MARGIN_ENABLED=true` to try margin.
+Start the enclave from the repo root with `pnpm start:enclave`, using a root `.env` (see `.env.example`). Set `ALLOWED_ORIGIN=http://localhost:3000`. For local testing use `SIM_MODE=true` together with `NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE=true`, and add `MARGIN_ENABLED=true` to try margin.
 
 Tests: `pnpm --filter @cloakroom/web test`. They also run as part of the root `pnpm test`.
 

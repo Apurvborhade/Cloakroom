@@ -4,7 +4,7 @@
 
 ## Mandatory Verification Checklist
 
-- [ ] Relevant documentation updated (e.g., `docs/roles/*.md`, `docs/api.md`)
+- [ ] Relevant documentation updated (e.g., `docs/api.md`)
 - [ ] Tests included or justification provided for omission
 - [ ] Shared contracts and interfaces reviewed for backward compatibility
 - [ ] No emojis added anywhere in code, comments, documentation, or commit messages
