@@ -255,8 +255,10 @@ export class MockMarginAccounting implements MarginAccounting {
   private finishClose(position: MockPosition, kind: MarginOperationKind, result: MarginExecutionResult): void {
     this.addLoan(position.debtToken, -position.debt);
     if (position.side === 'long') {
-      // The collateral went into the ETH, so the sale pays the loan and the rest is the trader's.
-      const proceeds = result.amountOut;
+      // The first collateral went into the ETH, so only what was added later is still in USDC. The
+      // sale and that together pay the loan, and the rest is the trader's.
+      const addedLater = position.collateral - (position.sizeUsd - position.debt);
+      const proceeds = result.amountOut + addedLater;
       position.payout = proceeds > position.debt ? proceeds - position.debt : 0n;
       position.shortfall = position.debt > proceeds ? position.debt - proceeds : 0n;
     } else {

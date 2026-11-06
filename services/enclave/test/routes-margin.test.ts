@@ -5,6 +5,7 @@ import type { Address, Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MockMarginAccounting } from '../src/margin-mock.js';
 import { PricePoller } from '../src/price-poller.js';
 import type { RunningEnclave } from '../src/server.js';
 import { apiClient, enclaveHarness } from './helpers/enclave.js';
@@ -208,6 +209,62 @@ describe('margin API', () => {
     expect(position!.debt).toBe(parseEther('0.5').toString());
     const failed = (await events(enclave)).find((event) => event.t === 'MARGIN_OP_FAILED');
     expect(failed).toMatchObject({ reason: 'NO_INVENTORY' });
+  });
+
+  it('refuses the same signed request twice', async () => {
+    const { enclave } = await bootMargin();
+    const api = apiClient(enclave);
+    const lender = newAccount();
+    const expires = expiry();
+    const message = { owner: lender.address, token: NATIVE, amount: parseEther('1'), nonce: 1n, expiry: BigInt(expires) };
+    const request = {
+      message: { owner: lender.address, token: NATIVE, amount: String(message.amount), nonce: '1', expiry: String(expires) },
+      signature: await api.sign(lender, 'MarginSupply', message as never),
+    };
+    expect((await api.post('/margin/lending/supply', request)).status).toBe(200);
+    const again = await api.post('/margin/lending/supply', request);
+    expect(again.status).toBe(409);
+    expect(again.body.error).toBe('NONCE_USED');
+  });
+
+  it('settles a swap that landed while the service was down, without sending it again', async () => {
+    const uniswap = await harness.localUniswap();
+    const overrides = { MARGIN_ENABLED: 'true', TOKEN_OUT_ADDRESS: uniswap.token, UNIVERSAL_ROUTER_ADDRESS: uniswap.router };
+    let crash = true;
+    const enclave = await harness.boot({
+      config: harness.config(overrides),
+      quoter: uniswap.quoter,
+      riskPrices: testPrice(),
+      // Stands in for the process dying after the transaction was sent, before its result was saved.
+      marginAccounting: ({ journal, queue }) => {
+        const accounting = new MockMarginAccounting({ journal, queue, usdc: uniswap.token, usdcDecimals: 6 });
+        const settle = accounting.settle.bind(accounting);
+        accounting.settle = async (opId, result) => {
+          if (crash) throw new Error('CRASHED');
+          return settle(opId, result);
+        };
+        return accounting;
+      },
+    });
+    await harness.send(enclave.parts.keys.list()[0]!.address, parseEther('2'));
+    await enclave.parts.inventory.refresh();
+    const api = client(enclave);
+    await api.supply(newAccount(), NATIVE, parseEther('1'));
+    await api.open(newAccount(), 'short');
+    await vi.waitFor(() => expect(enclave.parts.margin!.orders.inFlightCount).toBe(0), { timeout: 8000 });
+    await vi.waitFor(async () => {
+      expect((await events(enclave)).some((event) => event.t === 'MARGIN_OP_BROADCAST')).toBe(true);
+    });
+    expect((await events(enclave)).some((event) => event.t === 'MARGIN_OP_SETTLED')).toBe(false);
+    const eoa = (await events(enclave)).find((event) => event.t === 'MARGIN_OP_BROADCAST') as Extract<JournalEvent, { t: 'MARGIN_OP_BROADCAST' }>;
+    const sentNonce = await harness.chain.getTransactionCount({ address: eoa.eoa });
+    crash = false;
+    await enclave.stop();
+
+    const restarted = await harness.boot({ config: harness.config(overrides), quoter: uniswap.quoter, riskPrices: testPrice() });
+    expect(restarted.recovery).toContainEqual({ opId: eoa.opId, status: 'settled' });
+    expect((await events(restarted)).filter((event) => event.t === 'MARGIN_OP_SETTLED')).toHaveLength(1);
+    expect(await harness.chain.getTransactionCount({ address: eoa.eoa })).toBe(sentNonce);
   });
 
   it('releases an operation a restart interrupted before anything was sent', async () => {

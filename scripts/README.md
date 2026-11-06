@@ -82,6 +82,16 @@ pnpm test:swap
 
 The tokens stay in the pool as Alice's balance. Withdrawing them needs a pool address she isn't linked to that holds tokens, so seed the pool first.
 
+## Margin on a Sepolia fork
+
+Runs a long and a short, each opened and closed, and a liquidation of each, through the real API, executor and signer. The swaps use Uniswap's real contracts on a local fork, so nothing reaches Sepolia. It needs Foundry, and `RPC_URL` and `UNISWAP_API_KEY` in `.env`.
+
+```bash
+pnpm test:margin
+```
+
+Accounting is the in-memory stand-in, and the liquidations' price moves are simulated. They execute at the pool's real price, so a liquidated position usually shows no loss. The stand-in doesn't credit a short's spare ETH, so its payout reads about 2% of the position low.
+
 ## Seeding the inventory
 
 `services/enclave/scripts/seed-inventory.ts` has two steps. It refuses to run anywhere except Sepolia or a local Anvil chain.

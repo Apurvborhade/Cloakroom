@@ -103,8 +103,8 @@ Reuse the existing enclave service, deposit/withdrawal flows, custody, and Unisw
 - [x] Add narrowly scoped margin operation registration and signing validation, with Felix reviewing custody integration. Enforce bounded spending, permitted routers and recipients, minimum output, and deadlines; preserve existing swap guards.
 - [x] Supply risk prices from the existing price check. For the testnet MVP there is no staleness rule: margin uses the last price, and refuses only when it has none.
 - [x] Run the liquidation monitor: submit candidates to Felix's risk checks, obtain a reserved operation, execute the full close, and return its outcome. Do not mutate balances or bypass maintenance-margin rules.
-- [ ] Integrate transaction recovery and inventory reconciliation with Felix's journal state. Report definite failure versus unresolved status correctly; never treat a broadcast transaction as a confirmed close.
-- [ ] Build a small API demo client and integration tests for successful longs/shorts, insufficient liquidity, failed swaps, duplicate requests, simultaneous close/liquidation, and restart recovery.
+- [x] Integrate transaction recovery with the journal, against the mock. Inventory reconciliation still needs Felix's accounting. Original task: integrate transaction recovery and inventory reconciliation with Felix's journal state. Report definite failure versus unresolved status correctly; never treat a broadcast transaction as a confirmed close.
+- [x] Build a small API demo client and integration tests for successful longs/shorts, insufficient liquidity, failed swaps, duplicate requests, simultaneous close/liquidation, and restart recovery.
 
 The ticked items work against the mock, and the signing changes still need Felix's review. See [margin-interface.md](../margin-interface.md).
 

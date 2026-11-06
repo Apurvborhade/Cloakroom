@@ -81,6 +81,8 @@ Margin swaps only avoid the owner's deposit addresses, and don't link the addres
 
 Sepolia's pool is too deep to move on cue. On the buy side, 10,000 USDC moved the price only about 0.4%. So the demo needs the `riskPrices` boot option, which replaces the price margin uses and is refused outside simulation. The liquidation then executes against the real pool at the real price, and the demo must say the price drop was simulated.
 
+`pnpm test:margin` runs all of this on a Sepolia fork: see [scripts/README.md](../scripts/README.md).
+
 ## Known leaks
 
 - A position's open and close amounts can be matched on-chain, and 4x swaps are larger and easier to spot.
