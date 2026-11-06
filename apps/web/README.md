@@ -26,7 +26,7 @@ Tests: `pnpm --filter @cloakroom/web test`. They also run as part of the root `p
 | `/deposit` | Sign a `DepositRequest`, get the address, QR code and countdown, send ETH, then follow submitted → confirmed → credited | `/deposit-session`, `/balance` |
 | `/swap` | Conditional ETH → output-token intents with a review before signing, the intent list and cancellation | `/intents`, `/intents/status`, `/intents/cancel` |
 | `/withdraw` | Token, amount and destination, review, then locked → sent → confirmed with the transaction link and an on-chain receipt check | `/withdrawals`, `/withdrawals/status` |
-| `/margin` (`/positions`) | Open a long or short (up to 4x), add collateral, full close. Lending has no opt-in in the app: `/deposit` shows an information line with a planned 7% APY, which is not paid yet, and a way to take back funds already lent | `/margin/*` |
+| `/margin` (`/positions`) | Open a long (up to 4x; shorts need `NEXT_PUBLIC_MARGIN_SHORTS=true`), add collateral, full close. If the pool can't fund a loan, the trade card offers to lend what it needs. Lending has no other opt-in in the app: `/deposit` shows an information line with a planned 7% APY, which is not paid yet, and a way to take back funds already lent | `/margin/*` |
 | `/attestation` | Enclave key, salt, build hash, quote, the offline verification command and the trust model | `GET /attestation`, `GET /sim/enclave-key` |
 | `/diagnostics` | API, keys, HPKE self-test, session, Anon-RPC routing, margin availability, safe refresh actions | none of its own |
 

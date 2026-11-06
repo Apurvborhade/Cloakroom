@@ -122,7 +122,7 @@ export function useMarginOpen() {
     build: (input: MarginOpenInput, { owner, binding }) =>
       buildMarginOpen(binding, { owner, ...input, nonce: nextNonce(), expiry: mutationExpiry() }),
     send: marginOpen,
-    refresh: ['margin-positions', 'margin-lending'],
+    refresh: ['margin-positions', 'margin-lending', 'balance'],
   });
 }
 
@@ -140,6 +140,6 @@ export function useMarginClose() {
     build: (input: { positionId: Hex; limitPrice: bigint; maxSlippageBps: number }, { owner, binding }) =>
       buildMarginClose(binding, { owner, ...input, nonce: nextNonce(), expiry: mutationExpiry() }),
     send: marginClose,
-    refresh: ['margin-positions', 'margin-lending'],
+    refresh: ['margin-positions', 'margin-lending', 'balance'],
   });
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useMarginOpen } from '@/hooks/use-actions';
+import { useMarginLendingAction, useMarginOpen } from '@/hooks/use-actions';
 import { usePoolPrice } from '@/hooks/use-pool-price';
 import { useBalances, useMarginAvailability, useMarginPositions } from '@/hooks/use-private-data';
 import { describeError, errorCode } from '@/lib/api/errors';
@@ -11,6 +11,7 @@ import { appConfig } from '@/lib/config';
 import { formatPrice, formatUnitsDisplay, parseUnitsStrict } from '@/lib/format/units';
 import { leverageLabel } from '@/lib/margin/positions';
 import { marginQuote, marketLimitPrice } from '@/lib/margin/quote';
+import { explainAttempt } from '@/lib/swap/attempts';
 import type { MarginSide } from '@/lib/margin/quote';
 import { Address as AddressText } from '../ui/address';
 import { DebugItem, DebugPanel } from './debug';
@@ -51,6 +52,7 @@ export function MarginTrade() {
   const positions = useMarginPositions();
   const { availability } = useMarginAvailability();
   const open = useMarginOpen();
+  const lend = useMarginLendingAction('supply');
 
   const decimals = usdc?.decimals ?? 6;
   const collateral = useMemo(() => parseUsdc(collateralText, decimals), [collateralText, decimals]);
@@ -99,6 +101,17 @@ export function MarginTrade() {
     );
   };
 
+  const shortsEnabled = appConfig.marginShortsEnabled;
+  const failure = explainAttempt(opened?.reason);
+  // The pool has too little to lend. Funding it from this balance needs the collateral as well.
+  const poolShort = open.error && errorCode(open.error) === 'INSUFFICIENT_LIQUIDITY';
+  const needed = quote && quote.borrowedToken === 'USDC' ? quote.borrowed : null;
+  const canFundPool = poolShort && needed !== null && needed > 0n && collateral !== null && available !== null && available >= collateral + needed;
+  const fundPool = () => {
+    if (!canFundPool || needed === null) return;
+    lend.mutate({ token: usdc.address, amount: needed }, { onSuccess: () => open.reset() });
+  };
+
   const shortRefused = open.error && side === 'short' && errorCode(open.error) === 'UNSUPPORTED_ASSET';
   const fillPercent = maxLeverage > MIN_LEVERAGE_BPS ? ((leverageBps - MIN_LEVERAGE_BPS) * 100) / (maxLeverage - MIN_LEVERAGE_BPS) : 0;
   const marks: number[] = [];
@@ -114,15 +127,16 @@ export function MarginTrade() {
               type="button"
               role="tab"
               aria-selected={side === item}
+              disabled={item === 'short' && !shortsEnabled}
               onClick={() => { setSide(item); open.reset(); }}
               className={cn(
-                'rounded-xl py-2.5 text-sm font-medium capitalize transition-colors',
+                'rounded-xl py-2.5 text-sm font-medium capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                 side !== item && 'text-fg-subtle hover:text-fg',
                 side === item && item === 'long' && 'bg-ok/20 text-ok',
                 side === item && item === 'short' && 'bg-bad/20 text-bad',
               )}
             >
-              {item}
+              {item}{item === 'short' && !shortsEnabled ? ' · Coming soon' : ''}
             </button>
           ))}
         </div>
@@ -202,23 +216,48 @@ export function MarginTrade() {
           )}
         </div>
 
-        {open.error && (
+        {open.error && !poolShort && (
           <StatusLine tone="bad" title="Position not opened">
             {shortRefused ? "Shorts aren't live on this server yet. Longs work once margin is on." : describeError(open.error)}
           </StatusLine>
         )}
+        {poolShort && (
+          <StatusLine tone="bad" title="Not enough in the lending pool for this loan">
+            {canFundPool && needed !== null ? (
+              <span className="block space-y-2">
+                <span className="block">You can lend what it needs from your own balance, then open the position. You're taking the lender's risk on that money. Take it back on Deposit after closing.</span>
+                <button
+                  type="button"
+                  disabled={lend.isPending}
+                  onClick={fundPool}
+                  className="block font-medium text-accent hover:text-accent-strong disabled:opacity-50"
+                >
+                  {lend.isPending ? 'Check your wallet' : `Lend ${formatUnitsDisplay(needed, decimals, 2)} ${usdc.symbol} to the pool`}
+                </button>
+              </span>
+            ) : (
+              'Lower the leverage, or use 1x, which borrows nothing. Your balance is too small to fund this loan yourself as well as the collateral.'
+            )}
+          </StatusLine>
+        )}
+        {lend.error && <StatusLine tone="bad" title="Couldn't lend">{describeError(lend.error)}</StatusLine>}
         {openedStatus === 'opening' && <StatusLine tone="working" title="Opening your position">The swap is running. This usually takes under a minute.</StatusLine>}
         {openedStatus === 'open' && (
           <StatusLine tone="ok" title="Position open">
             <Link href="/margin/positions" className="font-medium text-accent hover:text-accent-strong">View your positions</Link>
           </StatusLine>
         )}
-        {openedStatus === 'failed' && <StatusLine tone="bad" title="Position didn't open">The swap didn't complete, and your collateral was returned.</StatusLine>}
+        {openedStatus === 'failed' && (
+          <StatusLine tone="bad" title={failure?.title ?? "Position didn't open"}>
+            {failure ? `${failure.detail} ${failure.action}` : "The swap didn't complete, and your collateral was returned."}
+          </StatusLine>
+        )}
 
         {opened && openedId && (
           <DebugPanel summary="Position details">
             <dl className="space-y-0.5">
               <DebugItem label="Status"><code className="font-mono">{opened.status}</code></DebugItem>
+              {opened.reason && <DebugItem label="Reason"><code className="font-mono">{opened.reason}</code></DebugItem>}
               {opened.entryPrice && <DebugItem label="Entry price">${formatPrice(opened.entryPrice, 2)}</DebugItem>}
               {opened.liquidationPrice && <DebugItem label="Liquidation price">${formatPrice(opened.liquidationPrice, 2)}</DebugItem>}
               <DebugItem label="Position ID"><AddressText value={openedId} head={10} tail={8} /></DebugItem>
