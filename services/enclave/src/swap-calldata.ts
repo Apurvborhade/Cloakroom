@@ -45,10 +45,11 @@ function finalToken(path: Hex | readonly Address[]): Address {
  * The API is untrusted, and a simulation cannot show where the output goes, so this reads the
  * router commands. The router enforces each minimum on-chain. Two patterns are allowed:
  *
- * - Split route: every swap leaves its output in the router, and exactly one SWEEP pays it to
- *   the EOA with a minimum of at least minOut.
- * - Single route: exactly one swap pays the EOA directly, ends in the output token, and has a
- *   minimum of at least minOut.
+ * - Through the router: every swap leaves its output in the router, and exactly one SWEEP pays it
+ *   to the EOA with a minimum of at least minOut.
+ * - Direct: one or more swaps pay the EOA directly, each ending in the output token, and their
+ *   minimums add up to at least minOut. Splitting rounds each part down, so the total may fall
+ *   short by at most one unit for each extra swap.
  *
  * Any command not listed here is refused, including ones that could send funds elsewhere.
  */
@@ -76,6 +77,7 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
   let outputSweeps = 0;
   let swapsToRouter = 0;
   let swapsToEoa = 0;
+  let directMinimums = 0n;
   try {
     bytes.forEach((command, index) => {
       const input = inputs[index] as Hex;
@@ -96,7 +98,7 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
             swapsToRouter += 1;
           } else if (isEoa(recipient)) {
             if (finalToken(path) !== tokenOut) throw unsafe('SWAP_TOKEN');
-            if (minimum < rules.minOut) throw unsafe('SWAP_MINIMUM');
+            directMinimums += minimum;
             swapsToEoa += 1;
           } else {
             throw unsafe('SWAP_RECIPIENT');
@@ -124,7 +126,8 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
     throw unsafe('MALFORMED');
   }
 
-  const splitRoute = swapsToEoa === 0 && outputSweeps === 1;
-  const singleRoute = swapsToEoa === 1 && swapsToRouter === 0 && outputSweeps === 0;
-  if (!splitRoute && !singleRoute) throw unsafe('OUTPUT_PATTERN');
+  const throughRouter = swapsToEoa === 0 && outputSweeps === 1;
+  const direct = swapsToEoa > 0 && swapsToRouter === 0 && outputSweeps === 0;
+  if (!throughRouter && !direct) throw unsafe('OUTPUT_PATTERN');
+  if (direct && directMinimums + BigInt(swapsToEoa - 1) < rules.minOut) throw unsafe('SWAP_MINIMUM');
 }
