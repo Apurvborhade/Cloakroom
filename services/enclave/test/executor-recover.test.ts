@@ -341,6 +341,7 @@ describe('Executor.recover', () => {
     it('settles it once, and pays the recipient only once', async () => {
       const world = await newWorld();
       const withdrawal = await crashDuringWithdrawal(world, { waitForTransactionReceipt: crashBeforeReceipt });
+      await anvil.mine({ blocks: 1 });
       expect(await nonceOf(world)).toBe(1);
 
       const second = await boot(world);

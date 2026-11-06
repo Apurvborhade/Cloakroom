@@ -62,8 +62,8 @@ Append-only, hash-chained, and encrypted at rest with AES-256-GCM. Every append 
 // packages/shared/src/types/journal.ts
 export type JournalEvent =
   | { t: 'NONCE_USED'; owner: Address; nonce: bigint }
-  | { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number; baseline?: bigint; baselineBlock?: bigint }
-  | { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; block: bigint; owner?: Address; txHash?: Hex }
+  | { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number; baseline: bigint; baselineBlock: bigint }
+  | { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; block: bigint; owner: Address; txHash?: Hex }
   | { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address }
   | { t: 'INTENT_CREATED'; id: string; owner: Address; intent: IntentMsg }
   | { t: 'INTENT_CANCELLED'; id: string; owner: Address }

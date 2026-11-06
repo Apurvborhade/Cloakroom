@@ -447,6 +447,8 @@ describe('Inventory', () => {
         owner: alice,
         eoa: addresses[0]!,
         expiry: 1,
+        baseline: 0n,
+        baselineBlock: 0n,
       });
       inventory.replay({ t: 'DEPOSIT_SESSION_CLOSED', id: 's1', eoa: addresses[0]! });
       await inventory.refresh();

@@ -11,6 +11,14 @@ contract TestSwapToken {
         balanceOf[to] += amount;
         emit Transfer(address(0), to, amount);
     }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "balance");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
 }
 
 /// Stands in for Universal Router: pays a set amount to the caller, or reverts. For tests only.

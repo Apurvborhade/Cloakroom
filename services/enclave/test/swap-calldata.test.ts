@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters } from 'viem';
 import type { Address, Hex } from 'viem';
-import { assertSafeSwapCalldata } from '../src/swap-calldata.js';
-import { SEPOLIA_QUOTE, SEPOLIA_SINGLE_ROUTE_QUOTE } from './fixtures/sepolia-quote.js';
+import { assertSafeSwapCalldata, limitFloor } from '../src/swap-calldata.js';
+import { SEPOLIA_DIRECT_SPLIT_QUOTE, SEPOLIA_QUOTE, SEPOLIA_SINGLE_ROUTE_QUOTE } from './fixtures/sepolia-quote.js';
 
 const ROUTER_ABI = parseAbi(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable']);
 const EOA: Address = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
@@ -66,7 +66,40 @@ function build(commands: Array<[string, Hex]>, deadline = NOW + 60n): Hex {
 }
 
 const check = (data: Hex) =>
-  assertSafeSwapCalldata({ data, eoa: EOA, tokenOut: TOKEN, minOut: MIN_OUT, nowSec: NOW });
+  assertSafeSwapCalldata({ data, eoa: EOA, tokenOut: TOKEN, minOut: MIN_OUT, floor: 0n, nowSec: NOW });
+
+describe('limitFloor', () => {
+  it('is the amount times the limit price, with no slippage taken off', () => {
+    expect(limitFloor(10n ** 17n, 3_000n * 10n ** 18n, 6)).toBe(300_000_000n);
+  });
+
+  it('rounds up, so a fill cannot land just under the limit', () => {
+    expect(limitFloor(1n, 10n ** 18n, 6)).toBe(1n);
+    expect(limitFloor(10n ** 18n + 1n, 10n ** 18n, 6)).toBe(1_000_001n);
+  });
+});
+
+describe('the limit floor in calldata', () => {
+  const half = MIN_OUT / 2n;
+  const checkFloor = (data: Hex, floor: bigint) =>
+    assertSafeSwapCalldata({ data, eoa: EOA, tokenOut: TOKEN, minOut: MIN_OUT, floor, nowSec: NOW });
+
+  it('accepts minimums exactly at the floor', () => {
+    expect(() => checkFloor(build([swapV3(), sweep(TOKEN, EOA, MIN_OUT)]), MIN_OUT)).not.toThrow();
+    expect(() => checkFloor(build([swapV3(EOA, false, half), swapV3(EOA, false, half)]), MIN_OUT)).not.toThrow();
+  });
+
+  it('refuses a sweep that clears minOut but not the floor', () => {
+    expect(() => checkFloor(build([swapV3(), sweep(TOKEN, EOA, MIN_OUT)]), MIN_OUT + 1n)).toThrow('LIMIT_FLOOR');
+  });
+
+  it('gives split swaps no rounding tolerance against the floor', () => {
+    const split = build([swapV3(EOA, false, half), swapV3(EOA, false, half - 1n)]);
+
+    expect(() => checkFloor(split, MIN_OUT - 1n)).not.toThrow();
+    expect(() => checkFloor(split, MIN_OUT)).toThrow('LIMIT_FLOOR');
+  });
+});
 
 describe('assertSafeSwapCalldata', () => {
   it('accepts a real Trading API response from Sepolia', () => {
@@ -76,6 +109,7 @@ describe('assertSafeSwapCalldata', () => {
         eoa: SEPOLIA_QUOTE.eoa,
         tokenOut: SEPOLIA_QUOTE.tokenOut,
         minOut: SEPOLIA_QUOTE.minOut,
+        floor: 0n,
         nowSec: SEPOLIA_QUOTE.deadline - 1n,
       }),
     ).not.toThrow();
@@ -88,6 +122,7 @@ describe('assertSafeSwapCalldata', () => {
         eoa: ATTACKER,
         tokenOut: SEPOLIA_QUOTE.tokenOut,
         minOut: SEPOLIA_QUOTE.minOut,
+        floor: 0n,
         nowSec: SEPOLIA_QUOTE.deadline - 1n,
       }),
     ).toThrow('SWEEP_RECIPIENT');
@@ -100,6 +135,7 @@ describe('assertSafeSwapCalldata', () => {
         eoa: SEPOLIA_QUOTE.eoa,
         tokenOut: SEPOLIA_QUOTE.tokenOut,
         minOut: SEPOLIA_QUOTE.minOut + 1n,
+        floor: 0n,
         nowSec: SEPOLIA_QUOTE.deadline - 1n,
       }),
     ).toThrow('SWEEP_MINIMUM');
@@ -113,6 +149,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: SEPOLIA_SINGLE_ROUTE_QUOTE.eoa,
           tokenOut: SEPOLIA_SINGLE_ROUTE_QUOTE.tokenOut,
           minOut: SEPOLIA_SINGLE_ROUTE_QUOTE.minOut,
+          floor: 0n,
           nowSec: SEPOLIA_SINGLE_ROUTE_QUOTE.deadline - 1n,
         }),
       ).not.toThrow();
@@ -125,6 +162,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: ATTACKER,
           tokenOut: SEPOLIA_SINGLE_ROUTE_QUOTE.tokenOut,
           minOut: SEPOLIA_SINGLE_ROUTE_QUOTE.minOut,
+          floor: 0n,
           nowSec: SEPOLIA_SINGLE_ROUTE_QUOTE.deadline - 1n,
         }),
       ).toThrow('SWAP_RECIPIENT');
@@ -137,6 +175,7 @@ describe('assertSafeSwapCalldata', () => {
           eoa: SEPOLIA_SINGLE_ROUTE_QUOTE.eoa,
           tokenOut: SEPOLIA_SINGLE_ROUTE_QUOTE.tokenOut,
           minOut: SEPOLIA_SINGLE_ROUTE_QUOTE.minOut + 1n,
+          floor: 0n,
           nowSec: SEPOLIA_SINGLE_ROUTE_QUOTE.deadline - 1n,
         }),
       ).toThrow('SWAP_MINIMUM');
@@ -157,9 +196,74 @@ describe('assertSafeSwapCalldata', () => {
       ['a V2 path ending in another token', [wrap(), swapV2(EOA, false, MIN_OUT, [TOKEN, OTHER_TOKEN])], 'SWAP_TOKEN'],
       ['pulling funds from the EOA', [swapV3(EOA, true, MIN_OUT)], 'SWAP_PAYER'],
       ['paying an attacker', [wrap(), swapV3(ATTACKER, false, MIN_OUT)], 'SWAP_RECIPIENT'],
-      ['two direct swaps', [swapV3(EOA, false, MIN_OUT), swapV3(EOA, false, MIN_OUT)], 'OUTPUT_PATTERN'],
       ['a direct swap beside one left in the router', [swapV3(EOA, false, MIN_OUT), swapV3()], 'OUTPUT_PATTERN'],
       ['a direct swap beside an output sweep', [swapV3(EOA, false, MIN_OUT), sweep()], 'OUTPUT_PATTERN'],
+    ])('rejects %s', (_name, commands, reason) => {
+      expect(() => check(build(commands))).toThrow(reason);
+    });
+  });
+
+  describe('several swaps that each pay the EOA directly', () => {
+    const half = MIN_OUT / 2n;
+
+    it('accepts a real Trading API response from Sepolia', () => {
+      expect(() =>
+        assertSafeSwapCalldata({
+          data: SEPOLIA_DIRECT_SPLIT_QUOTE.data,
+          eoa: SEPOLIA_DIRECT_SPLIT_QUOTE.eoa,
+          tokenOut: SEPOLIA_DIRECT_SPLIT_QUOTE.tokenOut,
+          minOut: SEPOLIA_DIRECT_SPLIT_QUOTE.minOut,
+          floor: 0n,
+          nowSec: SEPOLIA_DIRECT_SPLIT_QUOTE.deadline - 1n,
+        }),
+      ).not.toThrow();
+    });
+
+    it('rejects that same real response for anyone else', () => {
+      expect(() =>
+        assertSafeSwapCalldata({
+          data: SEPOLIA_DIRECT_SPLIT_QUOTE.data,
+          eoa: ATTACKER,
+          tokenOut: SEPOLIA_DIRECT_SPLIT_QUOTE.tokenOut,
+          minOut: SEPOLIA_DIRECT_SPLIT_QUOTE.minOut,
+          floor: 0n,
+          nowSec: SEPOLIA_DIRECT_SPLIT_QUOTE.deadline - 1n,
+        }),
+      ).toThrow('SWAP_RECIPIENT');
+    });
+
+    it('rejects that same real response beyond its rounding', () => {
+      expect(() =>
+        assertSafeSwapCalldata({
+          data: SEPOLIA_DIRECT_SPLIT_QUOTE.data,
+          eoa: SEPOLIA_DIRECT_SPLIT_QUOTE.eoa,
+          tokenOut: SEPOLIA_DIRECT_SPLIT_QUOTE.tokenOut,
+          minOut: SEPOLIA_DIRECT_SPLIT_QUOTE.minOut + 1n,
+          floor: 0n,
+          nowSec: SEPOLIA_DIRECT_SPLIT_QUOTE.deadline - 1n,
+        }),
+      ).toThrow('SWAP_MINIMUM');
+    });
+
+    it('accepts minimums that add up to minOut', () => {
+      expect(() => check(build([wrap(), swapV3(EOA, false, half), swapV3(EOA, false, half)]))).not.toThrow();
+      expect(() => check(build([wrap(), swapV3(EOA, false, half), swapV2(EOA, false, half), sweep(NATIVE, EOA, 0n)]))).not.toThrow();
+    });
+
+    it('allows one unit of rounding for each extra swap, and no more', () => {
+      expect(() => check(build([swapV3(EOA, false, half), swapV3(EOA, false, half - 1n)]))).not.toThrow();
+      expect(() => check(build([swapV3(EOA, false, half), swapV3(EOA, false, half - 2n)]))).toThrow('SWAP_MINIMUM');
+      expect(() => check(build([swapV3(EOA, false, MIN_OUT - 1n)]))).toThrow('SWAP_MINIMUM');
+    });
+
+    it.each<[string, Array<[string, Hex]>, string]>([
+      ['minimums that fall well short', [swapV3(EOA, false, 1n), swapV3(EOA, false, 1n)], 'SWAP_MINIMUM'],
+      ['one swap with no minimum, however large the other', [swapV3(EOA, false, 0n), swapV3(EOA, false, MIN_OUT - 2n)], 'SWAP_MINIMUM'],
+      ['one part ending in another token', [swapV3(EOA, false, MIN_OUT), swapV3(EOA, false, 1n, OTHER_PATH)], 'SWAP_TOKEN'],
+      ['one part paying an attacker', [swapV3(EOA, false, MIN_OUT), swapV3(ATTACKER, false, MIN_OUT)], 'SWAP_RECIPIENT'],
+      ['one part pulling funds from the EOA', [swapV3(EOA, false, MIN_OUT), swapV3(EOA, true, MIN_OUT)], 'SWAP_PAYER'],
+      ['one part left in the router', [swapV3(EOA, false, MIN_OUT), swapV3()], 'OUTPUT_PATTERN'],
+      ['a direct swap beside an output sweep', [swapV3(EOA, false, half), swapV3(EOA, false, half), sweep()], 'OUTPUT_PATTERN'],
     ])('rejects %s', (_name, commands, reason) => {
       expect(() => check(build(commands))).toThrow(reason);
     });
@@ -190,7 +294,7 @@ describe('assertSafeSwapCalldata', () => {
     ['no swap at all', [wrap()], 'OUTPUT_PATTERN'],
     ['a sweep of some other token', [swapV3(), sweep(), sweep(OTHER_TOKEN)], 'SWEEP_TOKEN'],
     ['a V3 swap paying an attacker directly', [wrap(), swapV3(ATTACKER), sweep()], 'SWAP_RECIPIENT'],
-    ['a V3 swap paying the sender with no minimum', [wrap(), swapV3(SENDER), sweep()], 'SWAP_MINIMUM'],
+    ['a V3 swap paying the sender alongside an output sweep', [wrap(), swapV3(SENDER), sweep()], 'OUTPUT_PATTERN'],
     ['a V2 swap paying an attacker directly', [wrap(), swapV2(ATTACKER), sweep()], 'SWAP_RECIPIENT'],
     ['a V3 swap pulling funds from the EOA', [swapV3(THIS, true), sweep()], 'SWAP_PAYER'],
     ['a V2 swap pulling funds from the EOA', [swapV2(THIS, true), sweep()], 'SWAP_PAYER'],

@@ -51,16 +51,14 @@ Use plain, technical, and precise English.
 - Concurrency and replay tests must assert ledger consistency under simulated crashes and simultaneous submissions.
 - Every suite must exit cleanly with code 0 before code is considered complete.
 
-## 7. Mandatory Documentation and Engineering Log Maintenance
+## 7. Mandatory Documentation Maintenance
 
 Maintaining documentation is a continuous engineering obligation:
 Whenever code, schemas, interfaces, or configurations are created or modified:
-1. Update `docs/engineering-log.md` with the task number, title, objective, files changed, verification commands, and results.
-2. Update the author's role ownership document (`docs/roles/<name>.md`).
-3. Update shared API or interface contracts if changes affect team boundaries.
-4. Update team handoffs in `docs/README.md` or role documents when another teammate depends on the changes.
-5. Record commit hashes and commit messages in the log only after the commit is created.
-6. Never mark a task as completed or pushed unless the command actually succeeded.
+1. Update the author's role ownership document (`docs/roles/<name>.md`).
+2. Update shared API or interface contracts if changes affect team boundaries.
+3. Update team handoffs in `docs/README.md` or role documents when another teammate depends on the changes.
+4. Never mark a task as completed or pushed unless the command actually succeeded.
 
 ## 8. Git Commit Conventions
 

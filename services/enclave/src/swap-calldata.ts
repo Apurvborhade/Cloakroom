@@ -26,7 +26,22 @@ export interface SwapCalldataRules {
   eoa: Address;
   tokenOut: Address;
   minOut: bigint;
+  /** The order's limit. Unlike minOut, no rounding tolerance ever applies to it. */
+  floor: bigint;
   nowSec: bigint;
+}
+
+/** Wei per ETH multiplied by the 18-decimal scale of a trigger price. */
+const PRICE_AND_NATIVE_SCALE = 10n ** 36n;
+
+/**
+ * The least output an order may accept: amount times limit price, with no slippage taken off.
+ * It rounds up, because rounding down would allow a fill just under the limit.
+ * 0.1 ETH at 3,000 USDC per ETH gives 300 USDC.
+ */
+export function limitFloor(amountIn: bigint, triggerPrice: bigint, tokenOutDecimals: number): bigint {
+  const numerator = amountIn * triggerPrice * 10n ** BigInt(tokenOutDecimals);
+  return (numerator + PRICE_AND_NATIVE_SCALE - 1n) / PRICE_AND_NATIVE_SCALE;
 }
 
 function unsafe(reason: string): Error {
@@ -45,10 +60,11 @@ function finalToken(path: Hex | readonly Address[]): Address {
  * The API is untrusted, and a simulation cannot show where the output goes, so this reads the
  * router commands. The router enforces each minimum on-chain. Two patterns are allowed:
  *
- * - Split route: every swap leaves its output in the router, and exactly one SWEEP pays it to
- *   the EOA with a minimum of at least minOut.
- * - Single route: exactly one swap pays the EOA directly, ends in the output token, and has a
- *   minimum of at least minOut.
+ * - Through the router: every swap leaves its output in the router, and exactly one SWEEP pays it
+ *   to the EOA with a minimum of at least minOut.
+ * - Direct: one or more swaps pay the EOA directly, each ending in the output token, and their
+ *   minimums add up to at least minOut. Splitting rounds each part down, so the total may fall
+ *   short of minOut by at most one unit for each extra swap, but never short of the floor.
  *
  * Any command not listed here is refused, including ones that could send funds elsewhere.
  */
@@ -76,6 +92,7 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
   let outputSweeps = 0;
   let swapsToRouter = 0;
   let swapsToEoa = 0;
+  let directMinimums = 0n;
   try {
     bytes.forEach((command, index) => {
       const input = inputs[index] as Hex;
@@ -96,7 +113,7 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
             swapsToRouter += 1;
           } else if (isEoa(recipient)) {
             if (finalToken(path) !== tokenOut) throw unsafe('SWAP_TOKEN');
-            if (minimum < rules.minOut) throw unsafe('SWAP_MINIMUM');
+            directMinimums += minimum;
             swapsToEoa += 1;
           } else {
             throw unsafe('SWAP_RECIPIENT');
@@ -109,6 +126,7 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
           const swept = getAddress(token);
           if (swept === tokenOut) {
             if (minimum < rules.minOut) throw unsafe('SWEEP_MINIMUM');
+            if (minimum < rules.floor) throw unsafe('LIMIT_FLOOR');
             outputSweeps += 1;
           } else if (swept !== NATIVE_SWEEP) {
             throw unsafe('SWEEP_TOKEN');
@@ -124,7 +142,9 @@ export function assertSafeSwapCalldata(rules: SwapCalldataRules): void {
     throw unsafe('MALFORMED');
   }
 
-  const splitRoute = swapsToEoa === 0 && outputSweeps === 1;
-  const singleRoute = swapsToEoa === 1 && swapsToRouter === 0 && outputSweeps === 0;
-  if (!splitRoute && !singleRoute) throw unsafe('OUTPUT_PATTERN');
+  const throughRouter = swapsToEoa === 0 && outputSweeps === 1;
+  const direct = swapsToEoa > 0 && swapsToRouter === 0 && outputSweeps === 0;
+  if (!throughRouter && !direct) throw unsafe('OUTPUT_PATTERN');
+  if (direct && directMinimums + BigInt(swapsToEoa - 1) < rules.minOut) throw unsafe('SWAP_MINIMUM');
+  if (direct && directMinimums < rules.floor) throw unsafe('LIMIT_FLOOR');
 }

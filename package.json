@@ -16,7 +16,11 @@
     "test:hpke:browser": "pnpm --filter @cloakroom/shared build && pnpm --filter @cloakroom/enclave build && node scripts/check-hpke-browser.mjs",
     "smoke:sepolia": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/sepolia-smoke.ts",
     "smoke:quote": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/quote-check.ts",
-    "smoke:swap": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/swap-smoke.ts"
+    "smoke:swap": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/swap-smoke.ts",
+    "seed:claim": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/seed-inventory.ts claim",
+    "seed:fund": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/seed-inventory.ts fund",
+    "demo:local": "pnpm --filter @cloakroom/shared run build && tsx services/enclave/scripts/demo-fixture.ts local",
+    "demo:sepolia": "pnpm --filter @cloakroom/shared run build && tsx --env-file=.env services/enclave/scripts/demo-fixture.ts sepolia"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

@@ -66,8 +66,11 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 
 ### Phase 4 (hours 29 to 36)
 
-- [ ] `scripts/seed-inventory.ts`: fund the EOAs with ETH and the output token. Get the USDC by swapping Sepolia ETH in the pool
-- [ ] `scripts/demo-fixture.ts`: two users, scripted run
+- [x] `seed-inventory.ts`: claim the addresses once, and fund them with ETH and the output token, swapping Sepolia ETH for what is missing
+- [ ] Run `pnpm seed:claim` and `pnpm seed:fund --execute` against the deployed enclave
+- [x] `demo-fixture.ts`: two users, scripted run, with `pnpm demo:local` and `pnpm demo:sepolia`
+- [ ] Run `pnpm demo:sepolia`
+- [ ] Move the demo to the real signer, `IntentStore` and API once they land
 - [ ] Give Pradnyesh the Uniswap integration line links for the README
 - [ ] Optional, only if time is left: deploy EnclaveRegistry
 

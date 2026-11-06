@@ -31,3 +31,9 @@ export {
   type OwnerMessageMap,
   type MutatingMessageMap,
 } from './auth.js';
+export {
+  InMemoryIntentStore,
+  replayIntents,
+  type IntentStoreOptions,
+  type JournalStream,
+} from './intents.js';

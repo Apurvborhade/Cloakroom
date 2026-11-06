@@ -1,23 +1,14 @@
-import { NATIVE } from '@cloakroom/shared';
-import type { JournalEvent } from '@cloakroom/shared';
+import { NATIVE, type JournalEvent } from '@cloakroom/shared';
 import type { Address, PublicClient } from 'viem';
 
 /**
- * The journal events the watcher writes. Every field it needs is required here, while
- * JournalEvent makes some optional: see docs/decisions/2026-11-06-0258-deposit-journal-events.md.
+ * The deposit-related subset of JournalEvent that the watcher reads and writes.
+ * See docs/decisions/2026-11-06-0258-deposit-journal-events.md.
  */
-export type DepositEvent =
-  | {
-      t: 'DEPOSIT_SESSION_OPENED';
-      id: string;
-      owner: Address;
-      eoa: Address;
-      expiry: number;
-      baseline: bigint;
-      baselineBlock: bigint;
-    }
-  | { t: 'DEPOSIT_CREDITED'; id: string; owner: Address; amount: bigint; block: bigint }
-  | { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address };
+export type DepositEvent = Extract<
+  JournalEvent,
+  { t: 'DEPOSIT_SESSION_OPENED' | 'DEPOSIT_CREDITED' | 'DEPOSIT_SESSION_CLOSED' }
+>;
 
 /** The parts of Shreyas's Journal, Ledger and SerialQueue that the watcher uses. */
 export interface WatcherJournal {
@@ -52,6 +43,7 @@ export interface OpenSessionParams {
 
 export interface DepositSession extends OpenSessionParams {
   baseline: bigint;
+  baselineBlock: bigint;
   credited: bigint;
   lastCheckedBlock: bigint;
   open: boolean;
@@ -94,6 +86,7 @@ export class DepositWatcher {
       const session: DepositSession = {
         ...params,
         baseline,
+        baselineBlock,
         credited: 0n,
         lastCheckedBlock: baselineBlock,
         open: true,
@@ -114,10 +107,38 @@ export class DepositWatcher {
    */
   replay(event: JournalEvent): void {
     switch (event.t) {
-      case 'DEPOSIT_SESSION_OPENED':
-        // Assuming a missing baseline is zero would credit funds the address already held.
-        if (event.baseline === undefined || event.baselineBlock === undefined) {
-          throw new Error('MISSING_BASELINE');
+      case 'DEPOSIT_SESSION_OPENED': {
+        if (!event.id) {
+          throw new Error('MALFORMED_EVENT: missing id on DEPOSIT_SESSION_OPENED');
+        }
+        if (!event.owner) {
+          throw new Error(`MALFORMED_EVENT: missing owner on DEPOSIT_SESSION_OPENED: ${event.id}`);
+        }
+        if (!event.eoa) {
+          throw new Error(`MALFORMED_EVENT: missing eoa on DEPOSIT_SESSION_OPENED: ${event.id}`);
+        }
+        if (typeof event.expiry !== 'number') {
+          throw new Error(
+            `MALFORMED_EVENT: missing or invalid expiry on DEPOSIT_SESSION_OPENED: ${event.id}`,
+          );
+        }
+        if (
+          event.baseline === undefined ||
+          event.baseline === null ||
+          typeof event.baseline !== 'bigint'
+        ) {
+          throw new Error(
+            `MISSING_BASELINE: missing or invalid baseline on DEPOSIT_SESSION_OPENED: ${event.id}`,
+          );
+        }
+        if (
+          event.baselineBlock === undefined ||
+          event.baselineBlock === null ||
+          typeof event.baselineBlock !== 'bigint'
+        ) {
+          throw new Error(
+            `MISSING_BASELINE: missing or invalid baselineBlock on DEPOSIT_SESSION_OPENED: ${event.id}`,
+          );
         }
         this.sessions.set(event.id, {
           id: event.id,
@@ -125,20 +146,43 @@ export class DepositWatcher {
           eoa: event.eoa,
           expiry: event.expiry,
           baseline: event.baseline,
+          baselineBlock: event.baselineBlock,
           credited: 0n,
           lastCheckedBlock: event.baselineBlock,
           open: true,
         });
         break;
+      }
       case 'DEPOSIT_CREDITED': {
         const session = this.requireSession(event.id);
+        if (!event.owner) {
+          throw new Error(`MALFORMED_EVENT: missing owner on DEPOSIT_CREDITED: ${event.id}`);
+        }
+        if (event.owner.toLowerCase() !== session.owner.toLowerCase()) {
+          throw new Error(
+            `MALFORMED_EVENT: owner mismatch on DEPOSIT_CREDITED: event ${event.owner} != session ${session.owner}`,
+          );
+        }
+        if (typeof event.amount !== 'bigint' || event.amount <= 0n) {
+          throw new Error(`MALFORMED_EVENT: invalid amount on DEPOSIT_CREDITED: ${event.amount}`);
+        }
+        if (typeof event.block !== 'bigint') {
+          throw new Error(
+            `MALFORMED_EVENT: missing or invalid block on DEPOSIT_CREDITED: ${event.id}`,
+          );
+        }
         session.credited += event.amount;
         session.lastCheckedBlock = event.block;
         break;
       }
-      case 'DEPOSIT_SESSION_CLOSED':
-        this.requireSession(event.id).open = false;
+      case 'DEPOSIT_SESSION_CLOSED': {
+        const session = this.requireSession(event.id);
+        if (!event.eoa) {
+          throw new Error(`MALFORMED_EVENT: missing eoa on DEPOSIT_SESSION_CLOSED: ${event.id}`);
+        }
+        session.open = false;
         break;
+      }
       default:
         break;
     }
@@ -146,19 +190,23 @@ export class DepositWatcher {
 
   private requireSession(id: string): DepositSession {
     const session = this.sessions.get(id);
-    if (!session) throw new Error('UNKNOWN_SESSION');
+    if (!session) throw new Error(`UNKNOWN_SESSION: ${id}`);
     return session;
   }
 
   /** Checks every open session once. Overlapping calls share the same run. */
-  tick(): Promise<void> {
-    this.running ??= this.checkOpenSessions().finally(() => {
+  async tick(): Promise<void> {
+    if (this.running) return this.running;
+    this.running = this.checkOpenSessions().finally(() => {
       this.running = null;
     });
     return this.running;
   }
 
-  /** Runs tick on every new block until the returned function is called. */
+  /**
+   * Subscribes to new block numbers on the given client, ticking this watcher on each block.
+   * Returns an unsubscribe function.
+   */
   start(
     client: Pick<PublicClient, 'watchBlockNumber'>,
     onError: (error: unknown) => void,

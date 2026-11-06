@@ -12,8 +12,7 @@ import { encodeFunctionData, getAddress, keccak256, parseAbi, parseEventLogs } f
 import type { Address, Hex, PublicClient, TransactionSerializableEIP1559 } from 'viem';
 import type { Inventory } from './inventory.js';
 import type { InMemoryLedger } from './ledger.js';
-import { priceFromQuote } from './price-poller.js';
-import { assertSafeSwapCalldata } from './swap-calldata.js';
+import { assertSafeSwapCalldata, limitFloor } from './swap-calldata.js';
 import type { Quote, QuoteRequest } from './uniswap.js';
 
 const ERC20_ABI = parseAbi(['function transfer(address to, uint256 amount) returns (bool)']);
@@ -25,8 +24,8 @@ const BPS_PER_PERCENT = 100;
 const MS_PER_SECOND = 1000;
 /** Only these routes produce router commands that assertSafeSwapCalldata can check. */
 const SWAP_PROTOCOLS = ['V2', 'V3'] as const;
+/** A sell limit. "At or below" has no floor to protect the seller, so it is refused. */
 const COMPARATOR_AT_OR_ABOVE = 0;
-const COMPARATOR_AT_OR_BELOW = 1;
 
 /** What the signing guard must see before it will sign an operation. */
 export interface ExpectedTransaction {
@@ -394,6 +393,11 @@ export class Executor {
       await this.failIntent(stored, opId, swaps, reason);
       return { status: 'failed', reason };
     }
+    if (intent.comparator !== COMPARATOR_AT_OR_ABOVE) {
+      const reason = 'UNSUPPORTED_COMPARATOR';
+      await this.failIntent(stored, opId, swaps, reason);
+      return { status: 'failed', reason };
+    }
 
     const nowMs = (swaps.nowMs ?? Date.now)();
     const nowSec = BigInt(Math.floor(nowMs / MS_PER_SECOND));
@@ -416,10 +420,9 @@ export class Executor {
     const eoa = chosen.address;
     inventory.hold(eoa, NATIVE, intent.amountIn, opId);
 
-    const slippageBps = Math.min(intent.maxSlippageBps, swaps.maxSlippageBpsCap);
-    let quote: Quote;
-    try {
-      quote = await swaps.quoter.quote({
+    const floor = limitFloor(intent.amountIn, intent.triggerPrice, swaps.tokenOutDecimals);
+    const requestQuote = (slippageBps: number) =>
+      swaps.quoter.quote({
         tokenIn: NATIVE,
         tokenOut: swaps.tokenOut,
         amountIn: intent.amountIn,
@@ -427,18 +430,28 @@ export class Executor {
         slippagePercent: slippageBps / BPS_PER_PERCENT,
         protocols: SWAP_PROTOCOLS,
       });
+    const minimumAfter = (amountOut: bigint, slippageBps: number) =>
+      (amountOut * (BPS_SCALE - BigInt(slippageBps))) / BPS_SCALE;
+
+    let slippageBps = Math.min(intent.maxSlippageBps, swaps.maxSlippageBpsCap);
+    let quote: Quote;
+    try {
+      quote = await requestQuote(slippageBps);
+      // A larger amount can get a worse price than the poll did, so check this swap's own quote.
+      if (quote.amountOut < floor) return stayPending('CONDITION_NOT_MET');
+
+      // Slippage may only use the room above the limit, and the API builds the calldata from it.
+      if (minimumAfter(quote.amountOut, slippageBps) < floor) {
+        slippageBps = Number(((quote.amountOut - floor) * BPS_SCALE) / quote.amountOut);
+        if (slippageBps === 0) return stayPending('NO_ROOM_ABOVE_LIMIT');
+        quote = await requestQuote(slippageBps);
+      }
     } catch {
       return stayPending('QUOTE_UNAVAILABLE');
     }
 
-    // A larger amount can get a worse price than the poll did, so check this swap's own quote.
-    const price = priceFromQuote(quote.amountIn, quote.amountOut, swaps.tokenOutDecimals);
-    const conditionMet =
-      (intent.comparator === COMPARATOR_AT_OR_ABOVE && price >= intent.triggerPrice) ||
-      (intent.comparator === COMPARATOR_AT_OR_BELOW && price <= intent.triggerPrice);
-    if (!conditionMet) return stayPending('CONDITION_NOT_MET');
-
-    const minOut = (quote.amountOut * (BPS_SCALE - BigInt(slippageBps))) / BPS_SCALE;
+    const minOut = minimumAfter(quote.amountOut, slippageBps);
+    if (minOut < floor) return stayPending('NO_ROOM_ABOVE_LIMIT');
     const transaction = quote.transaction;
     if (!transaction) return stayPending('NO_TRANSACTION');
     if (
@@ -454,6 +467,7 @@ export class Executor {
         eoa,
         tokenOut: swaps.tokenOut,
         minOut,
+        floor,
         nowSec,
       });
     } catch {

@@ -12,6 +12,9 @@ import {
   DepositSessionResponseSchema,
   WithdrawalResponseSchema,
   StandardErrorResponseSchema,
+  DepositSessionOpenedEventSchema,
+  DepositCreditedEventSchema,
+  DepositSessionClosedEventSchema,
   SignedIntentSchema,
   wireToIntentMsg,
   wireToWithdrawalMsg,
@@ -297,5 +300,77 @@ describe('Response Schemas', () => {
       message: 'Available balance is lower than requested withdrawal',
     };
     expect(StandardErrorResponseSchema.safeParse(errorResponse).success).toBe(true);
+  });
+});
+
+describe('Deposit Journal Event Schemas', () => {
+  const owner = '0x1111111111111111111111111111111111111111';
+  const eoa = '0x2222222222222222222222222222222222222222';
+
+  it('validates DEPOSIT_SESSION_OPENED with required baseline and baselineBlock', () => {
+    const valid = {
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 'session-1',
+      owner,
+      eoa,
+      expiry: 1700000000,
+      baseline: 1000n,
+      baselineBlock: 50n,
+    };
+    expect(DepositSessionOpenedEventSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects DEPOSIT_SESSION_OPENED missing baseline', () => {
+    const missingBaseline = {
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 'session-1',
+      owner,
+      eoa,
+      expiry: 1700000000,
+      baselineBlock: 50n,
+    };
+    expect(DepositSessionOpenedEventSchema.safeParse(missingBaseline).success).toBe(false);
+  });
+
+  it('rejects DEPOSIT_SESSION_OPENED missing baselineBlock', () => {
+    const missingBaselineBlock = {
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 'session-1',
+      owner,
+      eoa,
+      expiry: 1700000000,
+      baseline: 1000n,
+    };
+    expect(DepositSessionOpenedEventSchema.safeParse(missingBaselineBlock).success).toBe(false);
+  });
+
+  it('validates DEPOSIT_CREDITED with required owner', () => {
+    const valid = {
+      t: 'DEPOSIT_CREDITED',
+      id: 'session-1',
+      amount: 5000n,
+      block: 55n,
+      owner,
+    };
+    expect(DepositCreditedEventSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects DEPOSIT_CREDITED missing owner', () => {
+    const missingOwner = {
+      t: 'DEPOSIT_CREDITED',
+      id: 'session-1',
+      amount: 5000n,
+      block: 55n,
+    };
+    expect(DepositCreditedEventSchema.safeParse(missingOwner).success).toBe(false);
+  });
+
+  it('validates DEPOSIT_SESSION_CLOSED schema', () => {
+    const valid = {
+      t: 'DEPOSIT_SESSION_CLOSED',
+      id: 'session-1',
+      eoa,
+    };
+    expect(DepositSessionClosedEventSchema.safeParse(valid).success).toBe(true);
   });
 });
