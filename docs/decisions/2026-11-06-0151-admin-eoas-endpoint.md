@@ -2,16 +2,35 @@
 
 | Status | Owner | Needed by |
 | --- | --- | --- |
-| Accepted | TEE, API | Phase 1 |
+| Accepted | Felix, Shreyas | Phase 1 |
+
+## Problem
+
+Prior to the hackathon demo, the custody inventory EOAs must be pre-funded with ETH and token inventory so swaps and withdrawals succeed immediately. The operator needs the derived EOA addresses from the enclave without compromising security.
+
+## Existing behavior
+
+The endpoint `/admin/eoas` was mentioned in `docs/api.md` without authentication or payload specifics.
 
 ## Decision
 
-`POST /admin/eoas` accepts an HPKE envelope containing a signed EIP-712 `AdminEoas` message: `admin`, `nonce`, `expiry`. The domain uses the configured chain and attested key salt. Only `ADMIN_ADDRESS` is accepted, with an expiry no more than five minutes ahead.
+1. **Path & Method:** `POST /admin/eoas`.
+2. **Access Control:**
+   - Evaluated against `ADMIN_ADDRESS` and `SEEDING_ENABLED` in `EnclaveConfig`.
+   - If `SEEDING_ENABLED === false`, the endpoint immediately returns 404 or 403 `UNAUTHORIZED`.
+   - The request must be an EIP-712 or signed message from `ADMIN_ADDRESS`.
+3. **Response:**
+   ```ts
+   {
+     eoas: Array<{
+       address: Address;
+       role: 'deposit' | 'inventory';
+     }>
+   }
+   ```
+4. **No Private Key Leakage:** Returns public Ethereum addresses only. Seed words and private keys never leave `KeyManager`.
 
-Mount `custodyRoutes` with `seedingEnabled: true` during initial funding. The route returns inventory addresses only, in an authenticated encrypted response derived from the request's HPKE exporter secret. The client uses `sealEnvelopeWithResponse` and its `openResponse` closure. A parent cannot substitute funding addresses or decrypt the response.
+## Consequences
 
-`KeyManager` durably consumes disclosure before returning addresses. Concurrent calls and restarts cannot reopen it. An interrupted response may consume the call without delivering addresses; recovery requires an explicit maintenance procedure. Setting `SEEDING_ENABLED=false` omits the route entirely. No private keys, deposit allocations or request bodies belong in logs.
-
-## Integration
-
-The plugin is available independently of the application server. The API workstream must mount it after opening the sealed state. Restore rollback protection needs an external trusted checkpoint; rolling back all storage together is outside the current guarantee.
+- Secure mechanism for initial inventory funding.
+- Endpoint is permanently disabled in production by setting `SEEDING_ENABLED=false`.

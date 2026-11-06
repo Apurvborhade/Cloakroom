@@ -8,6 +8,7 @@ Chain tests run against an Anvil fork. Set `CHAIN_ID` to whatever the fork repor
 
 | Suite | Owner | Covers | Must assert |
 | --- | --- | --- | --- |
+| `ledger.test.ts` | Shreyas | 36 unit and queue/journal integration tests | Non-negativity, isolation, double-credit prevention, replay |
 | `ledger.property.test.ts` | Shreyas | Random sequences of credit, reserve, release, consume (fast-check) | Never negative; totals conserved |
 | `auth.test.ts` | Shreyas | Signatures, expiry, nonces, wrong chain or salt, session grants | Each bad input returns its error code |
 | `concurrency.test.ts` | Shreyas | Two withdrawals of 80% at once; intent versus withdrawal race | Exactly one wins |

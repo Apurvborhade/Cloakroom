@@ -2,14 +2,16 @@
 
 | Status | Owner | Needed by |
 | --- | --- | --- |
-| Accepted | TEE | Phase 0 |
+| Open | Felix | Phase 0 |
 
-## Decision
+## Problem
 
-Build shared and enclave packages, then run `pnpm --filter @cloakroom/enclave deploy --prod --legacy /runtime`. Copy that self-contained directory into the final image. Explicit package `files` lists include compiled output and Nitro helpers. No dependency symlink points into the build workspace.
+The Dockerfile will likely not run. It copies only the root `node_modules` from a pnpm workspace, where package dependencies live under `services/enclave/node_modules` as symlinks.
 
-## Verification
+## Proposal
 
-The complete container ran the custody self-test. A non-debug Nitro launch returned a quote whose AWS chain, signature, nonce, PCRs and build binding passed independent verification. The larger runtime needs 2 GiB enclave memory on the current small parent. Image building on that parent also needed temporary swap and disk-backed build scratch space.
+Use `pnpm deploy` to produce a self-contained output directory, and test the image early.
 
-The Docker base is digest-pinned; final byte-for-byte reproduction still needs package snapshots and deterministic timestamps.
+## Phase-0 result
+
+The attestation-only Docker image builds and runs in Nitro. Its runtime uses only Node built-ins and does not copy workspace `node_modules`. The full application still needs self-contained packaging when its entrypoint and dependencies are included.

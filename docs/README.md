@@ -33,7 +33,7 @@ Converted from the Implementation Plan and the Technical Spec (both dated 2026-1
 | [demo.md](demo.md) | Three-minute demo script |
 | [prizes.md](prizes.md) | Prize requirements and evidence |
 | [risks.md](risks.md) | Risks and fallbacks |
-| [engineering-log.md](engineering-log.md) | Historical implementation notes |
+| [engineering-log.md](engineering-log.md) | Canonical chronological engineering activity log |
 | [development-conventions.md](development-conventions.md) | Codebase standards, no-emoji rule, conventions |
 
 ## Shared Package Contracts and Handoffs

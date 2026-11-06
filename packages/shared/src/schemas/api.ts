@@ -150,6 +150,19 @@ export const WithdrawalResponseSchema = z.object({
 });
 export type WithdrawalResponse = z.infer<typeof WithdrawalResponseSchema>;
 
+export const WithdrawalStatusItemSchema = z.object({
+  id: z.string(),
+  status: z.enum(['locked', 'sent', 'confirmed', 'failed']),
+  txHash: hexSchema.optional(),
+  reason: z.string().optional(),
+});
+export type WithdrawalStatusItem = z.infer<typeof WithdrawalStatusItemSchema>;
+
+export const WithdrawalStatusResponseSchema = z.object({
+  withdrawals: z.array(WithdrawalStatusItemSchema),
+});
+export type WithdrawalStatusResponse = z.infer<typeof WithdrawalStatusResponseSchema>;
+
 export const StandardErrorResponseSchema = z.object({
   error: z.string(),
   message: z.string().optional(),

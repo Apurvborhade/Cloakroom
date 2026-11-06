@@ -25,7 +25,7 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] Install persistent parent services and verify automatic non-debug startup after a full host reboot
 - [x] Deploy an enclave returning a real quote from `GET /attestation`; verified through an SSH tunnel
 - [x] Document the `/attestation` response shape in [api.md](../api.md)
-- [x] Package all production dependencies with `pnpm deploy`; Docker self-test and non-debug Nitro quote verified ([Dockerfile and pnpm](../decisions/2026-11-06-0151-dockerfile-pnpm.md))
+- [x] Package all production dependencies with `pnpm deploy`; Docker self-test and non-debug Nitro quote verified ([deployment](../deployment.md#docker-image))
 - [ ] Configure public HTTPS ingress for the team
 - [ ] **If this is failing at hour 3:** switch to the fallback, the same container labelled TEE-simulated, with no confidentiality claim
 
@@ -35,8 +35,8 @@ Read: [enclave.md](../enclave.md) (Key manager), [deployment.md](../deployment.m
 - [x] Withdrawal signing guard: refuse anything that does not match a registered, journaled `opId`, and sign each opId once. Implement `TransactionSigner` from `services/enclave/src/executor.ts`
 - [x] `envelope.ts` and shared browser sealing; Chromium-to-enclave transport tested with concurrent contexts
 - [x] Report data commits to `sha256(enclavePubKey || buildHash)`
-- [x] Define [salt hash and key lifetime](../decisions/2026-11-06-0151-salt-and-key-lifetime.md); sealed identity shared by attestation and decryption
-- [x] Implement [the admin EOAs endpoint](../decisions/2026-11-06-0151-admin-eoas-endpoint.md); authenticated encrypted response, durable one-time disclosure, server mounting remains an API handoff
+- [x] Bind attestation and decryption to the same sealed identity; see [key lifetime](../api.md#attestation-response-nitro-phase-0)
+- [x] Implement [the admin EOAs endpoint](../api.md#admin-seeding-contract); authenticated encrypted response, durable one-time disclosure, server mounting remains an API handoff
 
 ### Phase 2 (hours 12 to 22)
 

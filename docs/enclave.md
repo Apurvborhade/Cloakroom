@@ -54,42 +54,103 @@ export class FifoSerialQueue implements SerialQueue {
 
 ## Journal (Shreyas)
 
-Append-only. Each entry carries the hash of the previous one. This event list has known gaps: see [journal replay events](decisions/2026-11-06-0151-journal-replay-events.md) and [deposit journal events](decisions/2026-11-06-0258-deposit-journal-events.md).
+Append-only, hash-chained, and encrypted at rest with AES-256-GCM. Every append operation calls `fsync()` before returning. Replaying the journal from sequence 1 deterministically reconstructs the in-memory ledger and state after a restart. See [journal durability and replay](decisions/2026-11-06-0745-journal-durability-and-replay.md).
 
 ```ts
-// journal.ts
+// packages/shared/src/types/journal.ts
 export type JournalEvent =
   | { t: 'NONCE_USED'; owner: Address; nonce: bigint }
-  | { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number }
-  | { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; txHash: Hex }
+  | { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number; baseline?: bigint; baselineBlock?: bigint }
+  | { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; block: bigint; owner?: Address; txHash?: Hex }
+  | { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address }
   | { t: 'INTENT_CREATED'; id: string; owner: Address; intent: IntentMsg }
-  | { t: 'EXEC_BROADCAST'; opId: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex }
-  | { t: 'EXEC_SETTLED'; opId: string; amountOut: bigint }
-  | { t: 'EXEC_FAILED'; opId: string; reason: string }
+  | { t: 'INTENT_CANCELLED'; id: string; owner: Address }
+  | { t: 'INTENT_EXPIRED'; id: string; owner: Address }
+  | { t: 'EXEC_BROADCAST'; opId: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex; intentId?: string }
+  | { t: 'EXEC_SETTLED'; opId: string; intentId: string; owner: Address; tokenOut: Address; amountOut: bigint; fee: bigint }
+  | { t: 'EXEC_FAILED'; opId: string; intentId: string; owner: Address; reason: string }
   | { t: 'WITHDRAWAL_LOCKED'; id: string; owner: Address; token: Address; amount: bigint; to: Address }
   | { t: 'WITHDRAWAL_BROADCAST'; id: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex }
-  | { t: 'WITHDRAWAL_CONFIRMED'; id: string }
-  | { t: 'WITHDRAWAL_FAILED'; id: string; reason: string };
+  | { t: 'WITHDRAWAL_CONFIRMED'; id: string; owner: Address }
+  | { t: 'WITHDRAWAL_FAILED'; id: string; owner: Address; reason: string }
+  | { t: 'FEE_BOOKED'; opId: string; token: Address; feeAmount: bigint };
 
 export interface Journal {
-  append(e: JournalEvent): Promise<void>; // encrypted at rest, fsync before returning
-  replay(): AsyncIterable<JournalEvent>;
+  append(e: JournalEvent): Promise<JournalEntry>; // encrypted at rest, fsync before returning
+  replay(): AsyncIterable<JournalEntry>;
+  lastEntryHash(): Hex;
+  close(): Promise<void>;
 }
 ```
+
+### EncryptedJournal Implementation
+
+The production journal implementation resides in `services/enclave/src/journal.ts` (`EncryptedJournal`).
+
+#### Binary Frame Format
+
+Each journal entry on disk is framed as:
+
+```text
++-----------------------+-------------------+----------------------+--------------------+
+| payloadLength (4 B)   | iv (12 B)         | ciphertext (N B)     | authTag (16 B)     |
+| uint32 big-endian     | random AES-GCM IV | encrypted JSON       | GCM auth tag       |
++-----------------------+-------------------+----------------------+--------------------+
+```
+
+- **Encryption:** AES-256-GCM using a 32-byte key (passed directly or derived). A fresh cryptographic 12-byte IV is generated per record.
+- **Payload:** Serialized JSON payload containing `{ seq, ts, prevHash, hash, event }`.
+- **Deterministic Serialization:** Canonical JSON sorting keys alphabetically and formatting `bigint` values as `"123n"`.
+- **Entry Hash Calculation:**
+  ```ts
+  entryHash = keccak256(
+    concat([
+      encodePacked(['uint64', 'uint64'], [seq, ts]),
+      prevHash,
+      stringToHex(canonicalJson(event))
+    ])
+  )
+  ```
+- **Hash-Chain:** Genesis hash is `0x0000000000000000000000000000000000000000000000000000000000000000`. Every entry stores the `prevHash` of the preceding entry.
+- **Append Durability:**
+  - Concurrent appends serialize via internal Promise chaining.
+  - Payload encrypted and framed, written to file handle, followed immediately by `handle.sync()` (`fsync`).
+  - Sequence number and hash chain advance in memory only after durable write succeeds.
+  - If a write or sync fails, the file is truncated back to its pre-write position to avoid corrupted tails.
+- **Replay & Crash Recovery:**
+  - Iterates frames sequentially, validating frame size, IV, auth tag, decryption, JSON schema, sequence continuity (`seq === lastSeq + 1`), previous hash pointer (`prevHash === lastHash`), and cryptographic entry hash.
+  - Crash recovery at EOF: If an incomplete frame is encountered at EOF (process terminated during write before sync completed), the corrupted or partial trailing bytes are truncated, the journal restores to the last valid frame, and subsequent appends succeed cleanly.
+  - Mid-file corruptions, sequence gaps, broken hash links, or oversized frames throw fatal errors and halt replay.
+- **Lifecycle:**
+  - `close()` flushes and closes file handles idempotently. Operations after close reject immediately.
 
 ## Ledger (Shreyas)
 
 ```ts
-// ledger.ts: per owner and token, all amounts bigint
+// packages/shared/src/types/interfaces.ts
 export interface Ledger {
   credit(owner: Address, token: Address, amt: bigint, ref: string): void;
-  reserve(owner: Address, token: Address, amt: bigint, ref: string): void; // throws InsufficientBalance
-  release(ref: string): void; // reserved back to available
-  consume(ref: string): void; // reserved leaves the system
-  balances(owner: Address): Balance[];
-  totals(): Map<Address, { available: bigint; reserved: bigint }>; // for reconcile
+  reserve(owner: Address, token: Address, amt: bigint, ref: string): void;
+  release(ref: string): void;
+  consume(ref: string): void;
+  balances(owner: Address): OwnerBalances[];
+  totals(): Map<Address, BalanceRecord>;
+  getLastNonce(owner: Address): bigint;
+  setNonce(owner: Address, nonce: bigint): void;
 }
 ```
+
+### InMemoryLedger Implementation
+
+The in-memory ledger resides in `services/enclave/src/ledger.ts` (`InMemoryLedger`) and provides synchronous accounting and deterministic replay from `JournalEvent` streams via `replayLedger`.
+
+#### Accounting Semantics
+- **Balance tracking:** Tracks `{ available: bigint, reserved: bigint }` per owner and token. Advisory `pending` balances are returned as `0n` by the core ledger.
+- **Reservation lifecycle:** Funds locked for active intents or pending withdrawals are tracked under unique references (`status: 'active' | 'released' | 'consumed'`). Consumed funds leave user claims without restoring available balances; released funds return to available balances.
+- **Nonce management:** Per-owner monotonic nonces starting at `0n`. Lower or duplicate nonces are rejected with `NONCE_USED`.
+- **Revenue and gas segregation:** Protocol fee revenue (`EXEC_SETTLED.fee`) and operational gas expenditures (`FEE_BOOKED.feeAmount`) are segregated into dedicated ledgers and excluded from user claims.
+- **Replay projection:** `apply(event: JournalEvent)` projects all 15 canonical events in chronological sequence, reconstructing identical ledger snapshots on enclave restart.
+- **Invariant verification:** `assertInvariants()` verifies non-negativity, exact reservation conservation, and aggregate totals consistency.
 
 ## Key manager (TEE)
 
@@ -186,6 +247,6 @@ The current guard supports journaled native and ERC-20 withdrawals. It checks th
 
 Key initialization does not read the journal, so opening an encrypted journal cannot cause a circular dependency. Signing and registration validate replayed signing state before proceeding.
 
-The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
+The journal additionally records `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; ledger replay ignores this signing metadata. Signed bytes are cached in sealed state before returning; an uncertain state write faults the manager. Repeated signing is refused after restart. `recoverSigned` retrieves the existing bytes only while the source operation remains pending; broadcast recovery uses the journal's existing raw transaction.
 
-`journalCipher()` exposes encryption/decryption operations, never the derived key. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.
+`journalCipher()` exposes encryption/decryption operations, never the derived key. `EncryptedJournal` currently accepts raw key bytes; connecting the two still requires a cipher adapter. Custody, HPKE and journal material are domain-separated. Normal startup refuses missing state; initial creation requires `allowCreate: true`. Simulation wrapping keys require explicit simulation mode. The Nitro KMS recipient provider and external ciphertext store are implemented and tested offline. Live IAM/KMS provisioning and external rollback anchoring remain deployment work; rolling back both the vault and journal is outside the local rollback check.

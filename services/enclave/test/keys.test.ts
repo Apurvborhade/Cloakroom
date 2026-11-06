@@ -7,6 +7,7 @@ import { memoryJournal } from './helpers/memory-journal.js';
 import { encodeFunctionData, keccak256, parseAbi, parseTransaction, recoverTransactionAddress } from 'viem';
 import type { Address, TransactionSerializableEIP1559 } from 'viem';
 import { KeyManager } from '../src/keys.js';
+import { InMemoryLedger } from '../src/ledger.js';
 import { AesGcmStateVault, MemoryCipherBlobStore, simulationSealingKey } from '../src/sealed-state.js';
 
 const OWNER = '0x1111111111111111111111111111111111111111' as Address;
@@ -118,6 +119,17 @@ describe('KeyManager', () => {
     ]) await expect(keys.sign(eoa.address, { ...tx, ...change } as TransactionSerializableEIP1559, 'withdrawal-1'))
       .rejects.toThrow('SIGNING_DENIED');
     await expect(keys.sign(OWNER, tx, 'withdrawal-1')).rejects.toThrow('SIGNING_DENIED');
+  });
+
+  it('replays signing events without changing ledger reservations', async () => {
+    const { keys, eoa, authorize, journal } = await setup();
+    const tx = await authorize();
+    await keys.sign(eoa.address, tx, 'withdrawal-1');
+    const ledger = new InMemoryLedger();
+    ledger.credit(OWNER, NATIVE, 20n, 'funding');
+    for await (const { event } of journal.replay()) ledger.apply(event);
+    expect(ledger.getBalance(OWNER, NATIVE)).toMatchObject({ available: 10n, reserved: 10n });
+    ledger.assertInvariants();
   });
 
   it('refuses an EOA previously linked to the withdrawing owner', async () => {
