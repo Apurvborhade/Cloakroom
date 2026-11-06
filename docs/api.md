@@ -118,7 +118,8 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 | `GET /attestation` | none | `{ quote, enclavePubKey, buildHash, chainId }` |
 | `GET /sim/enclave-key` | none | `{ enclavePubKey, chainId, simulated: true }`. Only when `SIM_MODE=true`. The key is not attested, so show the TEE-simulated banner |
 | `POST /session` | `SessionGrant` + wallet signature | `{ ok: true, expiresAt }` |
-| `POST /deposit-session` | `DepositRequest` + signature | `{ sessionId, depositAddress, expiresAt }` |
+| `POST /deposit-session` | `DepositRequest` + signature | `{ sessionId, depositAddress, expiresAt, asset, gasReserveWei, singleUse: true }` |
+| `POST /deposits/status` | `SessionQuery` + session signature | `{ deposits: [{ sessionId, depositAddress, expiresAt, asset, gasReserveWei, singleUse, status, nativeReceived, tokenReceived, nativeCredited, tokenCredited }] }` |
 | `POST /balance` | `SessionQuery` + session signature | `{ balances: Balance[] }` |
 | `POST /intents` | `Intent` + signature | `{ intentId, status: 'pending' }` |
 | `POST /intents/status` | `SessionQuery` + session signature | `{ intents: [{ id, status, amountOut?, attempts?, reason? }] }` |
@@ -132,13 +133,17 @@ Reads signed by a session key answer `EXPIRED` if the query itself has expired, 
 
 `POST /intents` accepts only "price at or above" orders, from ETH to the configured output token, up to `MAX_AMOUNT_NATIVE_WEI`. These checks run before the nonce is spent. An expired order ends on its own and its funds are released. `POST /intents/cancel` answers `INTENT_NOT_FOUND` unless the order belongs to the signer and is still pending. `amountOut` in a status is what the owner was credited, after the fee.
 
-`POST /withdrawals` accepts ETH, up to `MAX_AMOUNT_NATIVE_WEI`, and the configured output token. It answers once an address is assigned to pay it, so follow `POST /withdrawals/status` for the result. A result that isn't known yet stays `sent` until recovery settles it. `NO_INVENTORY` means no single address not linked to the owner can pay the amount, and the funds are released.
+`POST /withdrawals` accepts ETH, up to `MAX_AMOUNT_NATIVE_WEI`, and the configured output token. It answers once an address is assigned to pay it, so follow `POST /withdrawals/status` for the result. A result that isn't known yet stays `sent` until recovery settles it. Own deposit addresses are always excluded. Addresses without the owner's swap history are preferred; a prior swap address is a fallback, which can publicly link that swap to the payout. `NO_INVENTORY` means no eligible single address has enough funds and gas; the reservation is released.
 
 Each `POST /deposit-session` allocates a new address. `pending` in a balance is always `0` for now, because deposits are credited only once confirmed.
 
 `/health/reconcile` returns aggregates only, with no per-user data. Never return custody EOA addresses except the one assigned to a deposit session, and the one-time admin seeding call.
 
-**Deposit policy:** Allow ETH, or the configured USDC token accompanied by ETH for gas at the same deposit address. USDC is accepted only after both deposits are confirmed. The USDC path is pending implementation; see [the deposit decision](decisions/2026-11-06-0151-non-eth-deposits.md).
+**Deposits:** Sign `DepositRequest.asset` as `NATIVE` or the configured `TOKEN_OUT_ADDRESS`. Send ETH, or USDC plus ETH, to the returned address. For every new session, `gasReserveWei` is retained for operations and is not credited as withdrawable ETH. ETH above that reserve is credited; USDC is credited in full once both transfers are confirmed, in either order. Display the reserve before funding.
+
+Each new address is single-use: completion credits both assets atomically and immediately makes the address available for other owners. Stop sending to it after completion; obtain a new session for another deposit. An empty session expires at `expiresAt`. A partial deposit received before that deadline stays pending, including across restarts, until its missing ETH or USDC arrives. Existing sessions opened before this feature retain their original ETH-only behavior.
+
+Poll `/deposits/status` for `awaiting_funds`, `awaiting_gas`, `awaiting_token`, `credited`, or `expired`. Received amounts are observed at the configured confirmation depth; credited amounts exclude the gas reserve. Pending deposits are reported here, not in `/balance.pending`. Only the authenticated owner's sessions are returned.
 
 ### Attestation response (Nitro, phase 0)
 

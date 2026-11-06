@@ -105,7 +105,7 @@ describe('frontend protocol against the real enclave routes (margin disabled)', 
     // The same signed request cannot be replayed.
     await expectCode(endpoints.openDepositSession(api, binding, signed), 'NONCE_USED');
 
-    live.chain.setBalance(depositAddress, parseEther('0.5'));
+    live.chain.setBalance(depositAddress, parseEther('0.5') + BigInt(session.gasReserveWei ?? '0'));
     await vi.waitFor(async () => {
       await live.enclave.parts.watcher.tick();
       const balances = await endpoints.getBalances(api, binding, await sessions.signQuery(owner.address, binding));

@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import type { Hex } from 'viem';
-import { NATIVE } from '../constants.js';
 import {
   addressSchema,
   hex32Schema,
@@ -54,10 +53,7 @@ export type SessionQueryWire = z.infer<typeof SessionQueryWireSchema>;
 
 export const DepositRequestWireSchema = z.object({
   owner: addressSchema,
-  asset: addressSchema.refine(
-    (val) => val.toLowerCase() === NATIVE.toLowerCase(),
-    { message: 'Only native ETH deposits (0x0000000000000000000000000000000000000000) are supported in v1' }
-  ),
+  asset: addressSchema,
   nonce: uint64StringSchema,
   expiry: uint64StringSchema,
 });
@@ -192,8 +188,22 @@ export const DepositSessionResponseSchema = z.object({
   sessionId: z.string(),
   depositAddress: addressSchema,
   expiresAt: z.number().int(),
+  asset: addressSchema.optional(),
+  gasReserveWei: decimalStringSchema.optional(),
+  singleUse: z.boolean().optional(),
 });
 export type DepositSessionResponse = z.infer<typeof DepositSessionResponseSchema>;
+
+export const DepositStatusResponseSchema = z.object({
+  deposits: z.array(DepositSessionResponseSchema.extend({
+    status: z.enum(['awaiting_funds', 'awaiting_gas', 'awaiting_token', 'credited', 'expired']),
+    nativeReceived: decimalStringSchema,
+    tokenReceived: decimalStringSchema,
+    nativeCredited: decimalStringSchema,
+    tokenCredited: decimalStringSchema,
+  })),
+});
+export type DepositStatusResponse = z.infer<typeof DepositStatusResponseSchema>;
 
 export const WithdrawalResponseSchema = z.object({
   withdrawalId: z.string(),

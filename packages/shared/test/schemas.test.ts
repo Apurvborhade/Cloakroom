@@ -60,7 +60,7 @@ describe('DepositRequestWireSchema', () => {
     }
   });
 
-  it('rejects non-native deposit assets in v1', () => {
+  it('accepts a token address for the server to check against its supported asset', () => {
     const nonNative = {
       owner: validOwner,
       asset: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
@@ -68,10 +68,7 @@ describe('DepositRequestWireSchema', () => {
       expiry: '1700000000',
     };
     const result = DepositRequestWireSchema.safeParse(nonNative);
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain('Only native ETH deposits');
-    }
+    expect(result.success).toBe(true);
   });
 
   it('rejects invalid address or non-decimal string nonce', () => {

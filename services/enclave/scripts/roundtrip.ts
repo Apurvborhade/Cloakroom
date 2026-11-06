@@ -175,7 +175,8 @@ async function main(): Promise<void> {
       }),
       'The deposit session',
     );
-    return { address: getAddress(body.depositAddress as string), expiresAt: body.expiresAt as number };
+    return { address: getAddress(body.depositAddress as string), expiresAt: body.expiresAt as number,
+      gasReserveWei: BigInt((body.gasReserveWei as string | undefined) ?? '0') };
   };
 
   const withdraw = async (user: PrivateKeyAccount, to: Address) => {
@@ -189,7 +190,7 @@ async function main(): Promise<void> {
     });
   };
 
-  const needed = DEPOSIT * 2n;
+  const needed = (DEPOSIT + BigInt(required('GAS_RESERVE_WEI'))) * 2n;
   const startBalance = await client.getBalance({ address: funder.address });
   console.log(`Chain: ${chain.name} (${chainId}). Service: ${baseUrl}, TEE-simulated.`);
   console.log(`Test wallet: ${funder.address}, holding ${formatEther(startBalance)} ETH`);
@@ -215,9 +216,10 @@ async function main(): Promise<void> {
     const session = await startDeposit(user.account);
     deposits.set(user.account.address, session.address);
     lastExpiry = Math.max(lastExpiry, session.expiresAt);
-    const hash = await wallet.sendTransaction({ to: session.address, value: DEPOSIT });
+    const value = DEPOSIT + session.gasReserveWei;
+    const hash = await wallet.sendTransaction({ to: session.address, value });
     await client.waitForTransactionReceipt({ hash });
-    console.log(`  ${user.name} sent ${formatEther(DEPOSIT)} ETH to ${session.address}`);
+    console.log(`  ${user.name} sent ${formatEther(value)} ETH including gas reserve to ${session.address}`);
   }
 
   console.log('\n3. Wait for the service to credit the deposits');

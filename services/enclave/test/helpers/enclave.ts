@@ -141,6 +141,7 @@ export function enclaveHarness(anvilPort: number, apiPort: number) {
       for await (const { event } of enclave.parts.journal.replay()) {
         if (event.t === 'DEPOSIT_SESSION_OPENED') sessions.set(event.id, event.expiry);
         if (event.t === 'DEPOSIT_SESSION_CLOSED') sessions.delete(event.id);
+        if (event.t === 'DEPOSIT_COMPLETED') sessions.delete(event.id);
       }
       const head = await chain.getBlock();
       const expiry = Math.max(Number(head.timestamp), ...sessions.values());
@@ -158,6 +159,11 @@ export function enclaveHarness(anvilPort: number, apiPort: number) {
     },
     send: async (to: Address, value: bigint) => {
       const hash = await wallet.sendTransaction({ to, value });
+      await chain.waitForTransactionReceipt({ hash });
+    },
+    sendToken: async (to: Address, amount: bigint) => {
+      const hash = await wallet.writeContract({ address: token, abi: TEST_TOKEN_ABI,
+        functionName: 'mint', args: [to, amount] });
       await chain.waitForTransactionReceipt({ hash });
     },
     token: () => token,
@@ -198,6 +204,7 @@ export async function waitForDeposit(enclave: RunningEnclave, sessionId: string,
     let credited = 0n;
     for await (const { event } of enclave.parts.journal.replay()) {
       if (event.t === 'DEPOSIT_CREDITED' && event.id === sessionId) credited += event.amount;
+      if (event.t === 'DEPOSIT_COMPLETED' && event.id === sessionId) credited += event.nativeAmount;
     }
     expect(credited).toBe(amount);
   }, { timeout: 5000, interval: 20 });

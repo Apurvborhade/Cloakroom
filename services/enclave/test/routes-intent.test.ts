@@ -42,7 +42,7 @@ function client(enclave: RunningEnclave, tokenOut: Address) {
       message: { owner: owner.address, asset: NATIVE, nonce: String(nonce), expiry: String(expires) },
       signature,
     });
-    await harness.send(body.depositAddress as Address, amount);
+    await harness.send(body.depositAddress as Address, amount + BigInt(body.gasReserveWei as string));
     await waitForDeposit(enclave, body.sessionId as string, amount);
   };
 
