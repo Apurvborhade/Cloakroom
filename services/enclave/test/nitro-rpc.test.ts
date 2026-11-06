@@ -69,6 +69,21 @@ describe('Nitro RPC HTTPS transport', () => {
     expect(peak).toBeLessThanOrEqual(16);
   });
 
+  it('releases queued and active requests on timeout so later callers still work', async () => {
+    let responding = false;
+    const { client } = await fixture({ handler: (_req, res) => {
+      if (responding) res.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0xaa36a7' }));
+      else { res.writeHead(200); res.write('{'); }
+    } });
+    const rpc = client(undefined, 200);
+    const results = await Promise.allSettled(Array.from({ length: 24 }, (_, index) => rpc.getBalance({
+      address: `0x${(index + 1).toString(16).padStart(40, '0')}`,
+    })));
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    responding = true;
+    await expect(rpc.getChainId()).resolves.toBe(11155111);
+  });
+
   it('works with viem and authenticates the hostname before sending the private URL path', async () => {
     const { client, received } = await fixture();
     expect(await client().getChainId()).toBe(11155111);
