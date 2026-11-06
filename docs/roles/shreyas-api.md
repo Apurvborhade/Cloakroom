@@ -42,7 +42,7 @@ Closed in shared contracts (Task 2):
 Then build:
 
 - [x] FifoSerialQueue with strict FIFO ordering and error isolation (Task 3)
-- [ ] Journal, then ledger. Journal before state change, always (Task 4)
+- [x] Journal, then ledger. Journal before state change, always (Task 4)
 - [ ] Auth rules: signer, expiry (at most 5 minutes ahead, 60 seconds of skew), nonce inside the queue, chain and salt
 - [ ] `POST /session`, `/deposit-session`, `/balance`, `/withdrawals`
 - [ ] In `POST /withdrawals`, reserve under the withdrawal ID and journal `WITHDRAWAL_LOCKED`, then call `Executor.runWithdrawal`

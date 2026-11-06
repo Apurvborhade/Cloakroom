@@ -83,6 +83,47 @@ export interface Journal {
 }
 ```
 
+### EncryptedJournal Implementation
+
+The production journal implementation resides in `services/enclave/src/journal.ts` (`EncryptedJournal`).
+
+#### Binary Frame Format
+
+Each journal entry on disk is framed as:
+
+```text
++-----------------------+-------------------+----------------------+--------------------+
+| payloadLength (4 B)   | iv (12 B)         | ciphertext (N B)     | authTag (16 B)     |
+| uint32 big-endian     | random AES-GCM IV | encrypted JSON       | GCM auth tag       |
++-----------------------+-------------------+----------------------+--------------------+
+```
+
+- **Encryption:** AES-256-GCM using a 32-byte key (passed directly or derived). A fresh cryptographic 12-byte IV is generated per record.
+- **Payload:** Serialized JSON payload containing `{ seq, ts, prevHash, hash, event }`.
+- **Deterministic Serialization:** Canonical JSON sorting keys alphabetically and formatting `bigint` values as `"123n"`.
+- **Entry Hash Calculation:**
+  ```ts
+  entryHash = keccak256(
+    concat([
+      encodePacked(['uint64', 'uint64'], [seq, ts]),
+      prevHash,
+      stringToHex(canonicalJson(event))
+    ])
+  )
+  ```
+- **Hash-Chain:** Genesis hash is `0x0000000000000000000000000000000000000000000000000000000000000000`. Every entry stores the `prevHash` of the preceding entry.
+- **Append Durability:**
+  - Concurrent appends serialize via internal Promise chaining.
+  - Payload encrypted and framed, written to file handle, followed immediately by `handle.sync()` (`fsync`).
+  - Sequence number and hash chain advance in memory only after durable write succeeds.
+  - If a write or sync fails, the file is truncated back to its pre-write position to avoid corrupted tails.
+- **Replay & Crash Recovery:**
+  - Iterates frames sequentially, validating frame size, IV, auth tag, decryption, JSON schema, sequence continuity (`seq === lastSeq + 1`), previous hash pointer (`prevHash === lastHash`), and cryptographic entry hash.
+  - Crash recovery at EOF: If an incomplete frame is encountered at EOF (process terminated during write before sync completed), the corrupted or partial trailing bytes are truncated, the journal restores to the last valid frame, and subsequent appends succeed cleanly.
+  - Mid-file corruptions, sequence gaps, broken hash links, or oversized frames throw fatal errors and halt replay.
+- **Lifecycle:**
+  - `close()` flushes and closes file handles idempotently. Operations after close reject immediately.
+
 ## Ledger (Shreyas)
 
 ```ts

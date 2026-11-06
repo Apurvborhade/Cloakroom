@@ -546,3 +546,71 @@ This document is the canonical, chronological record of all backend and accounti
 - **Apurva:** In `services/enclave/src/watcher.ts`, replace local `DepositEvent` with `JournalEvent` from `@cloakroom/shared`, add `session.owner` to `DEPOSIT_CREDITED`, and pass `session.eoa` to `DEPOSIT_SESSION_CLOSED`.
 - **Pradnyesh:** Use `WithdrawalStatusResponse` for `/withdraw` page status tracking via `POST /withdrawals/status`.
 - **Felix:** Implement journal sealing key derivation for AES-256-GCM in `KeyManager`.
+
+---
+
+## Task 4: Encrypted Append-Only Journal Implementation
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Task 4 — Encrypted Append-Only Journal Implementation (Shreyas)
+- **Status:** Completed
+- **Objective:** Implement the production-grade encrypted, hash-chained, append-only journal in `services/enclave/src/journal.ts` conforming to the `Journal` interface from `@cloakroom/shared`, ensuring strict persistence durability via fsync, atomic framing, deterministic replay, hash-chain integrity verification, and recovery from partial writes at EOF.
+
+### Files Created
+- `services/enclave/src/journal.ts` (EncryptedJournal class, canonicalJson, parseCanonicalJson, computeEntryHash, framing, AES-256-GCM encryption/decryption)
+- `services/enclave/test/journal.test.ts` (Comprehensive 22-test unit test suite)
+
+### Files Modified
+- `services/enclave/src/index.ts` (Exported EncryptedJournal, computeEntryHash, canonicalJson, parseCanonicalJson, GENESIS_HASH, DEFAULT_MAX_RECORD_BYTES, JournalOptions)
+- `docs/roles/shreyas-api.md` (Updated Task 4 status)
+- `docs/enclave.md` (Documented EncryptedJournal framing format, cryptographic hashing, durability, and replay/recovery semantics)
+- `docs/engineering-log.md` (Appended Task 4 engineering log)
+
+### Dependencies Added or Changed
+- None (uses Node.js built-in `node:crypto`, `node:fs/promises`, and existing workspace dependencies `viem` and `@cloakroom/shared`).
+
+### Implementation Details
+- **Binary Frame Layout:** `[payloadLength: 4 bytes BE uint32][iv: 12 bytes][ciphertext: N bytes][authTag: 16 bytes]`.
+- **Encryption Scheme:** AES-256-GCM with fresh 12-byte cryptographic random IV per entry. Supports 32-byte `Buffer` or `0x`-prefixed 64-char hex key.
+- **Deterministic Serialization:** Implemented `canonicalJson` and `parseCanonicalJson` sorting object keys lexicographically and serializing BigInt values as `"123n"` string tokens.
+- **Cryptographic Hash Chain:** `keccak256(concat([encodePacked(['uint64', 'uint64'], [seq, ts]), prevHash, stringToHex(canonicalJson(event))]))`. Genesis hash is `0x0000000000000000000000000000000000000000000000000000000000000000`.
+- **Durability & Concurrency:** Concurrent appends are serialized using Promise chaining. Writes call `handle.write()` followed by `handle.sync()` (`fsync`) before resolving. In-memory sequence and hash advance only upon successful durable sync. On write failure, file pointer is rolled back.
+- **Replay & Integrity:** `replay()` validates frame boundaries, decrypts ciphertext, validates AES-GCM authentication tags, verifies sequential monotonic sequence numbering (`seq === lastSeq + 1`), verifies backward hash chaining (`prevHash === lastHash`), and recomputes the entry hash.
+- **Crash Recovery at EOF:** If a trailing incomplete frame or truncated payload is found at EOF (due to power cut or crash mid-write), `replay()` truncates the partial bytes back to the last valid frame, resets state, and allows subsequent append operations.
+- **Fatal Rejection:** Throws fatal errors for mid-file corruption, sequence gaps, wrong previous hashes, oversized frames, or invalid authentication tags.
+- **Lifecycle Management:** Idempotent `close()` method that shuts down file handles and rejects subsequent append or replay calls.
+
+### Tests Added
+- `services/enclave/test/journal.test.ts` (22 tests covering all required cases):
+  1. appends sequential entries with incrementing seq and timestamps
+  2. enforces monotonic sequence numbering starting from 1
+  3. links hashes correctly across entries (genesis to entry 1 to entry 2)
+  4. matches expected hash computation format using viem keccak256
+  5. produces ciphertext that does not contain plaintext event content
+  6. uses unique IVs for every entry (no IV reuse)
+  7. replays appended events in exact order
+  8. replaying an empty journal yields zero events
+  9. handles multiple appends sequentially and recovers full state
+  10. fails replay on truncated frame (fewer bytes than header says)
+  11. fails replay on corrupted ciphertext (AES-GCM authentication tag mismatch)
+  12. fails replay on modified previousHash (hash chain broken)
+  13. fails replay on sequence gap (e.g., seq 1 followed by seq 3)
+  14. fails replay on wrong genesis hash for first entry
+  15. ignores / truncates partial writes at EOF and allows new appends (crash simulation)
+  16. throws fatal error on corruption in the middle of the file (not at EOF)
+  17. handles events with bigints without precision loss
+  18. handles all 15 JournalEvent variants without error
+  19. concurrent appends do not interleave or produce duplicate sequence numbers
+  20. fsync is called on every append when enabled
+  21. rejects records exceeding maxRecordBytes
+  22. closing the journal prevents further appends and closes file descriptors
+
+### Exact Verification Commands & Results
+- `pnpm test`: Exited with code 0 (181 passed across 9 test files).
+- `pnpm typecheck`: Exited with code 0.
+- `pnpm build`: Exited with code 0.
+- `git diff --check`: Clean (0 whitespace errors or conflicts).
+
+### Integration Handoffs
+- **Shreyas (Ledger & Auth):** `Ledger` will consume `Journal.append()` inside `FifoSerialQueue` before applying balance mutations, and invoke `Journal.replay()` during boot.
+- **Felix (Key Management):** Integrate journal sealing key derivation (`KeyManager`) to provide the 32-byte AES key to `EncryptedJournal`.
