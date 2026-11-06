@@ -50,6 +50,16 @@ pnpm smoke:swap
 
 Unspent ETH goes back to the test wallet at the end. The swapped tokens stay at the swap address.
 
+## Running the service
+
+Runs the real server in simulation mode, with no TEE. Fill in `.env` from `.env.example`, and set `SIM_MODE=true`, `SIM_VAULT_PATH` and `SIM_SEALING_KEY`. Set `CUSTODY_ALLOW_CREATE=true` for the first run only.
+
+```bash
+pnpm start:enclave
+```
+
+It needs `flock` to save custody state. Linux includes it, and on macOS install it with `brew install flock`. Without it the service stops with `BOOT_FAILED:keys`.
+
 ## Seeding the inventory
 
 `services/enclave/scripts/seed-inventory.ts` has two steps. It refuses to run anywhere except Sepolia or a local Anvil chain.

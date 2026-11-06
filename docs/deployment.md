@@ -55,6 +55,12 @@ Fixed definitions, such as `NATIVE`, the basis-point scale and the 1e18 price sc
 | `MAX_AMOUNT_NATIVE_WEI` | `1000000000000000000` | Demo cap that limits exposure |
 | `SIM_MODE` | `false` | Shows the TEE-simulated banner when `true` |
 | `ALLOWED_ORIGIN` | frontend URL | CORS |
+| `HOST`, `PORT` | `127.0.0.1`, `8787` | Where the API server listens |
+| `JOURNAL_PATH` | `journal/enclave.journal` | Encrypted journal file. Losing it loses the private ledger |
+| `INVENTORY_EOA_COUNT` | `4` | Inventory addresses to allocate at boot, for seeding |
+| `CUSTODY_ALLOW_CREATE` | `true` once, then `false` | Allows new custody keys. Restarts must refuse missing state |
+
+`main.ts` also reads these, only in the matching mode: `SIM_VAULT_PATH` and `SIM_SEALING_KEY` when `SIM_MODE=true`, and `KMS_KEY_ARN`, `KMS_REGION` and `VAULT_ID` when it is `false`.
 
 ## Boot and attestation
 

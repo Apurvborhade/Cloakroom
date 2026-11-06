@@ -52,6 +52,50 @@ describe('EncryptedJournal', () => {
     nonce: 2n,
   };
 
+  it.each(['', 'cloakroom/journal/v1'])('reopens cipher-backed records with associated data %j', async (associatedData) => {
+    const cipher = {
+      encrypt(plaintext: Uint8Array, aad: Uint8Array) {
+        const nonce = crypto.randomBytes(12);
+        const enc = crypto.createCipheriv('aes-256-gcm', testKey, nonce);
+        enc.setAAD(aad);
+        const ciphertext = Buffer.concat([enc.update(plaintext), enc.final()]);
+        return Buffer.concat([nonce, enc.getAuthTag(), ciphertext]);
+      },
+      decrypt(sealed: Uint8Array, aad: Uint8Array) {
+        const dec = crypto.createDecipheriv('aes-256-gcm', testKey, sealed.subarray(0, 12));
+        dec.setAAD(aad);
+        dec.setAuthTag(sealed.subarray(12, 28));
+        return Buffer.concat([dec.update(sealed.subarray(28)), dec.final()]);
+      },
+    };
+    const entry = { sequence: 1, timestamp: 1, prevHash: GENESIS_HASH, event: sampleEvent1,
+      entryHash: computeEntryHash(1, 1, GENESIS_HASH, sampleEvent1) };
+    const plaintext = Buffer.from(canonicalJson(entry));
+    const sealed = cipher.encrypt(plaintext, Buffer.from(associatedData));
+    const frame = Buffer.alloc(4 + sealed.length);
+    frame.writeUInt32BE(plaintext.length);
+    sealed.copy(frame, 4, 0, 12);
+    sealed.copy(frame, 16, 28);
+    sealed.copy(frame, 16 + plaintext.length, 12, 28);
+    await fs.writeFile(journalPath, frame);
+    const journal = await EncryptedJournal.open({ filePath: journalPath, cipher });
+    expect(await collectEntries(journal)).toEqual([entry]);
+    await journal.append(sampleEvent2);
+    await journal.close();
+    const file = await fs.readFile(journalPath);
+    const next = file.subarray(frame.length);
+    const length = next.readUInt32BE(0);
+    const nextSealed = Buffer.concat([next.subarray(4, 16), next.subarray(16 + length), next.subarray(16, 16 + length)]);
+    expect(parseCanonicalJson<JournalEntry>(cipher.decrypt(nextSealed, Buffer.from('cloakroom/journal/v1')).toString()).event)
+      .toEqual(sampleEvent2);
+    const reopened = await EncryptedJournal.open({ filePath: journalPath, cipher });
+    expect(await collectEntries(reopened)).toHaveLength(2);
+    await reopened.close();
+    file[20] = file[20]! ^ 1;
+    await fs.writeFile(journalPath, file);
+    await expect(EncryptedJournal.open({ filePath: journalPath, cipher })).rejects.toThrow('JOURNAL_CORRUPT');
+  });
+
   it('1. returns genesis hash and yields zero entries on empty journal', async () => {
     const journal = await EncryptedJournal.open({ filePath: journalPath, key: testKey });
     expect(journal.lastEntryHash()).toBe(GENESIS_HASH);

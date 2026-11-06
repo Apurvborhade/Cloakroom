@@ -60,6 +60,12 @@ const ENV_SCHEMA = z.object({
 
   SIM_MODE: flag,
   ALLOWED_ORIGIN: z.string().url(),
+
+  HOST: z.string().min(1),
+  PORT: wholeNumber.refine((value) => value <= 65_535),
+  JOURNAL_PATH: z.string().min(1),
+  INVENTORY_EOA_COUNT: wholeNumber,
+  CUSTODY_ALLOW_CREATE: flag,
 });
 
 export type EnclaveConfig = z.infer<typeof ENV_SCHEMA>;

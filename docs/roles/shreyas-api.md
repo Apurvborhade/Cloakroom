@@ -24,7 +24,8 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 - [x] Monorepo workspace package setup (`@cloakroom/shared`, `@cloakroom/enclave`)
 - [x] `packages/shared` with types, constants, schemas, and EIP-712 definitions. Unblocks Pradnyesh and Apurva (Task 2)
 - [x] Publish `Ledger`, `Journal`, `SerialQueue`, and `IntentStore` interfaces so Apurva can code against them (Task 2)
-- [ ] Fastify server implementation with route handlers and envelope decryption
+- [x] Fastify server and boot lifecycle: `server.ts`, `main.ts`
+- [ ] Route handlers and envelope decryption for the private API
 
 ### Phase 1 (hours 3 to 12)
 
@@ -56,6 +57,7 @@ Then build:
 - [ ] `POST /intents`, `/intents/status`, `/intents/cancel`
 - [x] `IntentStore`: in-memory implementation (`add`, `cancel`, `expire`, `mark`, `get`, `listByOwner`, `due`) and deterministic journal recovery (`replayIntents`)
 - [x] Provide `IntentStore.due` for price poller / executor integration
+- [x] `IntentExecutionPipeline`: connects price poller lifecycle to conditional intent execution with concurrency guards, error isolation, and recovery compatibility
 
 ### Phase 3 (hours 22 to 29)
 

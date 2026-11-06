@@ -40,7 +40,7 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 - [x] Relabel the EOA as inventory in `onSessionClosed`, and rebuild closed sessions into inventory on boot, because replay does not call it
 - [ ] Wire the watcher to the real `Ledger`, `Journal`, `SerialQueue` and `KeyManager` ([deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md))
 - [x] `Inventory`: `refresh`, `pick` with exclusions, `hold`, `free`
-- [ ] Connect `Inventory` to Felix's `KeyManager` and the watcher at boot, with settings from `loadConfig`
+- [x] Connect `Inventory` to Felix's `KeyManager` and the watcher at boot, with settings from `loadConfig`
 - [x] Run `pnpm smoke:sepolia` on real Sepolia ([scripts/README.md](../../scripts/README.md))
 - [x] `runWithdrawal`: pick, sign, journal, send, confirm, consume. The API takes the lock first
 - [x] On-chain totals for Shreyas's `reconcile()`, through `Inventory.getPhysicalBalances`
@@ -53,7 +53,7 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 - [x] Treat the API's transaction as untrusted: pin `to`, decode the calldata, run `eth_call`
 - [x] Price poller: quote every `PRICE_POLL_INTERVAL_SEC`, and trigger nothing when a poll fails
 - [x] Run `pnpm smoke:quote` against the live Trading API
-- [ ] Connect the price poller to `IntentStore.due` at boot
+- [x] Connect the price poller to `IntentStore.due` at boot
 - [x] Recheck the intent's condition against the swap's own quote before signing
 - [ ] Keep a running list of Uniswap friction points for `FEEDBACK.md`
 
