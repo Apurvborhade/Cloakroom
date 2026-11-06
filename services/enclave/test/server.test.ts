@@ -354,6 +354,13 @@ describe('persistent runtime boot', () => {
     expect(openKeys).not.toHaveBeenCalled();
   });
 
+  it('does not expose the simulation key outside simulation', async () => {
+    const enclave = await boot({
+      config: env({ SIM_MODE: 'false' }), openKeys: undefined, openRuntime: persistent(true),
+    });
+    expect((await enclave.app.inject({ url: '/sim/enclave-key' })).statusCode).toBe(404);
+  });
+
   it('listens on the enclave socket and closes the runtime on shutdown', async () => {
     let runtime: CustodyRuntime | undefined;
     const enclave = await boot({ socketPath: join(directory, 'enclave.sock'), openKeys: undefined,
@@ -410,7 +417,7 @@ describe('routes', () => {
     expect(response.json()).toEqual({ error: 'INTERNAL_ERROR' });
   });
 
-  it('offers the unattested key only in simulation mode', async () => {
+  it('offers the unattested key in simulation mode', async () => {
     const simulated = await boot();
     const response = await simulated.app.inject({ url: '/sim/enclave-key' });
     expect(response.json()).toEqual({
@@ -418,10 +425,6 @@ describe('routes', () => {
       chainId: foundry.id,
       simulated: true,
     });
-    await simulated.stop();
-
-    const real = await boot({ config: env({ SIM_MODE: 'false' }) });
-    expect((await real.app.inject({ url: '/sim/enclave-key' })).statusCode).toBe(404);
   });
 
   it('registers the custody route only while seeding is on', async () => {
