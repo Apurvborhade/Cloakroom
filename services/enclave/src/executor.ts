@@ -743,7 +743,11 @@ export class Executor {
       });
       raw = await signer.sign(eoa, { ...prepared, chainId }, opId);
       txHash = keccak256(raw);
-      await queue.run(() => journal.append({ t: 'MARGIN_OP_BROADCAST', opId, eoa, nonce, txHash, raw }));
+      await queue.run(async () => {
+        const event = { t: 'MARGIN_OP_BROADCAST', opId, eoa, nonce, txHash, raw } as const;
+        await journal.append(event);
+        margin.ledger.apply(event);
+      });
     } catch {
       return fail('PREPARE_FAILED');
     }

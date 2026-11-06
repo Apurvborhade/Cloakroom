@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { ERROR_CODES, NATIVE } from '@cloakroom/shared';
 import type {
-  Journal, MarginAccounting, MarginFundingEvent, MarginFundingRequest,
+  Journal, JournalEvent, MarginAccounting, MarginFundingEvent, MarginFundingRequest,
   MarginFundingReservation, LendingView, MarginSupplyMsg, SerialQueue,
 } from '@cloakroom/shared';
 import { getAddress } from 'viem';
@@ -10,7 +10,7 @@ import type { InMemoryLedger } from './ledger.js';
 import { AuthError } from './auth.js';
 
 type Claim = { owner: Address; token: Address; amount: bigint; ref: string };
-type BalanceLedger = Pick<InMemoryLedger, 'getBalance' | 'getReservation' | 'reserve' | 'release'>;
+type BalanceLedger = Pick<InMemoryLedger, 'getBalance' | 'getReservation' | 'reserve' | 'release' | 'consume'>;
 const claimKey = (owner: Address, token: Address) => `${getAddress(owner)}:${getAddress(token)}`;
 const fundingRef = (opId: string) => `margin:funding:${opId}`;
 const collateralRef = (opId: string) => `margin:collateral:${opId}`;
@@ -22,7 +22,10 @@ function positive(value: bigint) {
 export class MarginFundingState {
   private readonly claims = new Map<string, Claim>();
   private readonly holds = new Map<string, MarginFundingReservation>();
-  private readonly commands = new Map<string, MarginFundingEvent>();
+  private readonly commands = new Map<string, JournalEvent>();
+  private readonly authorized = new Set<string>();
+  private readonly shortfalls = new Map<Address, bigint>();
+  private faulted = false;
 
   constructor(private readonly ledger: BalanceLedger) {}
 
@@ -31,9 +34,58 @@ export class MarginFundingState {
     let supplied = 0n, reserved = 0n;
     for (const claim of this.claims.values()) if (claim.token === token) supplied += claim.amount;
     for (const hold of this.holds.values()) {
-      if (hold.status === 'reserved' && hold.borrow.token === token) reserved += hold.borrow.amount;
+      if ((hold.status === 'reserved' || hold.status === 'borrowed') && hold.borrow.token === token) reserved += hold.borrow.amount;
     }
-    return { supplied, reserved, available: supplied - reserved };
+    return { supplied, reserved, available: this.shortfall(token) > 0n ? 0n : supplied - reserved };
+  }
+
+  shortfall(token: Address): bigint { return this.shortfalls.get(getAddress(token)) ?? 0n; }
+
+  assertAvailable(): void {
+    if (this.faulted) throw new Error('MARGIN_FUNDING_UNAVAILABLE');
+  }
+
+  stop(): void { this.faulted = true; }
+
+  command(opId: string): JournalEvent | undefined {
+    const event = this.commands.get(opId);
+    return event && structuredClone(event);
+  }
+
+  validateCommand(event: JournalEvent & { opId: string }): boolean {
+    const previous = this.commands.get(event.opId);
+    if (!previous) return true;
+    if (!isDeepStrictEqual(previous, event)) throw new AuthError(ERROR_CODES.NONCE_USED, 'MARGIN_OP_CONFLICT');
+    return false;
+  }
+
+  remember(event: JournalEvent & { opId: string }): void {
+    this.commands.set(event.opId, structuredClone(event));
+  }
+
+  authorize(event: Extract<MarginFundingEvent, { t: 'MARGIN_OPEN_RESERVED' }>): void {
+    this.apply(event);
+    this.authorized.add(event.opId);
+  }
+
+  activate(opId: string): void {
+    const hold = this.holds.get(opId);
+    if (!hold || hold.status !== 'reserved' || !this.authorized.has(opId)) throw new Error('MARGIN_RESERVATION_MISMATCH');
+    this.ledger.consume(collateralRef(opId));
+    hold.status = 'borrowed';
+  }
+
+  cancel(opId: string): void {
+    this.authorized.delete(opId);
+    this.apply({ t: 'MARGIN_OPEN_RELEASED', opId });
+  }
+
+  repay(opId: string, amount: bigint): void {
+    const hold = this.holds.get(opId);
+    if (!hold || hold.status !== 'borrowed' || amount < 0n || amount > hold.borrow.amount) throw new Error('MARGIN_REPAYMENT_INVALID');
+    const loss = hold.borrow.amount - amount;
+    this.shortfalls.set(hold.borrow.token, this.shortfall(hold.borrow.token) + loss);
+    hold.status = 'repaid';
   }
 
   balance(owner: Address, token: Address): LendingView {
@@ -72,14 +124,11 @@ export class MarginFundingState {
       const hold = this.holds.get(event.opId);
       if (!hold) throw new Error('MARGIN_RESERVATION_NOT_FOUND');
       if (hold.status === 'released') return false;
+      if (this.authorized.has(event.opId) || hold.status !== 'reserved') throw new AuthError(ERROR_CODES.POSITION_BUSY);
       this.checkHold(collateralRef(hold.opId), hold.owner, hold.collateral.token, hold.collateral.amount);
       return true;
     }
-    const previous = this.commands.get(event.opId);
-    if (previous) {
-      if (!isDeepStrictEqual(previous, event)) throw new AuthError(ERROR_CODES.NONCE_USED, 'MARGIN_OP_CONFLICT');
-      return false;
-    }
+    if (!this.validateCommand(event)) return false;
     const owner = getAddress(event.owner);
     if (event.t === 'MARGIN_OPEN_RESERVED') {
       positive(event.collateral.amount);
@@ -130,7 +179,7 @@ export class MarginFundingState {
         this.claims.set(key, { owner, token, amount, ref });
       } else this.claims.delete(key);
     }
-    this.commands.set(event.opId, structuredClone(event));
+    this.remember(event);
   }
 
   assertInvariants(): void {
@@ -139,9 +188,12 @@ export class MarginFundingState {
       this.checkHold(claim.ref, claim.owner, claim.token, claim.amount);
     }
     for (const hold of this.holds.values()) {
-      if (hold.status !== 'reserved') continue;
-      this.checkHold(collateralRef(hold.opId), hold.owner, hold.collateral.token, hold.collateral.amount);
-      if (this.pool(hold.borrow.token).available < 0n) throw new Error('MARGIN_LIQUIDITY_MISMATCH');
+      if (hold.status === 'reserved') this.checkHold(collateralRef(hold.opId), hold.owner, hold.collateral.token, hold.collateral.amount);
+      if (hold.status === 'borrowed' && this.ledger.getReservation(collateralRef(hold.opId))?.status !== 'consumed') {
+        throw new Error('MARGIN_RESERVATION_MISMATCH');
+      }
+      const pool = this.pool(hold.borrow.token);
+      if (pool.supplied < pool.reserved + this.shortfall(hold.borrow.token)) throw new Error('MARGIN_LIQUIDITY_MISMATCH');
     }
   }
 }
@@ -156,7 +208,6 @@ export interface MarginFundingDeps {
 /** Funding only. Use the same queue as withdrawals and spot orders. */
 export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem' | 'lending'> {
   private readonly usdc: Address;
-  private faulted = false;
 
   constructor(private readonly deps: MarginFundingDeps) {
     this.usdc = getAddress(deps.usdc);
@@ -172,14 +223,14 @@ export class MarginFunding implements Pick<MarginAccounting, 'supply' | 'redeem'
   private async commit(event: MarginFundingEvent): Promise<void> {
     const snapshot = structuredClone(event);
     await this.deps.queue.run(async () => {
-      if (this.faulted) throw new Error('MARGIN_FUNDING_UNAVAILABLE');
+      this.deps.ledger.margin.assertAvailable();
       if (!this.deps.ledger.margin.validate(snapshot)) return;
       try {
         await this.deps.journal.append(snapshot);
         this.deps.ledger.apply(snapshot);
       } catch (error) {
         // An uncertain write must be replayed before any further funding changes.
-        this.faulted = true;
+        this.deps.ledger.margin.stop();
         throw error;
       }
     });

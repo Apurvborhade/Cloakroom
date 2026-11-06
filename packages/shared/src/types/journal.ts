@@ -1,5 +1,5 @@
 import type { Address, Hex } from 'viem';
-import type { IntentMsg } from '../eip712.js';
+import type { IntentMsg, MarginOpenMsg, MarginCloseMsg, MarginAddCollateralMsg } from '../eip712.js';
 import type { MarginFundingEvent } from './margin-funding.js';
 
 /**
@@ -88,7 +88,13 @@ export type JournalEvent =
       maxSlippageBps: number;
       /** Unix seconds. Nothing is signed for this operation after it. */
       expiry: number;
+      /** Absent on simulation-only approvals that do not move ledger balances. */
+      accounting?:
+        | { kind: 'long-open'; message: MarginOpenMsg; usdcDecimals: number }
+        | { kind: 'long-close'; message: MarginCloseMsg }
+        | { kind: 'long-liquidate' };
     }
+  | { t: 'MARGIN_COLLATERAL_ADDED'; opId: string; message: MarginAddCollateralMsg }
   | { t: 'MARGIN_OP_BROADCAST'; opId: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex }
   | {
       t: 'MARGIN_OP_SETTLED';

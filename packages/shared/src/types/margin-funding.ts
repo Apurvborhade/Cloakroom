@@ -19,7 +19,7 @@ export interface MarginFundingReservation {
   owner: Address;
   collateral: MarginAmount;
   borrow: MarginAmount;
-  status: 'reserved' | 'released';
+  status: 'reserved' | 'released' | 'borrowed' | 'repaid';
 }
 
 export type MarginFundingEvent =

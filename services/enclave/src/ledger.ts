@@ -9,6 +9,7 @@ import type {
 import { getAddress } from 'viem';
 import type { Address } from 'viem';
 import { MarginFundingState } from './margin-funding.js';
+import { MarginPositionState } from './margin-positions.js';
 
 export type ReservationStatus = 'active' | 'released' | 'consumed';
 
@@ -51,6 +52,7 @@ export class InMemoryLedger implements Ledger {
   private readonly bookedGasFees = new Map<string, OperationalGasRecord>();
   private readonly depositSessions = new Map<string, Address>();
   readonly margin = new MarginFundingState(this);
+  readonly marginPositions = new MarginPositionState(this);
 
   private getOrCreateBalance(owner: Address, token: Address): BalanceRecord {
     let ownerMap = this.userBalances.get(owner);
@@ -229,6 +231,15 @@ export class InMemoryLedger implements Ledger {
     return this.nonces.get(getAddress(owner)) ?? 0n;
   }
 
+  /** Cash and locked assets required on-chain, excluding performing margin receivables. */
+  custodyClaims(): Map<Address, bigint> {
+    const result = new Map<Address, bigint>();
+    for (const [token, balance] of this.totals()) result.set(token, balance.available + balance.reserved);
+    for (const [token, amount] of this.protocolRevenue) result.set(token, (result.get(token) ?? 0n) + amount);
+    for (const [token, amount] of this.marginPositions.custodyAdjustments()) result.set(token, (result.get(token) ?? 0n) + amount);
+    return result;
+  }
+
   setNonce(owner: Address, nonce: bigint): void {
     if (typeof nonce !== 'bigint') {
       throw new Error('Nonce must be a bigint');
@@ -310,13 +321,16 @@ export class InMemoryLedger implements Ledger {
         this.setNonce(event.owner, event.nonce);
         break;
       }
-      case 'SIGNING_REGISTERED':
-      case 'SIGNING_COMPLETED':
-      // Margin balances belong to margin accounting, which replays these itself.
       case 'MARGIN_OP_APPROVED':
       case 'MARGIN_OP_BROADCAST':
       case 'MARGIN_OP_SETTLED':
-      case 'MARGIN_OP_FAILED': {
+      case 'MARGIN_OP_FAILED':
+      case 'MARGIN_COLLATERAL_ADDED': {
+        this.marginPositions.apply(event);
+        break;
+      }
+      case 'SIGNING_REGISTERED':
+      case 'SIGNING_COMPLETED': {
         break;
       }
       case 'DEPOSIT_SESSION_OPENED': {
@@ -480,6 +494,7 @@ export class InMemoryLedger implements Ledger {
 
   assertInvariants(): void {
     this.margin.assertInvariants();
+    this.marginPositions.assertInvariants();
     // 1. Non-negativity check
     for (const [owner, tokenMap] of this.userBalances.entries()) {
       for (const [token, bal] of tokenMap.entries()) {
