@@ -1,12 +1,10 @@
 import { NATIVE } from '@cloakroom/shared';
 import type { JournalEvent } from '@cloakroom/shared';
 import { getAddress, keccak256, parseEther, toHex } from 'viem';
-import type { Address, Hex } from 'viem';
+import type { Address } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CustodyEOA } from '@cloakroom/shared';
-import { KeyManager } from '../src/keys.js';
 import type { RunningEnclave } from '../src/server.js';
 import { apiClient, enclaveHarness } from './helpers/enclave.js';
 
@@ -20,22 +18,6 @@ const AMOUNT = parseEther('0.1');
 const MARKET_PRICE = 2_000n * PRICE_SCALE;
 
 const expiry = (fromNow = LIFETIME_SEC) => Math.floor(Date.now() / 1000) + fromNow;
-
-/** The real signer refuses swaps until its swap path exists, so these runs allow one known EOA. */
-const swapAccount = privateKeyToAccount(generatePrivateKey());
-class SwapAllowedKeys extends KeyManager {
-  override list(): CustodyEOA[] {
-    return [...super.list(), { index: 9_999, address: swapAccount.address, role: 'inventory', lastUsedAt: 0 }];
-  }
-
-  override async registerOp(opId: string, input: Parameters<KeyManager['registerOp']>[1]): Promise<void> {
-    if (input.eoa !== swapAccount.address) return super.registerOp(opId, input);
-  }
-
-  override async sign(...[eoa, tx, opId]: Parameters<KeyManager['sign']>): Promise<Hex> {
-    return eoa === swapAccount.address ? swapAccount.signTransaction(tx) : super.sign(eoa, tx, opId);
-  }
-}
 
 function client(enclave: RunningEnclave, tokenOut: Address) {
   const api = apiClient(enclave);
@@ -141,7 +123,8 @@ function report(tokenOut: Address, price = MARKET_PRICE) {
   return { pair: `${NATIVE}/${getAddress(tokenOut)}`, price, ts: Math.floor(Date.now() / 1000), source: 'uniswap' };
 }
 
-async function bootForSwaps(configOverrides: Record<string, string> = {}, Keys: typeof KeyManager = SwapAllowedKeys) {
+/** The real signer and executor, with a mock router and funded inventory unless told otherwise. */
+async function bootForSwaps(configOverrides: Record<string, string> = {}, options = { fundInventory: true }) {
   const uniswap = await harness.localUniswap();
   const enclave = await harness.boot({
     config: harness.config({
@@ -150,9 +133,12 @@ async function bootForSwaps(configOverrides: Record<string, string> = {}, Keys: 
       ...configOverrides,
     }),
     quoter: uniswap.quoter,
-    openKeys: harness.openKeysWith(Keys),
   });
-  return { enclave, token: uniswap.token };
+  if (options.fundInventory) {
+    await harness.send(enclave.parts.keys.list()[0]!.address, parseEther('1'));
+    await enclave.parts.inventory.refresh();
+  }
+  return { enclave, token: uniswap.token, router: uniswap.router };
 }
 
 beforeAll(() => harness.start());
@@ -459,8 +445,6 @@ describe('expiry', () => {
 describe('running an order through the pipeline', () => {
   it('goes from signed order to settled swap, started by the real price poller', async () => {
     const { enclave, token } = await bootForSwaps({ PRICE_POLL_INTERVAL_SEC: '1' });
-    await harness.send(swapAccount.address, parseEther('1'));
-    await enclave.parts.inventory.refresh();
     const api = client(enclave, token);
     await api.fund(alice);
     const { body } = await api.create(alice);
@@ -476,9 +460,7 @@ describe('running an order through the pipeline', () => {
   });
 
   it('reports the same status after a restart', async () => {
-    const { enclave, token } = await bootForSwaps({ PRICE_POLL_INTERVAL_SEC: '1' });
-    await harness.send(swapAccount.address, parseEther('1'));
-    await enclave.parts.inventory.refresh();
+    const { enclave, router, token } = await bootForSwaps({ PRICE_POLL_INTERVAL_SEC: '1' });
     const api = client(enclave, token);
     await api.fund(alice);
     const { body } = await api.create(alice);
@@ -486,10 +468,7 @@ describe('running an order through the pipeline', () => {
     const settled = enclave.parts.intents.get(body.intentId as string)?.settledAmountOut;
     await enclave.stop();
 
-    const second = await harness.boot({
-      config: harness.config({ TOKEN_OUT_ADDRESS: token }),
-      openKeys: harness.openKeysWith(SwapAllowedKeys),
-    });
+    const second = await harness.boot({ config: harness.config({ TOKEN_OUT_ADDRESS: token, UNIVERSAL_ROUTER_ADDRESS: router }) });
 
     expect(statusOf(second, body.intentId)).toBe('done');
     expect(second.parts.intents.get(body.intentId as string)?.settledAmountOut).toBe(settled);
@@ -498,8 +477,6 @@ describe('running an order through the pipeline', () => {
 
   it('does not run an order below its limit', async () => {
     const { enclave, token } = await bootForSwaps();
-    await harness.send(swapAccount.address, parseEther('1'));
-    await enclave.parts.inventory.refresh();
     const api = client(enclave, token);
     await api.fund(alice);
     const { body } = await api.create(alice, { triggerPrice: 2_001n * PRICE_SCALE });
@@ -510,8 +487,7 @@ describe('running an order through the pipeline', () => {
   });
 
   it('keeps an order pending for the next price check when no inventory can run it', async () => {
-    // The real key manager's addresses start empty, unlike the shared swap account.
-    const { enclave, token } = await bootForSwaps({}, KeyManager);
+    const { enclave, token } = await bootForSwaps({}, { fundInventory: false });
     const api = client(enclave, token);
     await api.fund(alice);
     const { body } = await api.create(alice);
@@ -525,8 +501,6 @@ describe('running an order through the pipeline', () => {
 
   it('runs an order once across overlapping price reports', async () => {
     const { enclave, token } = await bootForSwaps();
-    await harness.send(swapAccount.address, parseEther('1'));
-    await enclave.parts.inventory.refresh();
     const runIntent = vi.spyOn(enclave.parts.executor, 'runIntent');
     const api = client(enclave, token);
     await api.fund(alice);
@@ -541,19 +515,57 @@ describe('running an order through the pipeline', () => {
     expect(statusOf(enclave, body.intentId)).toBe('done');
   });
 
-  it('fails the order and returns the funds while the real signer refuses swaps', async () => {
-    const uniswap = await harness.localUniswap();
-    const enclave = await harness.boot({
-      config: harness.config({ TOKEN_OUT_ADDRESS: uniswap.token, UNIVERSAL_ROUTER_ADDRESS: uniswap.router }),
-      quoter: uniswap.quoter,
-    });
-    await harness.send(enclave.parts.keys.list()[0]!.address, parseEther('1'));
-    await enclave.parts.inventory.refresh();
-    const api = client(enclave, uniswap.token);
+  it('credits at least the limit after the fee, on an order close to the market price', async () => {
+    const { enclave, token } = await bootForSwaps();
+    const api = client(enclave, token);
+    await api.fund(alice);
+    const limit = 1_990n * PRICE_SCALE;
+    const { body } = await api.create(alice, { triggerPrice: limit });
+
+    const [outcome] = await enclave.parts.pipeline.handleReport(report(token));
+
+    expect(outcome?.status).toBe('settled');
+    const owed = (AMOUNT * limit * 10n ** 6n) / 10n ** 36n;
+    expect(enclave.parts.intents.get(body.intentId as string)?.settledAmountOut).toBeGreaterThanOrEqual(owed);
+    expect(enclave.parts.ledger.getBalance(alice.address, token).available).toBeGreaterThanOrEqual(owed);
+  });
+
+  it("swaps from another user's old deposit address, never the owner's own", async () => {
+    const { enclave, token } = await bootForSwaps({ DEPOSIT_SESSION_TTL_SEC: '2' }, { fundInventory: false });
+    const api = client(enclave, token);
+    await api.fund(alice, parseEther('0.9'));
+    await api.fund(bob, parseEther('0.9'));
+    const [aliceDeposit] = [...enclave.parts.inventory.eoasLinkedTo(alice.address)];
+    const [bobDeposit] = [...enclave.parts.inventory.eoasLinkedTo(bob.address)];
+    // Sessions close on a block past their expiry, so keep mining until Bob has an address to use.
+    await vi.waitFor(
+      async () => {
+        await harness.send(alice.address, 1n);
+        await enclave.parts.watcher.tick();
+        await enclave.parts.inventory.refresh();
+        const usable = enclave.parts.inventory.pick(NATIVE, AMOUNT, enclave.parts.inventory.eoasLinkedTo(bob.address));
+        expect(usable).not.toBeNull();
+      },
+      { timeout: 10_000, interval: 250 },
+    );
+    await api.create(bob);
+
+    const [outcome] = await enclave.parts.pipeline.handleReport(report(token));
+
+    if (outcome?.status !== 'settled') throw new Error(`expected settled, got ${JSON.stringify(outcome)}`);
+    const receipt = await harness.chain.getTransactionReceipt({ hash: outcome.txHash });
+    expect(getAddress(receipt.from)).toBe(aliceDeposit);
+    expect(getAddress(receipt.from)).not.toBe(bobDeposit);
+  });
+
+  it('fails the order and returns the funds when the signer refuses', async () => {
+    const { enclave, token } = await bootForSwaps();
+    const api = client(enclave, token);
     await api.fund(alice);
     const { body } = await api.create(alice);
+    vi.spyOn(enclave.parts.keys, 'registerOp').mockRejectedValueOnce(new Error('refused'));
 
-    const outcomes = await enclave.parts.pipeline.handleReport(report(uniswap.token));
+    const outcomes = await enclave.parts.pipeline.handleReport(report(token));
 
     expect(outcomes).toEqual([{ status: 'failed', reason: 'PREPARE_FAILED' }]);
     expect(statusOf(enclave, body.intentId)).toBe('failed');

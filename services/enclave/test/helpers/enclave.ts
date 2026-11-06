@@ -115,7 +115,6 @@ export function enclaveHarness(anvilPort: number, apiPort: number) {
   return {
     boot,
     localUniswap,
-    openKeysWith,
     chain,
     config,
     start: async () => {
@@ -149,7 +148,7 @@ export function apiClient(enclave: RunningEnclave) {
   return {
     sign: (
       account: PrivateKeyAccount,
-      primaryType: 'SessionGrant' | 'SessionQuery' | 'DepositRequest' | 'Intent' | 'CancelIntent',
+      primaryType: 'SessionGrant' | 'SessionQuery' | 'DepositRequest' | 'Intent' | 'CancelIntent' | 'Withdrawal',
       message: never,
     ) =>
       account.signTypedData({ domain, types: EIP712_TYPES, primaryType, message }),
