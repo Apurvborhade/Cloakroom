@@ -34,6 +34,8 @@ const ENV_SCHEMA = z.object({
   WETH_ADDRESS: address,
   TOKEN_OUT_ADDRESS: address,
   UNISWAP_API_KEY: secret,
+  UNISWAP_API_URL: z.string().url(),
+  TOKEN_OUT_DECIMALS: wholeNumber,
 
   MAX_SLIPPAGE_BPS_CAP: bps,
   FEE_BPS: bps,
@@ -46,6 +48,7 @@ const ENV_SCHEMA = z.object({
 
   PRICE_POLL_INTERVAL_SEC: positiveNumber,
   PRICE_REFERENCE_AMOUNT_WEI: positiveWei,
+  PRICE_QUOTE_TIMEOUT_MS: positiveNumber,
 
   SIGNING_MAX_GAS: positiveWei,
   SIGNING_MAX_FEE_PER_GAS: positiveWei,
