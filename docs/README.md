@@ -33,7 +33,7 @@ Converted from the Implementation Plan and the Technical Spec (both dated 2026-1
 | [demo.md](demo.md) | Three-minute demo script |
 | [prizes.md](prizes.md) | Prize requirements and evidence |
 | [risks.md](risks.md) | Risks and fallbacks |
-| [engineering-log.md](engineering-log.md) | Canonical chronological engineering activity log |
+| [engineering-log.md](engineering-log.md) | Historical implementation notes |
 | [development-conventions.md](development-conventions.md) | Codebase standards, no-emoji rule, conventions |
 
 ## Shared Package Contracts and Handoffs
@@ -42,24 +42,10 @@ The `@cloakroom/shared` package is the single source of truth for protocol const
 
 ### 1. TEE and custody handoff
 
-- **Attestation handoff to API/frontend:** the phase-0 response and nonce encoding are documented in [api.md](api.md#attestation-response-nitro-phase-0). `AttestationService` is separate from the application server; public HTTPS ingress is pending. Decode its hex X25519 key to bytes before deriving the EIP-712 salt. The phase-0 key rotates on restart.
-
-- **Envelope Contract:** `Envelope` type and `EnvelopeSchema` for HPKE-encrypted request bodies (`{ enc: string, ct: string }`).
-- **Domain Salt:** Derived via `deriveEnclaveSalt(enclavePubKey: Hex): Hex` which computes `keccak256(enclavePubKey)`.
-- **EIP-712 Domain:** Created via `createDomain(chainId: number, enclaveKeyHash: Hex)`.
-- **Journal Event Format:** `JournalEvent` discriminated union for operation audit and signing guard verification.
-- **Transport identity:** the custody HPKE key is derived from the sealed seed and survives restoration. `AttestationService` receives that same identity. The attestation-only bootstrap remains ephemeral; clients refetch and re-sign after an actual key rotation.
-
-```ts
-import { deriveEnclaveSalt, createDomain, type JournalEvent, type Envelope } from '@cloakroom/shared';
-
-const salt = deriveEnclaveSalt(enclavePublicKey);
-const domain = createDomain(chainId, salt);
-```
-
-- **Custody handoff:** use `KeyManager.allocate` asynchronously and await `registerOp`. The executor accepts both asynchronous real signers and synchronous test adapters. The durable journal must support `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; see [custody handoff](enclave.md#custody-implementation-handoff).
-
-- **HPKE handoff to API/frontend:** use `sealEnvelopeWithResponse` and `keys.decryptWithResponse` for private POST results, then `sealResponse`/`openResponse`. Bind the exact request path and chain ID. Shared response schemas validate the decrypted body. The wire body limit is 24 KiB for at most 16 KiB plaintext. See [API transport](api.md#hpke-parameters).
+- **Status:** the attestation bootstrap runs on Nitro. Application integration, live KMS recovery and public HTTPS remain open.
+- **Transport:** use `sealEnvelopeWithResponse` and `keys.decryptWithResponse`, then `sealResponse`/`openResponse`. See [API contracts](api.md#hpke-parameters) for encoding, limits, attestation and seeding.
+- **Custody:** await `allocate` and `registerOp`; persist `SIGNING_REGISTERED` and `SIGNING_COMPLETED`. Use the same sealed identity for attestation and decryption. See [boot order](enclave.md#boot-order) and [custody interfaces](enclave.md#custody-implementation-handoff).
+- **Deployment:** `openNitroCustody` connects NSM, KMS and ciphertext storage. Provisioning and startup instructions are in the [Nitro runbook](../infra/nitro/README.md).
 
 ### 2. Handoff to Apurva (On-Chain & Execution)
 
@@ -97,7 +83,3 @@ import {
   type IntentWire,
 } from '@cloakroom/shared';
 ```
-
-TEE handoff: mount `custodyRoutes` after `KeyManager.init()` and journal restoration. Use `AttestationService(buildHash, { identity: keys, chainId })` so attestation and decryption share the sealed identity. The admin client uses `sealEnvelopeWithResponse`, EIP-712 `AdminEoas`, then `openResponse`; do not treat its success body as plaintext addresses.
-
-Nitro custody handoff: `openNitroCustody` composes real NSM attestation, KMS recipient-only wrapping, authenticated AWS TLS and parent ciphertext storage. Follow [the runbook](../infra/nitro/README.md). Credentials and all security-critical boot configuration must be injected through the reviewed application bootstrap. Live IAM/KMS and the public domain are still external prerequisites.
