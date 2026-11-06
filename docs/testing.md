@@ -10,7 +10,7 @@ Chain tests run against an Anvil fork. Set `CHAIN_ID` to whatever the fork repor
 | --- | --- | --- | --- |
 | `ledger.test.ts` | Shreyas | 36 unit and queue/journal integration tests | Non-negativity, isolation, double-credit prevention, replay |
 | `ledger.property.test.ts` | Shreyas | Random sequences of credit, reserve, release, consume (fast-check) | Never negative; totals conserved |
-| `auth.test.ts` | Shreyas | Signatures, expiry, nonces, wrong chain or salt, session grants | Each bad input returns its error code |
+| `auth.test.ts` | Shreyas | 31 unit tests: signatures, expiry horizons, clock skew, session grants, and serialized nonce durability | Each bad input returns its error code; concurrent duplicate nonces reject |
 | `concurrency.test.ts` | Shreyas | Two withdrawals of 80% at once; intent versus withdrawal race | Exactly one wins |
 | `journal.test.ts` | Shreyas | Replay rebuilds state; one altered entry | Same balances; hash chain breaks on tamper |
 | `recovery.test.ts` | Apurva | Kill after `EXEC_BROADCAST`, before settlement | Reboot settles once, never executes twice |

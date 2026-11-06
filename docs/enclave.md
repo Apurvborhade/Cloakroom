@@ -152,6 +152,22 @@ The in-memory ledger resides in `services/enclave/src/ledger.ts` (`InMemoryLedge
 - **Replay projection:** `apply(event: JournalEvent)` projects all 15 canonical events in chronological sequence, reconstructing identical ledger snapshots on enclave restart.
 - **Invariant verification:** `assertInvariants()` verifies non-negativity, exact reservation conservation, and aggregate totals consistency.
 
+## Authentication and Session Authorization (Shreyas)
+
+The authentication service resides in `services/enclave/src/auth.ts` (`AuthService`).
+
+### Responsibilities
+1. **EIP-712 Verification:** Verifies owner signatures using viem's typed-data recovery bound to the enclave's expected domain (`chainId` and `salt = keccak256(enclavePubKey)`).
+2. **Session Grants:** Maintains an ephemeral in-memory registry of owner-granted session keys. Validates owner-signed `SessionGrant` up to `SESSION_GRANT_TTL_SEC` (30 minutes). Session keys only authorize read-only operations (`SessionQuery`); they cannot authorize state-mutating requests. Session grants are invalidated on enclave restart.
+3. **Expiry & Skew Validation:** Enforces integer-second timestamp boundaries:
+   - Requests and queries: `[now - MAX_CLOCK_SKEW_SEC, now + MAX_EXPIRY_FUTURE_SEC]`.
+   - Session grants: `(now, now + SESSION_GRANT_TTL_SEC]`.
+4. **Replay-Safe Nonce Protection:** Mutating requests (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`) verify signature and expiry outside the queue, then atomically validate and consume nonces inside `FifoSerialQueue`.
+   - Reads `ledger.getLastNonce(owner)`.
+   - Requires `nonce > lastNonce`. First accepted nonce is `1n` (`> 0n`).
+   - Appends `NONCE_USED` to the journal.
+   - Updates `ledger.setNonce(owner, nonce)` only after the journal append durably succeeds.
+
 ## Key manager (TEE)
 
 ```ts

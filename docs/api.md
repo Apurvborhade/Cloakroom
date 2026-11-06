@@ -86,12 +86,14 @@ export type WithdrawalStatus =
 ## Rules for every signed message
 
 - Recover the signer from the signature and require it to equal `owner` (or the granted session key for reads).
-- Require `expiry` in the future and at most 5 minutes ahead (`MAX_EXPIRY_FUTURE_SEC`), with at most 60 seconds of clock skew (`MAX_CLOCK_SKEW_SEC`).
-- For mutating operations (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`), require `nonce` strictly greater than the owner's last accepted nonce, checked and written inside `FifoSerialQueue`.
+- **Expiry policy distinction:**
+  - For mutating operations (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`) and read queries (`SessionQuery`), require `expiry` within at most 5 minutes ahead (`MAX_EXPIRY_FUTURE_SEC`) and at most 60 seconds of clock skew in the past (`MAX_CLOCK_SKEW_SEC`).
+  - For `SessionGrant`, require `expiry` within at most 30 minutes ahead (`SESSION_GRANT_TTL_SEC`) and at most 60 seconds of clock skew in the past (`MAX_CLOCK_SKEW_SEC`).
+- For mutating operations (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`), require `nonce` strictly greater than the owner's last accepted nonce (`nonce > lastNonce`), checked and written inside `FifoSerialQueue`. Because the default starting nonce is `0n`, the first valid user nonce is `1n` (or any `> 0n`).
 - For `SessionQuery`, verify that a valid `SessionGrant` exists for `sessionKey`, matches `owner`, and has not expired. `SessionQuery` does not consume an owner nonce.
 - Reject a domain `chainId` or `salt` that does not match.
 
-**Session grants (saves wallet popups):** The user signs one `SessionGrant` for a browser-held key valid for 30 minutes (`SESSION_GRANT_TTL_SEC`). Balance and status reads are signed by that key. Deposits, intents, cancellations, and withdrawals always require a fresh primary wallet signature.
+**Session grants (saves wallet popups):** The user signs one `SessionGrant` for a browser-held key valid for 30 minutes (`SESSION_GRANT_TTL_SEC`). Balance and status reads are signed by that key. Deposits, intents, cancellations, and withdrawals always require a fresh primary wallet signature. Session grants are ephemeral in-memory records; restarting the enclave invalidates active session grants, requiring the client to request a fresh grant.
 
 ## Transport
 
