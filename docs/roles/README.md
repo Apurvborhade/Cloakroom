@@ -2,10 +2,19 @@
 
 | Person | Workstream | Plan role | Brief |
 | --- | --- | --- | --- |
-| Felix | TEE and custody | A | [felix-tee.md](felix-tee.md) |
+| Felix | TEE, custody and margin accounting | A | [felix-tee.md](felix-tee.md) |
 | Shreyas | API and accounting | B | [shreyas-api.md](shreyas-api.md) |
-| Apurva | On-chain and execution | C | [apurva-onchain.md](apurva-onchain.md) |
+| Apurva | On-chain execution and margin backend | C | [apurva-onchain.md](apurva-onchain.md) |
 | Pradnyesh | Frontend and web3 integrations | D | [pradnyesh-frontend.md](pradnyesh-frontend.md) |
+
+## Margin ownership
+
+| Person | Scope | Tasks |
+| --- | --- | --- |
+| Felix | Balancing, ledger, lending claims, collateral, debt, risk calculations, settlement and replay | [Margin accounting](felix-tee.md#margin-accounting) |
+| Apurva | API, shared wire schemas, prices, Uniswap execution, liquidation worker and backend integration | [Margin backend and execution](apurva-onchain.md#margin-backend-and-execution) |
+
+Both workstreams run inside the TEE. Felix's accounting service is the only writer of margin balances; Apurva calls it to prepare and settle operations. Existing base ownership below remains unchanged. The margin MVP excludes stop-loss and take-profit.
 
 ## Ownership
 
@@ -49,6 +58,8 @@ These are where one person's work blocks another's. Agree the interface first, t
 | Apurva | Pradnyesh | Uniswap integration line links and notes for `FEEDBACK.md` and the README | Phase 4 |
 | Felix | Apurva | One-time admin EOA list for seeding | Phase 4 |
 | Felix | Pradnyesh | Final enclave URL and image digest | Phase 4 |
+| Felix | Apurva | Margin accounting types, risk checks, prepare/settle/recover interface and mock | Margin interface agreement |
+| Apurva | Felix | Margin API contracts, fresh prices, physical inventory, execution outcomes and mock | Margin interface agreement |
 
 ## Working agreements
 

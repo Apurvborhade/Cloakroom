@@ -7,6 +7,8 @@ import { replayLedger } from './ledger.js';
 import type { CipherBlobStore, StateVault } from './sealed-state.js';
 import { SnapshotJournal } from './snapshot-journal.js';
 
+export type CustodyRuntime = Awaited<ReturnType<typeof openCustodyRuntime>>;
+
 export async function openCustodyRuntime(options: {
   vault: StateVault; journalStore: CipherBlobStore; policy: SigningPolicy; buildHash: string;
   allowCreate?: boolean; simMode?: boolean; quote?: QuoteProvider;

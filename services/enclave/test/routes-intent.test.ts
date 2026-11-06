@@ -6,7 +6,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunningEnclave } from '../src/server.js';
-import { apiClient, enclaveHarness } from './helpers/enclave.js';
+import { apiClient, enclaveHarness, waitForDeposit } from './helpers/enclave.js';
 
 const harness = enclaveHarness(18_799, 18_800);
 const alice = privateKeyToAccount(generatePrivateKey());
@@ -43,7 +43,7 @@ function client(enclave: RunningEnclave, tokenOut: Address) {
       signature,
     });
     await harness.send(body.depositAddress as Address, amount);
-    await enclave.parts.watcher.tick();
+    await waitForDeposit(enclave, body.sessionId as string, amount);
   };
 
   const create = async (
@@ -531,23 +531,13 @@ describe('running an order through the pipeline', () => {
   });
 
   it("swaps from another user's old deposit address, never the owner's own", async () => {
-    const { enclave, token } = await bootForSwaps({ DEPOSIT_SESSION_TTL_SEC: '2' }, { fundInventory: false });
+    const { enclave, token } = await bootForSwaps({ DEPOSIT_SESSION_TTL_SEC: '60' }, { fundInventory: false });
     const api = client(enclave, token);
     await api.fund(alice, parseEther('0.9'));
     await api.fund(bob, parseEther('0.9'));
     const [aliceDeposit] = [...enclave.parts.inventory.eoasLinkedTo(alice.address)];
     const [bobDeposit] = [...enclave.parts.inventory.eoasLinkedTo(bob.address)];
-    // Sessions close on a block past their expiry, so keep mining until Bob has an address to use.
-    await vi.waitFor(
-      async () => {
-        await harness.send(alice.address, 1n);
-        await enclave.parts.watcher.tick();
-        await enclave.parts.inventory.refresh();
-        const usable = enclave.parts.inventory.pick(NATIVE, AMOUNT, enclave.parts.inventory.eoasLinkedTo(bob.address));
-        expect(usable).not.toBeNull();
-      },
-      { timeout: 10_000, interval: 250 },
-    );
+    await harness.expireDeposits(enclave);
     await api.create(bob);
 
     const [outcome] = await enclave.parts.pipeline.handleReport(report(token));

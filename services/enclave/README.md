@@ -2,7 +2,7 @@
 
 The TEE service. Module ownership: see [docs/enclave.md](../../docs/enclave.md).
 
-Phase 0 provides attestation only. `src/attestation-server.ts` is a temporary entrypoint; it does not implement custody or the application routes.
+The commands below build the attestation-only bootstrap. To start `main.ts` with persistent custody, use the [private application configuration](../../infra/nitro/README.md#private-application-configuration) build path.
 
 From the repository root:
 
@@ -44,4 +44,4 @@ This bundles the shared sealing function for Chromium, checks concurrent request
 
 The full production dependency tree is packaged with `pnpm deploy --prod --legacy`. The bootstrap runs an unfunded signing/restart/HPKE self-test before serving attestation. See [the Nitro runbook](../../infra/nitro/README.md) for KMS recipient sealing, ciphertext persistence, services and the remaining live configuration.
 
-Verified ARM64 bootstrap image: `sha256:caa509c87ceb024fab1e7723bc72feb679075b4a9b3b709adb96700324262515`. [Build hash, EIF digest and trusted PCRs](../../infra/nitro/bootstrap-release.json). This release serves attestation; it does not enable live custody.
+The deployed ARM64 [application release](../../infra/nitro/application-release.json) includes trusted build/EIF hashes and PCRs. KMS-backed custody, encrypted API access and restart recovery are verified; seeding is disabled. The earlier [bootstrap release](../../infra/nitro/bootstrap-release.json) serves attestation only.

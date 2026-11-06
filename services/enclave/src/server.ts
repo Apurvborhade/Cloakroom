@@ -5,6 +5,7 @@ import { AuthService } from './auth.js';
 import { toSigningPolicy } from './config.js';
 import type { EnclaveConfig } from './config.js';
 import { custodyRoutes } from './custody-routes.js';
+import type { CustodyRuntime } from './custody-runtime.js';
 import { apiRoutes } from './routes.js';
 import type { ApiDeps } from './routes.js';
 import { Executor } from './executor.js';
@@ -20,6 +21,7 @@ import { PricePoller } from './price-poller.js';
 import { DepositWatcher } from './watcher.js';
 import { trackWithdrawals, WithdrawalOrders, WithdrawalStatuses } from './withdrawal-orders.js';
 import type { Journal } from '@cloakroom/shared';
+import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import type { PublicClient } from 'viem';
@@ -37,8 +39,11 @@ export interface BootOptions {
   config: EnclaveConfig;
   chain: PublicClient;
   quoter: SwapDeps['quoter'];
-  /** Opens and initializes custody. Key initialization must not read the journal. */
-  openKeys: (journal: KeyJournal, policy: SigningPolicy) => Promise<KeyManager>;
+  /** Simulation file storage. Key initialization must not read the journal. */
+  openKeys?: (journal: KeyJournal, policy: SigningPolicy) => Promise<KeyManager>;
+  /** Persistent custody, with journal, ledger and signing state already restored. */
+  openRuntime?: (policy: SigningPolicy) => Promise<CustodyRuntime>;
+  socketPath?: string;
   /** Without a build hash, GET /attestation answers 503: there is no simulated quote. */
   attestation?: { buildHash: string; provider?: QuoteProvider };
   /** Receives fixed status codes only, never request data or error text. */
@@ -52,7 +57,7 @@ export interface EnclaveParts {
   intentOrders: IntentOrders;
   intents: InMemoryIntentStore;
   inventory: Inventory;
-  journal: EncryptedJournal;
+  journal: Journal;
   keys: KeyManager;
   ledger: InMemoryLedger;
   pipeline: IntentExecutionPipeline;
@@ -79,6 +84,11 @@ export async function buildApp(options: {
   const { api, attestation } = options;
   const { config, keys } = api;
   const app = Fastify({ logger: false });
+  const origin = new URL(config.ALLOWED_ORIGIN).origin;
+  await app.register(cors, {
+    origin: (requestOrigin, done) => done(null, requestOrigin === origin),
+    methods: ['GET', 'POST'], allowedHeaders: ['content-type'], credentials: false,
+  });
 
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: 'INVALID_PAYLOAD' }));
   app.setErrorHandler((error: { statusCode?: number }, _request, reply) => {
@@ -137,6 +147,9 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   const drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS;
 
   const cleanups: Array<() => void | Promise<void>> = [];
+  let closeStorage: (() => Promise<void>) | undefined;
+  let closingStorage: Promise<void> | undefined;
+  const closeCustody = () => closingStorage ??= closeStorage?.() ?? Promise.resolve();
   const runCleanups = async () => {
     for (const cleanup of cleanups.splice(0).reverse()) {
       try {
@@ -151,6 +164,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
       return await run();
     } catch (cause) {
       await runCleanups();
+      try { await closeCustody(); } catch { log('CLEANUP_FAILED'); }
       throw new Error(`BOOT_FAILED:${name}`, { cause });
     }
   };
@@ -159,35 +173,41 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     if ((await chain.getChainId()) !== config.CHAIN_ID) throw new Error('CHAIN_MISMATCH');
   });
 
-  // KeyManager needs the journal to sign, and the journal needs KeyManager's cipher to open. Keys
-  // don't read the journal during init, so they get a pass-through until the journal is open.
-  let journal: EncryptedJournal | undefined;
-  const openJournal = () => {
-    if (!journal) throw new Error('JOURNAL_NOT_OPEN');
-    return journal;
-  };
-  const keyJournal: KeyJournal = {
-    append: (event) => openJournal().append(event),
-    replay: () => openJournal().replay(),
-  };
-
-  const keys = await step('keys', async () => {
-    const manager = await options.openKeys(keyJournal, toSigningPolicy(config));
-    const existing = manager.list().filter((eoa) => eoa.role === 'inventory').length;
+  await step('storage', () => {
+    if (Boolean(options.openKeys) === Boolean(options.openRuntime)
+        || (!config.SIM_MODE && !options.openRuntime)) throw new Error('PERSISTENT_CUSTODY_REQUIRED');
+  });
+  let runtime: CustodyRuntime | undefined;
+  let journal: Journal | undefined;
+  let keys: KeyManager;
+  if (options.openRuntime) {
+    runtime = await step('custody', () => options.openRuntime!(toSigningPolicy(config)));
+    closeStorage = () => runtime!.close();
+    ({ journal, keys } = runtime);
+  } else {
+    // Defer journal access until its cipher is available from the initialized keys.
+    const openJournal = () => {
+      if (!journal) throw new Error('JOURNAL_NOT_OPEN');
+      return journal;
+    };
+    keys = await step('keys', () => options.openKeys!({
+      append: (event) => openJournal().append(event), replay: () => openJournal().replay(),
+    }, toSigningPolicy(config)));
+    closeStorage = async () => { keys.close(); await journal?.close(); };
+    journal = await step('journal', () =>
+      EncryptedJournal.open({ filePath: config.JOURNAL_PATH, cipher: keys.journalCipher() }),
+    );
+  }
+  const openedJournal = journal;
+  await step('allocate', async () => {
+    const existing = keys.list().filter((eoa) => eoa.role === 'inventory').length;
     for (let count = existing; count < config.INVENTORY_EOA_COUNT; count += 1) {
-      await manager.allocate('inventory');
+      await keys.allocate('inventory');
     }
-    return manager;
   });
 
-  journal = await step('journal', () =>
-    EncryptedJournal.open({ filePath: config.JOURNAL_PATH, cipher: keys.journalCipher() }),
-  );
-  const openedJournal = journal;
-  cleanups.push(() => openedJournal.close());
-
   const queue = new FifoSerialQueue();
-  const ledger = new InMemoryLedger();
+  const ledger = runtime?.ledger ?? new InMemoryLedger();
   const intents = new InMemoryIntentStore();
   const inventory = new Inventory({
     chain,
@@ -210,14 +230,14 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   await step('replay', async () => {
     for await (const { event, timestamp } of openedJournal.replay()) {
-      ledger.apply(event);
+      if (!runtime) ledger.apply(event);
       intents.apply(event, timestamp);
       inventory.replay(event);
       watcher.replay(event);
       withdrawalStatuses.apply(event);
     }
   });
-  await step('signing-state', () => keys.restoreSigningState());
+  if (!runtime) await step('signing-state', () => keys.restoreSigningState());
 
   const auth = new AuthService({
     chainId: config.CHAIN_ID,
@@ -287,13 +307,13 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   const app = await step('routes', () =>
     buildApp({
       api: { auth, config, intentOrders, intents, inventory, keys, ledger, watcher, withdrawalOrders, withdrawalStatuses },
-      attestation: options.attestation
+      attestation: runtime?.attestation ?? (options.attestation
         ? new AttestationService(options.attestation.buildHash, {
             identity: keys,
             chainId: config.CHAIN_ID,
             provider: options.attestation.provider,
           })
-        : undefined,
+        : undefined),
     }),
   );
   cleanups.push(() => app.close());
@@ -307,7 +327,8 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
     }, config.PRICE_POLL_INTERVAL_SEC * MS_PER_SECOND);
     cleanups.push(() => clearInterval(expiryTimer));
   });
-  await step('listen', () => app.listen({ host: config.HOST, port: config.PORT }));
+  await step('listen', () => app.listen(options.socketPath
+    ? { path: options.socketPath } : { host: config.HOST, port: config.PORT }));
   log('LISTENING');
 
   const drainSwaps = async () => {
@@ -321,12 +342,10 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   let stopping: Promise<void> | undefined;
   const stop = () => {
-    // Cleanups run newest first: poller, watcher, server, then this, then the journal.
     stopping ??= (async () => {
-      const closeJournal = cleanups.shift();
       await runCleanups();
       await drainSwaps();
-      await closeJournal?.();
+      await closeCustody();
       log('STOPPED');
     })();
     return stopping;

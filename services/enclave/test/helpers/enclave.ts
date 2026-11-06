@@ -3,12 +3,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDomain, deriveEnclaveSalt, EIP712_TYPES, sealEnvelopeWithResponse } from '@cloakroom/shared';
-import { createPublicClient, createWalletClient, http } from 'viem';
-import type { Address, PublicClient } from 'viem';
+import { createPublicClient, createTestClient, createWalletClient, http } from 'viem';
+import type { Address, Hex, PublicClient } from 'viem';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import { privateKeyToAccount } from 'viem/accounts';
 import { foundry } from 'viem/chains';
-import { vi } from 'vitest';
+import { expect, vi } from 'vitest';
 import { loadConfig } from '../../src/config.js';
 import { KeyManager } from '../../src/keys.js';
 import { AesGcmStateVault, MemoryCipherBlobStore, simulationSealingKey } from '../../src/sealed-state.js';
@@ -30,6 +30,8 @@ export function enclaveHarness(anvilPort: number, apiPort: number) {
   const transport = http(rpcUrl);
   const chain = createPublicClient({ chain: foundry, transport, cacheTime: 0, pollingInterval: 100 }) as PublicClient;
   const wallet = createWalletClient({ account: FUNDER, chain: foundry, transport });
+  const testChain = createTestClient({ chain: foundry, mode: 'anvil', transport });
+  let snapshot: Hex;
 
   let anvil: ChildProcess;
   let directory: string;
@@ -122,12 +124,31 @@ export function enclaveHarness(anvilPort: number, apiPort: number) {
       await vi.waitFor(() => chain.getBlockNumber(), { timeout: 10_000, interval: 100 });
       const hash = await wallet.deployContract({ abi: TEST_TOKEN_ABI, bytecode: TEST_TOKEN_BYTECODE });
       token = (await chain.waitForTransactionReceipt({ hash })).contractAddress as Address;
+      snapshot = await testChain.snapshot();
     },
     finish: () => anvil.kill(),
-    reset: () => {
+    reset: async () => {
+      await testChain.revert({ id: snapshot });
+      snapshot = await testChain.snapshot();
       directory = mkdtempSync(join(tmpdir(), 'cloakroom-api-'));
       store = new MemoryCipherBlobStore();
       running = [];
+    },
+    expireDeposits: async (enclave: RunningEnclave) => {
+      const sessions = new Map<string, number>();
+      for await (const { event } of enclave.parts.journal.replay()) {
+        if (event.t === 'DEPOSIT_SESSION_OPENED') sessions.set(event.id, event.expiry);
+        if (event.t === 'DEPOSIT_SESSION_CLOSED') sessions.delete(event.id);
+      }
+      const head = await chain.getBlock();
+      const expiry = Math.max(Number(head.timestamp), ...sessions.values());
+      await testChain.setNextBlockTimestamp({ timestamp: BigInt(expiry + 1) });
+      await testChain.mine({ blocks: 1 });
+      await vi.waitFor(async () => {
+        await enclave.parts.watcher.tick();
+        for (const id of sessions.keys()) expect(enclave.parts.watcher.getSession(id)?.open).toBe(false);
+      }, { timeout: 5000, interval: 20 });
+      await enclave.parts.inventory.refresh();
     },
     cleanup: async () => {
       await Promise.all(running.map((enclave) => enclave.stop()));
@@ -167,4 +188,15 @@ export function apiClient(enclave: RunningEnclave) {
       };
     },
   };
+}
+
+export async function waitForDeposit(enclave: RunningEnclave, sessionId: string, amount: bigint): Promise<void> {
+  await vi.waitFor(async () => {
+    await enclave.parts.watcher.tick();
+    let credited = 0n;
+    for await (const { event } of enclave.parts.journal.replay()) {
+      if (event.t === 'DEPOSIT_CREDITED' && event.id === sessionId) credited += event.amount;
+    }
+    expect(credited).toBe(amount);
+  }, { timeout: 5000, interval: 20 });
 }

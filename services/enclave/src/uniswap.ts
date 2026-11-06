@@ -26,12 +26,14 @@ const QUOTE_RESPONSE = z.object({
   }),
 });
 
+export type QuoteFetch = (url: string, init: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
+
 export interface UniswapClientOptions {
   apiUrl: string;
   apiKey: string;
   chainId: number;
   timeoutMs: number;
-  fetch?: typeof globalThis.fetch;
+  fetch?: QuoteFetch;
 }
 
 export interface QuoteRequest {
@@ -64,7 +66,7 @@ export interface Quote {
  * HTTP status only, so the API key, addresses and amounts never reach a log.
  */
 export class UniswapClient {
-  private readonly fetch: typeof globalThis.fetch;
+  private readonly fetch: QuoteFetch;
 
   constructor(private readonly options: UniswapClientOptions) {
     this.fetch = options.fetch ?? globalThis.fetch;
@@ -72,10 +74,11 @@ export class UniswapClient {
 
   async quote(request: QuoteRequest): Promise<Quote> {
     const { apiKey, apiUrl, chainId, timeoutMs } = this.options;
-    let response: Response;
+    let response: Awaited<ReturnType<QuoteFetch>>;
     try {
       response = await this.fetch(`${apiUrl}/quote`, {
         method: 'POST',
+        redirect: 'error',
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey },
         body: JSON.stringify({
           type: 'EXACT_INPUT',

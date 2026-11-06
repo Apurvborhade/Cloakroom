@@ -6,12 +6,12 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { PrivateKeyAccount } from 'viem/accounts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunningEnclave } from '../src/server.js';
-import { apiClient, enclaveHarness } from './helpers/enclave.js';
+import { apiClient, enclaveHarness, waitForDeposit } from './helpers/enclave.js';
 
 const harness = enclaveHarness(18_801, 18_802);
 const LIFETIME_SEC = 120;
 const DEPOSIT = parseEther('0.5');
-const SESSION_TTL_SEC = 2;
+const SESSION_TTL_SEC = 60;
 
 const expiry = (fromNow = LIFETIME_SEC) => Math.floor(Date.now() / 1000) + fromNow;
 const newAccount = () => privateKeyToAccount(generatePrivateKey());
@@ -39,7 +39,7 @@ function client(enclave: RunningEnclave) {
       signature,
     });
     await harness.send(body.depositAddress as Address, amount);
-    await enclave.parts.watcher.tick();
+    await waitForDeposit(enclave, body.sessionId as string, amount);
     return body.depositAddress as Address;
   };
 
@@ -114,17 +114,10 @@ async function waitForStatus(api: ReturnType<typeof client>, owner: PrivateKeyAc
 
 /** Lets open deposit sessions end, so their addresses join the pool. */
 async function closeSessions(enclave: RunningEnclave, sessionEoas: Address[]) {
-  await vi.waitFor(
-    async () => {
-      await harness.send(newAccount().address, 1n);
-      await enclave.parts.watcher.tick();
-      await enclave.parts.inventory.refresh();
-      for (const eoa of sessionEoas) {
-        expect(enclave.parts.inventory.pick(NATIVE, 1n, new Set(sessionEoas.filter((other) => other !== eoa)))?.address).toBe(eoa);
-      }
-    },
-    { timeout: 10_000, interval: 250 },
-  );
+  await harness.expireDeposits(enclave);
+  for (const eoa of sessionEoas) {
+    expect(enclave.parts.inventory.pick(NATIVE, 1n, new Set(sessionEoas.filter((other) => other !== eoa)))?.address).toBe(eoa);
+  }
 }
 
 const bootWithPool = () => harness.boot({ config: harness.config({ DEPOSIT_SESSION_TTL_SEC: String(SESSION_TTL_SEC) }) });

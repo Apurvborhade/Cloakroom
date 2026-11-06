@@ -4,6 +4,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY services/enclave ./services/enclave
+ARG NITRO_CONFIG_SHA256
 RUN pnpm install --frozen-lockfile && pnpm --filter @cloakroom/shared build \
     && pnpm --filter @cloakroom/enclave build \
     && pnpm --filter @cloakroom/enclave deploy --prod --legacy /runtime

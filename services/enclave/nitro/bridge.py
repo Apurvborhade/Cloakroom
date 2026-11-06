@@ -5,6 +5,7 @@ import signal
 import socket
 import subprocess
 import threading
+from pathlib import Path
 
 
 def relay(left, right):
@@ -34,10 +35,19 @@ def main():
     child = None
     kms = None
     storage = None
+    uniswap = None
+    rpc = None
+    config = None
     if args.mode == "enclave":
         kms = subprocess.Popen(["python3", "/app/nitro/kms-relay.py", "enclave"])
         storage = subprocess.Popen(["python3", "/app/nitro/storage-relay.py"])
-        child = subprocess.Popen(["node", "/app/dist/attestation-server.js"])
+        uniswap = subprocess.Popen(["python3", "/app/nitro/uniswap-relay.py", "enclave"])
+        rpc = subprocess.Popen(["python3", "/app/nitro/rpc-relay.py", "enclave"])
+        if Path("/app/dist/config.sha256").exists():
+            config = subprocess.Popen(["python3", "/app/nitro/config.py", "enclave"])
+            child = subprocess.Popen(["node", "/app/dist/main.js", "--nitro"])
+        else:
+            child = subprocess.Popen(["node", "/app/dist/attestation-server.js"])
         listener = socket.socket(socket.AF_VSOCK, socket.SOCK_STREAM)
         listener.bind((socket.VMADDR_CID_ANY, 5000))
     else:
@@ -70,7 +80,7 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
-        while child is None or (child.poll() is None and kms.poll() is None and storage.poll() is None):
+        while child is None or all(process is None or process.poll() is None for process in (child, kms, storage, uniswap, rpc, config)):
             try:
                 connection, peer = listener.accept()
             except socket.timeout:
@@ -91,6 +101,15 @@ def main():
         if storage is not None:
             storage.terminate()
             storage.wait(timeout=10)
+        if uniswap is not None:
+            uniswap.terminate()
+            uniswap.wait(timeout=10)
+        if rpc is not None:
+            rpc.terminate()
+            rpc.wait(timeout=10)
+        if config is not None:
+            config.terminate()
+            config.wait(timeout=10)
 
 
 if __name__ == "__main__":
