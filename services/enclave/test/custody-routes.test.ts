@@ -104,7 +104,7 @@ describe('one-time encrypted seeding', () => {
     const response = await recipient.sealResponse({ addresses: [] });
     await expect(second.openResponse(response)).rejects.toThrow('INVALID_PAYLOAD');
     const bytes = Buffer.from(response.ct, 'base64'); bytes[0] = bytes[0]! ^ 1;
-    await expect(first.openResponse({ ct: bytes.toString('base64') })).rejects.toThrow('INVALID_PAYLOAD');
+    await expect(first.openResponse({ ...response, ct: bytes.toString('base64') })).rejects.toThrow('INVALID_PAYLOAD');
     await expect(recipient.sealResponse({ addresses: [] })).rejects.toThrow('RESPONSE_ALREADY_USED');
   });
 

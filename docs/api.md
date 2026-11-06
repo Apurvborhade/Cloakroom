@@ -87,13 +87,13 @@ TLS may terminate outside the enclave on some platforms, so request bodies are e
 
 ### HPKE parameters
 
-Browser sealing is implemented by `sealEnvelopeWithResponse` in `@cloakroom/shared`; enclave opening lives in `envelope.ts`. The request-only `sealEnvelope` helper remains available for transports that need no private response. Both use `@hpke/core` 1.10.0 with DHKEM-X25519/HKDF-SHA256 (`0x0020`), HKDF-SHA256 (`0x0001`), and AES-256-GCM (`0x0002`). Each request creates a fresh HPKE context with info `cloakroom/hpke/v1`.
+`sealEnvelopeWithResponse` in `@cloakroom/shared` uses `@hpke/core` 1.10.0: DHKEM-X25519/HKDF-SHA256 (`0x0020`), HKDF-SHA256 (`0x0001`), AES-256-GCM (`0x0002`). Each request creates a fresh context with info `cloakroom/hpke/v1`. Use `sealEnvelope` when no private reply is needed.
 
-Associated data is UTF-8 JSON `[1, chainId, path, lowercaseEnclavePublicKeyHex]`. The envelope fields use canonical padded base64. Plaintext is limited to 16 KiB. Transport decryption does not replace signature validation or nonce consumption.
+Requests use `{ enc, ct }` with canonical padded base64 and UTF-8 JSON `[1, chainId, path, lowercaseEnclavePublicKeyHex]` as associated data. Allow 24 KiB for the wire body; enforce 16 KiB after decryption. Signature validation and nonce consumption remain mandatory.
 
-Private POST success responses use the request-bound exporter channel: the client keeps `openResponse` from `sealEnvelopeWithResponse`; the server calls `keys.decryptWithResponse` and its `sealResponse` closure. The outer response is `{ ct }`, while the endpoint table and shared response schemas describe its decrypted body. This authenticates responses from the enclave and conceals balances, operation status and funding addresses from the parent. The custody plugin implements this pattern; the application server must apply it when mounting the remaining routes. Public GET responses and standard error codes stay plaintext.
+Private POST success responses use `{ nonce, ct }`, both canonical padded base64. AES-256-GCM uses a 32-byte key exported with label `cloakroom/hpke/response/v1` and a fresh random 12-byte nonce for every reply, including repeated requests. Associated data is `response:` followed by the request's associated data. `ct` includes the 16-byte authentication tag; plaintext is capped at 16 KiB. Missing or modified nonces are rejected.
 
-The 16 KiB limit applies before encryption. Allow 24 KiB for the base64 wire envelope, then enforce the plaintext limit during decryption.
+The server calls `keys.decryptWithResponse` then `sealResponse`; the client retains `openResponse` from `sealEnvelopeWithResponse`. Each closure is single-use. Response schemas below describe decrypted bodies. Mount this transport on all private routes; public GET responses and standard errors stay plaintext.
 
 ## Endpoints
 
@@ -163,6 +163,6 @@ This reads as: swap 0.1 ETH for USDC once ETH is at or above 3,000 USDC, accept 
 
 `POST /admin/eoas` takes `{ enc, ct }` from `sealEnvelopeWithResponse`. Its plaintext is `{ message: { admin, nonce, expiry }, signature }`; nonce and expiry are uint64 decimal strings. Sign `EIP712_TYPES.AdminEoas` with the usual chain/key domain. Expiry must be current and at most 300 seconds ahead.
 
-Success returns `{ ct }`, authenticated and encrypted with a separate AES-256-GCM key exported from the request's HPKE context using `cloakroom/hpke/response/v1`. The fixed zero nonce is safe because each fresh request context permits exactly one response. `openResponse` returns `{ addresses }`; only inventory allocations are included, capped at 128. Responses from another request and modified ciphertext are rejected. Standard error responses remain plaintext and contain no addresses.
+Success uses the encrypted response format above. `openResponse` returns `{ addresses }`, containing at most 128 inventory addresses. Standard errors contain no addresses.
 
 The route is absent when seeding is disabled. Once disclosure is durably consumed, further authorized calls return `403 UNAUTHORIZED`, including after restart. Do not log requests or responses. A lost response does not automatically reopen disclosure.

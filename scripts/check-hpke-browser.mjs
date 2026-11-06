@@ -52,7 +52,12 @@ try {
   const recipient = await openEnvelopeWithResponse(keys.privateKey, envelope, context);
   assert.deepEqual(recipient.payload, { check: 'response' });
   const response = await recipient.sealResponse({ authenticated: true });
-  assert.deepEqual(await page.evaluate((response) => globalThis.pending.openResponse(response), response), { authenticated: true });
+  const replay = await openEnvelopeWithResponse(keys.privateKey, envelope, context);
+  const replayResponse = await replay.sealResponse({ authenticated: true, replay: true });
+  assert.equal(Buffer.from(response.nonce, 'base64').length, 12);
+  assert.notEqual(response.nonce, replayResponse.nonce);
+  assert.deepEqual(await page.evaluate((response) => globalThis.pending.openResponse(response), replayResponse),
+    { authenticated: true, replay: true });
   console.log(JSON.stringify({ ok: true, browser: 'Chromium', concurrentMessages: 16,
     wrongRouteRejected: true, authenticatedResponse: true }));
 } finally {

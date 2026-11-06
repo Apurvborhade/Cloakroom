@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createTransportSuite, encodeBase64, HPKE_PARAMETERS, sealEnvelope } from '@cloakroom/shared';
-import type { EnvelopeContext } from '@cloakroom/shared';
+import { createTransportSuite, encodeBase64, HPKE_PARAMETERS, sealEnvelope, sealEnvelopeWithResponse } from '@cloakroom/shared';
+import type { EncryptedResponse, EnvelopeContext } from '@cloakroom/shared';
 import type { Hex } from 'viem';
-import { openEnvelope } from '../src/envelope.js';
+import { openEnvelope, openEnvelopeWithResponse } from '../src/envelope.js';
 
 async function recipient() {
   const suite = createTransportSuite();
@@ -27,6 +27,50 @@ describe('HPKE transport', () => {
     expect(await Promise.all(envelopes.map((envelope) => openEnvelope(key.privateKey, envelope, context))))
       .toEqual(Array.from({ length: 16 }, (_, n) => ({ n })));
   });
+
+  it('keeps responses confidential when an encrypted request is replayed', async () => {
+    const { key, context } = await recipient();
+    const client = await sealEnvelopeWithResponse({ query: 'balance' }, context);
+    const first = await openEnvelopeWithResponse(key.privateKey, client.envelope, context);
+    const replay = await openEnvelopeWithResponse(key.privateKey, client.envelope, context);
+    const known = { balance: '1000000000000000000' };
+    const updated = { balance: '9000000000000000000' };
+    const response = await first.sealResponse(known);
+    const replayResponse = await replay.sealResponse(updated);
+    const c1 = Buffer.from(response.ct, 'base64');
+    const c2 = Buffer.from(replayResponse.ct, 'base64');
+    const plaintext = Buffer.from(JSON.stringify(known));
+    const recovered = Buffer.from(plaintext.map((byte, index) => byte ^ c1[index]! ^ c2[index]!));
+
+    expect(recovered.equals(Buffer.from(JSON.stringify(updated)))).toBe(false);
+    expect(Buffer.from(response.nonce, 'base64')).toHaveLength(12);
+    expect(response.nonce).not.toBe(replayResponse.nonce);
+    expect(await client.openResponse(replayResponse)).toEqual(updated);
+  });
+
+  it.each(['modified', 'missing', 'short', 'long', 'invalid-base64', 'extra-field'] as const)(
+    'rejects a response with %s nonce data', async (variation) => {
+      const { key, context } = await recipient();
+      const client = await sealEnvelopeWithResponse({}, context);
+      const server = await openEnvelopeWithResponse(key.privateKey, client.envelope, context);
+      const response = await server.sealResponse({ balance: '1' });
+      let changed: unknown;
+      switch (variation) {
+        case 'modified': {
+          const nonce = Buffer.from(response.nonce, 'base64');
+          nonce[0] = nonce[0]! ^ 1;
+          changed = { ...response, nonce: nonce.toString('base64') };
+          break;
+        }
+        case 'missing': changed = { ct: response.ct }; break;
+        case 'short': changed = { ...response, nonce: encodeBase64(new Uint8Array(11)) }; break;
+        case 'long': changed = { ...response, nonce: encodeBase64(new Uint8Array(13)) }; break;
+        case 'invalid-base64': changed = { ...response, nonce: response.nonce + '\n' }; break;
+        case 'extra-field': changed = { ...response, extra: true }; break;
+      }
+      await expect(client.openResponse(changed as EncryptedResponse)).rejects.toThrow('INVALID_PAYLOAD');
+    },
+  );
 
   it('rejects tampered ciphertext, wrong recipient, wrong route and wrong chain', async () => {
     const { key, context } = await recipient();

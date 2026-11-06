@@ -14,10 +14,10 @@ export interface EnvelopeContext {
   enclavePubKey: Hex;
 }
 
-export interface EncryptedResponse { ct: string }
+export interface EncryptedResponse { nonce: string; ct: string }
 const RESPONSE_LABEL = new TextEncoder().encode('cloakroom/hpke/response/v1');
 
-/** One response per fresh HPKE request, using its exporter secret and a distinct key. */
+/** Request-bound response encryption. */
 export async function createResponseChannel(
   exporter: { export(context: Uint8Array, length: number): Promise<ArrayBuffer> },
   context: EnvelopeContext,
@@ -33,15 +33,20 @@ export async function createResponseChannel(
       used = true;
       const plaintext = new TextEncoder().encode(JSON.stringify(payload));
       if (plaintext.length > HPKE_PARAMETERS.maxPlaintextBytes) throw new Error('INVALID_PAYLOAD');
-      return { ct: encodeBase64(new Uint8Array(await cipher.seal(new Uint8Array(12), plaintext, aad))) };
+      // Replayed requests recreate the same key, so each reply needs a fresh nonce.
+      const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await cipher.seal(nonce, plaintext, aad);
+      return { nonce: encodeBase64(nonce), ct: encodeBase64(new Uint8Array(ciphertext)) };
     },
     async open(response) {
       if (used) throw new Error('RESPONSE_ALREADY_USED');
       used = true;
       try {
-        if (!response || Object.keys(response).join(',') !== 'ct') throw new Error();
+        if (!response || Object.keys(response).sort().join(',') !== 'ct,nonce') throw new Error();
+        const nonce = decodeBase64(response.nonce, 12);
+        if (nonce.length !== 12) throw new Error();
         const ct = decodeBase64(response.ct, HPKE_PARAMETERS.maxPlaintextBytes + 16);
-        const plaintext = await cipher.open(new Uint8Array(12), ct, aad);
+        const plaintext = await cipher.open(nonce, ct, aad);
         return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plaintext)) as unknown;
       } catch { throw new Error('INVALID_PAYLOAD'); }
     },
