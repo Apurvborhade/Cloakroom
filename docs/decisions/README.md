@@ -21,7 +21,7 @@ One decision per file. This page is the index, so check here first.
 | Decision | Owner | Needed by |
 | --- | --- | --- |
 | [TEE platform: AWS Nitro Enclaves](2026-11-06-0151-tee-platform.md) | Felix | Phase 0 |
-| [Network: Sepolia (pending a Trading API quote test)](2026-11-06-0229-network-sepolia.md) | Apurva | Phase 0 |
+| [Network: Sepolia](2026-11-06-0229-network-sepolia.md) | Apurva | Phase 0 |
 | [Drop Chainlink CRE](2026-11-06-0358-drop-chainlink-cre.md) | Apurva, Pradnyesh, Shreyas | Phase 2 |
 | [Swap safety rules](2026-11-06-1304-swap-safety-rules.md) | Apurva, Felix | Phase 2 |
 | [Open-source licence](2026-11-06-0151-open-source-licence.md) | Team | Before hour 0 |
