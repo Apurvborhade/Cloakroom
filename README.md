@@ -228,7 +228,7 @@ If the RPC can't answer, the operation is reported as unresolved and nothing cha
 | A bad price from Uniswap | Slippage limits, the condition rechecked on the swap's own quote, and simulation | Built |
 | A crash mid-transaction running it twice | The journal is written before sending, and recovery resends only the identical transaction | Built |
 | A tampered journal | Each entry carries the hash of the one before | Built |
-| A bad quote below what the user signed | The signer works out a minimum from the signed order | [Proposed](docs/decisions/README.md) |
+| A fill below the order's limit | The minimum output can't go below amount times limit price, however much slippage is set | [Built in the executor, signer check to come](docs/decisions/2026-11-06-1555-binding-limit-floor.md) |
 | A signer asked to sign something unexpected | Each operation must be registered first, and signs only once | Built, swaps not yet allowed |
 
 ## Status
