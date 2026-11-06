@@ -48,6 +48,7 @@ export class InMemoryLedger implements Ledger {
   private readonly protocolRevenue = new Map<Address, bigint>();
   private readonly operationalGasSpent = new Map<Address, bigint>();
   private readonly bookedGasFees = new Map<string, OperationalGasRecord>();
+  private readonly depositSessions = new Map<string, Address>();
 
   private getOrCreateBalance(owner: Address, token: Address): BalanceRecord {
     let ownerMap = this.userBalances.get(owner);
@@ -301,20 +302,66 @@ export class InMemoryLedger implements Ledger {
         break;
       }
       case 'SIGNING_REGISTERED':
-      case 'SIGNING_COMPLETED':
+      case 'SIGNING_COMPLETED': {
+        break;
+      }
       case 'DEPOSIT_SESSION_OPENED': {
-        // Advisory metadata; no direct balance mutation
+        if (!event.id) {
+          throw new Error('Missing id on DEPOSIT_SESSION_OPENED event');
+        }
+        if (!event.owner) {
+          throw new Error(`Missing owner on DEPOSIT_SESSION_OPENED event: ${event.id}`);
+        }
+        if (
+          event.baseline === undefined ||
+          event.baseline === null ||
+          typeof event.baseline !== 'bigint'
+        ) {
+          throw new Error(
+            `Missing or invalid baseline on DEPOSIT_SESSION_OPENED event: ${event.id}`,
+          );
+        }
+        if (
+          event.baselineBlock === undefined ||
+          event.baselineBlock === null ||
+          typeof event.baselineBlock !== 'bigint'
+        ) {
+          throw new Error(
+            `Missing or invalid baselineBlock on DEPOSIT_SESSION_OPENED event: ${event.id}`,
+          );
+        }
+        const normOwner = getAddress(event.owner);
+        const existingSessionOwner = this.depositSessions.get(event.id);
+        if (existingSessionOwner && existingSessionOwner !== normOwner) {
+          throw new Error(
+            `Conflicting owner on DEPOSIT_SESSION_OPENED event for session '${event.id}': existing ${existingSessionOwner} != new ${normOwner}`,
+          );
+        }
+        this.depositSessions.set(event.id, normOwner);
         break;
       }
       case 'DEPOSIT_CREDITED': {
         if (!event.owner) {
           throw new Error(`Missing owner on DEPOSIT_CREDITED event: ${event.id}`);
         }
-        if (event.amount <= 0n) {
+        if (typeof event.amount !== 'bigint' || event.amount <= 0n) {
           throw new Error(`Invalid deposit amount on DEPOSIT_CREDITED event: ${event.amount}`);
         }
+        if (typeof event.block !== 'bigint') {
+          throw new Error(`Missing or invalid block on DEPOSIT_CREDITED event: ${event.id}`);
+        }
+        const normOwner = getAddress(event.owner);
+        const sessionOwner = this.depositSessions.get(event.id);
+        if (sessionOwner && sessionOwner !== normOwner) {
+          throw new Error(
+            `Owner mismatch on DEPOSIT_CREDITED event '${event.id}': session owner is ${sessionOwner}, event owner is ${normOwner}`,
+          );
+        }
+        if (!sessionOwner) {
+          this.depositSessions.set(event.id, normOwner);
+        }
         const ref = `deposit:${event.id}:${event.block.toString()}`;
-        this.credit(event.owner, NATIVE, event.amount, ref);
+        this.credit(normOwner, NATIVE, event.amount, ref);
         break;
       }
       case 'DEPOSIT_SESSION_CLOSED': {
