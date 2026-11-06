@@ -14,6 +14,7 @@ import { foundry } from 'viem/chains';
 import {
   DepositWatcher,
   type DepositEvent,
+  type WatcherChain,
   type WatcherLedger,
   type WatcherQueue,
 } from '../services/enclave/src/watcher.js';
@@ -544,5 +545,68 @@ describe('DepositWatcher', () => {
         amount: parseEther('1'),
       } as any),
     ).toThrow(/block/);
+  });
+
+  it('deposit arriving between block capture and balance capture is not swallowed into baseline and is credited', async () => {
+    let depositInjected = false;
+    const interceptedChain: WatcherChain = {
+      getBlockNumber: (args) => chain.getBlockNumber(args),
+      getBlock: (args) => chain.getBlock(args),
+      getBalance: async (args) => {
+        if (!depositInjected && args.address.toLowerCase() === eoa.toLowerCase()) {
+          depositInjected = true;
+          // Simulate a deposit arriving and getting mined right after confirmedBlock()
+          // but before getBalance() executes on chain.
+          await send(eoa, parseEther('2.5'));
+          await anvil.mine({ blocks: 3 });
+        }
+        return chain.getBalance(args);
+      },
+    };
+
+    const journal: DepositEvent[] = [];
+    const credits: Array<{ owner: Address; token: Address; amount: bigint; ref: string }> = [];
+    const queue: WatcherQueue = { run: (op) => op() };
+    const ledger: WatcherLedger = {
+      credit(owner, token, amount, ref) {
+        credits.push({ owner, token, amount, ref });
+      },
+    };
+
+    const watcher = new DepositWatcher({
+      chain: interceptedChain,
+      confirmations: CONFIRMATIONS,
+      journal: {
+        async append(event) {
+          journal.push(event);
+        },
+      },
+      ledger,
+      queue,
+    });
+
+    const session = await watcher.openSession({
+      id: 's-race-condition',
+      owner: OWNER,
+      eoa,
+      expiry: (await now()) + 3600,
+    });
+
+    // The baseline balance must remain 0n because getBalance was pinned to baselineBlock
+    expect(session.baseline).toBe(0n);
+    expect(journal[0]).toMatchObject({
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 's-race-condition',
+      baseline: 0n,
+    });
+
+    // When the watcher ticks, the deposit that arrived during session setup is detected and credited
+    await watcher.tick();
+    expect(credits).toHaveLength(1);
+    expect(credits[0]).toMatchObject({
+      owner: OWNER,
+      token: NATIVE,
+      amount: parseEther('2.5'),
+    });
   });
 });

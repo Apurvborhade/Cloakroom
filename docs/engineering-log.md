@@ -885,13 +885,13 @@ This document is the canonical, chronological record of all backend and accounti
      - Rejects any malformed historical events without silent defaults or substitutions.
 4. **Ledger Replay Validation (`services/enclave/src/ledger.ts`):**
    - Updated `InMemoryLedger.apply`:
-     - Strictly validates that `DEPOSIT_SESSION_OPENED` contains valid `baseline` and `baselineBlock` bigints.
-     - Strictly requires `owner` on `DEPOSIT_CREDITED`, validates positive `amount`, validates `block`, and credits the explicit owner directly.
+     - Strictly validates that `DEPOSIT_SESSION_OPENED` contains valid `baseline` and `baselineBlock` bigints, records session ownership in internal `depositSessions` map, and rejects conflicting session ownership declarations.
+     - Strictly requires `owner` on `DEPOSIT_CREDITED`, validates positive `amount`, validates `block`, independently verifies that `DEPOSIT_CREDITED.owner` matches the recorded session owner, and credits the verified owner directly.
 5. **Fixture and Test Updates:**
    - `services/enclave/test/keys.test.ts`, `services/enclave/test/custody-executor.test.ts`, and `services/enclave/test/inventory.test.ts`: Updated test fixtures for `DEPOSIT_SESSION_OPENED` to include `baseline: 0n, baselineBlock: 0n`.
    - `packages/shared/test/schemas.test.ts`: Added tests verifying that schemas accept valid deposit events and reject events missing `baseline`, `baselineBlock`, or `owner`.
-   - `services/enclave/test/ledger.test.ts`: Added unit tests verifying rejection on replay when `baseline` or `baselineBlock` is missing on `DEPOSIT_SESSION_OPENED`, or when `owner` is missing or `amount` is non-positive on `DEPOSIT_CREDITED`.
-   - `test/watcher.test.ts`: Added tests verifying that missing baseline, baselineBlock, or owner is rejected during replay, valid deposit sessions survive watcher restarts, the watcher resumes scanning from the original baseline block, replay reconstructs correct owner and balances, and malformed historical events fail loudly.
+   - `services/enclave/test/ledger.test.ts`: Added unit tests verifying rejection on replay when `baseline` or `baselineBlock` is missing on `DEPOSIT_SESSION_OPENED`, when `owner` is missing or `amount` is non-positive on `DEPOSIT_CREDITED`, and when a credit event references Alice's session but specifies Bob as owner (both via direct apply and full journal replay).
+   - `test/watcher.test.ts`: Added tests verifying that missing baseline, baselineBlock, or owner is rejected during replay, valid deposit sessions survive watcher restarts, the watcher resumes scanning from the original baseline block, replay reconstructs correct owner and balances, malformed historical events fail loudly, and a deposit arriving between block capture and balance capture is not swallowed into baseline and is credited.
 6. **Documentation Updates:**
    - `docs/enclave.md`: Updated `JournalEvent` definition to reflect mandatory `baseline`, `baselineBlock`, and `owner`.
    - `docs/decisions/2026-11-06-0258-deposit-journal-events.md`: Documented mandatory field requirements and compatibility/migration strategy.
@@ -900,7 +900,7 @@ This document is the canonical, chronological record of all backend and accounti
 - `pnpm --filter @cloakroom/shared run build`: Clean (0 errors).
 - `pnpm --filter @cloakroom/enclave run build`: Clean (0 errors).
 - `pnpm typecheck`: Clean (0 errors across workspace packages).
-- `pnpm test`: 327 passed across 21 test suites.
+- `pnpm test`: 330 passed across 21 test suites.
 - `pnpm test:hpke:browser`: Passed (Chromium HPKE verification).
 - `python -m unittest discover -s test -p '*_test.py' -v`: 10 passed in 0.178s.
 - `git diff --check`: Clean (0 whitespace errors).

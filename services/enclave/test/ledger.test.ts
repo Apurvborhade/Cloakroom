@@ -471,6 +471,73 @@ describe('InMemoryLedger Unit Tests', () => {
     ).toThrow(/Invalid deposit amount/);
   });
 
+  it('27e. DEPOSIT_CREDITED referencing Alices session with Bob as owner causes replay failure', () => {
+    ledger.apply({
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 'sess-alice-owned',
+      owner: alice,
+      eoa: freshAddress(91),
+      expiry: 1800000000,
+      baseline: 0n,
+      baselineBlock: 10n,
+    });
+
+    expect(() =>
+      ledger.apply({
+        t: 'DEPOSIT_CREDITED',
+        id: 'sess-alice-owned',
+        amount: 5000n,
+        block: 15n,
+        owner: bob,
+      }),
+    ).toThrow(/Owner mismatch on DEPOSIT_CREDITED event 'sess-alice-owned'/);
+  });
+
+  it('27f. Replay recovery via replayLedger fails explicitly when credit event references Alices session but specifies Bob as owner', async () => {
+    const maliciousEvents: JournalEvent[] = [
+      {
+        t: 'DEPOSIT_SESSION_OPENED',
+        id: 'sess-alice-fraud',
+        owner: alice,
+        eoa: freshAddress(92),
+        expiry: 1800000000,
+        baseline: 0n,
+        baselineBlock: 10n,
+      },
+      {
+        t: 'DEPOSIT_CREDITED',
+        id: 'sess-alice-fraud',
+        amount: 5000n,
+        block: 15n,
+        owner: bob,
+      },
+    ];
+
+    const mockJournal: Journal = {
+      append: async () => {
+        throw new Error('Not implemented');
+      },
+      lastEntryHash: () => '0x' as Hex,
+      close: async () => {},
+      async *replay() {
+        let seq = 1n;
+        for (const event of maliciousEvents) {
+          yield {
+            sequence: seq++,
+            timestamp: 1700000000,
+            event,
+            previousHash: '0x' as Hex,
+            entryHash: '0x' as Hex,
+          };
+        }
+      },
+    };
+
+    await expect(replayLedger(mockJournal)).rejects.toThrow(
+      /Owner mismatch on DEPOSIT_CREDITED event 'sess-alice-fraud'/,
+    );
+  });
+
   it('28. Replaying all 15 event variants behaves correctly', () => {
     const eoa = freshAddress(99);
     const intentId = 'intent-15';
