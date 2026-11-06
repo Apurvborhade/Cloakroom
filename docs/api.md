@@ -88,7 +88,7 @@ export type WithdrawalStatus =
 - Recover the signer from the signature and require it to equal `owner` (or the granted session key for reads).
 - **Expiry policy distinction:**
   - For mutating operations (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`) and read queries (`SessionQuery`), require `expiry` within at most 5 minutes ahead (`MAX_EXPIRY_FUTURE_SEC`) and at most 60 seconds of clock skew in the past (`MAX_CLOCK_SKEW_SEC`).
-  - For `SessionGrant`, require `expiry` within at most 30 minutes ahead (`SESSION_GRANT_TTL_SEC`) and at most 60 seconds of clock skew in the past (`MAX_CLOCK_SKEW_SEC`).
+  - For `SessionGrant`, require `expiry` strictly in the future (`expiry > now`) and at most 30 minutes ahead (`SESSION_GRANT_TTL_SEC`). Clock skew into the past is not permitted for session grants.
 - For mutating operations (`DepositRequest`, `Intent`, `CancelIntent`, `Withdrawal`), require `nonce` strictly greater than the owner's last accepted nonce (`nonce > lastNonce`), checked and written inside `FifoSerialQueue`. Because the default starting nonce is `0n`, the first valid user nonce is `1n` (or any `> 0n`).
 - For `SessionQuery`, verify that a valid `SessionGrant` exists for `sessionKey`, matches `owner`, and has not expired. `SessionQuery` does not consume an owner nonce.
 - Reject a domain `chainId` or `salt` that does not match.

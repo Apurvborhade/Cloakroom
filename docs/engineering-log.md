@@ -707,3 +707,40 @@ This document is the canonical, chronological record of all backend and accounti
 - `pnpm build`: Clean (0 errors).
 - `git diff --check`: Clean.
 - Zero `any` casts in `services/enclave/src/auth.ts`.
+
+---
+
+## Task 6A: Integration with Felix TEE PR #8 (Custody, HPKE Transport, and Nitro Deployment)
+
+- **Date:** 2026-11-06
+- **Owner:** Shreyas (API & Backend)
+- **Branch:** `feat/auth-session-nonce`
+- **Base Commit:** `deb3383b9004997bc85b2395a4b3c34094201de2` (PR #8 merge)
+- **Status:** Integrated and Verified
+- **Objective:** Rebase `feat/auth-session-nonce` onto `origin/main` (including Felix's merged PR #8), resolve documentation conflicts in `docs/enclave.md`, preserve strict session grant expiry and auth regression tests, eliminate unnecessary type assertions in `auth.ts`, verify compatibility with Felix's TEE custody/HPKE contracts, and confirm monorepo test suites pass.
+
+### Integration Details
+- **Rebase & Conflict Resolution:**
+  - Rebased `feat/auth-session-nonce` on top of `deb3383` (PR #8).
+  - Resolved conflict in `docs/enclave.md`: positioned `## Authentication and Session Authorization (Shreyas)` cleanly before Felix's renamed `## Key manager (TEE)` section. Preserved all TEE custody, HPKE transport, and signing guard specifications without reversion.
+- **Auth Implementation (`services/enclave/src/auth.ts`):**
+  - Preserved strict session grant expiry semantics: `message.expiry > BigInt(clock())` is strictly required; grants already expired or within past clock skew are rejected.
+  - Preserved all 5 security regression tests in `services/enclave/test/auth.test.ts` (expiry equal to now, 1s past, 30s past, valid future grant, and rejected replacement grant protection).
+  - Streamlined `verifyAndAuthorizeMutation`: removed 40 lines of redundant switch cases by leveraging generic overloads to call `verifyOwnerSignature` directly without type assertions.
+  - Modeled `OwnerPayload` discriminated union in `verifyOwnerSignature` to achieve clean compile-time narrowing across all EIP-712 primary types without `any`.
+- **Felix TEE Compatibility:**
+  - Confirmed integration contracts: `KeyManager.transportPublicKey()`, `KeyManager.decryptWithResponse()`, `sealResponse()`, `openEnvelopeWithResponse()`, `KeyManager.journalCipher()`, and `KeyManager.restoreSigningState()`.
+  - Confirmed `NONCE_USED` event is supported by shared `JournalEvent` definitions and replayed deterministically by `InMemoryLedger.apply()`.
+  - Confirmed `FifoSerialQueue` serializes nonce consumption and ledger mutations with durable journal writes preceding state changes.
+  - Zero modifications to Felix's custody, KMS, or Nitro modules.
+
+### Verification Results
+- `pnpm install --frozen-lockfile`: Succeeded cleanly.
+- `pnpm typecheck`: Clean (0 errors across `@cloakroom/shared` and `@cloakroom/enclave`).
+- `pnpm test`: 311 passed across 21 test suites.
+- `pnpm build`: Clean (0 errors).
+- `pnpm test:hpke:browser`: Passed with Playwright Chromium (`{"ok":true,"browser":"Chromium","concurrentMessages":16,"wrongRouteRejected":true,"authenticatedResponse":true}`).
+- `python -m unittest discover -s test -p '*_test.py' -v`: 10 passed in 1.028s.
+- `pnpm audit --prod`: No known vulnerabilities found.
+- `git diff --check`: Clean (0 whitespace errors).
+- Emojis check: Zero emojis present.

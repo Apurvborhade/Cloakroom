@@ -46,6 +46,13 @@ export type OwnerMessageMap = MutatingMessageMap & {
   SessionGrant: SessionGrantMsg;
 };
 
+export type OwnerPayload =
+  | { primaryType: 'SessionGrant'; message: SessionGrantMsg }
+  | { primaryType: 'DepositRequest'; message: DepositRequestMsg }
+  | { primaryType: 'Intent'; message: IntentMsg }
+  | { primaryType: 'CancelIntent'; message: CancelIntentMsg }
+  | { primaryType: 'Withdrawal'; message: WithdrawalMsg };
+
 export interface AuthConfig {
   sessionGrantTtlSec: number;
   maxExpiryFutureSec: number;
@@ -197,6 +204,11 @@ export class AuthService {
     message: WithdrawalMsg,
     signature: Hex,
   ): Promise<Address>;
+  async verifyOwnerSignature<K extends MutatingPrimaryType>(
+    primaryType: K,
+    message: MutatingMessageMap[K],
+    signature: Hex,
+  ): Promise<Address>;
   async verifyOwnerSignature<K extends OwnerPrimaryType>(
     primaryType: K,
     message: OwnerMessageMap[K],
@@ -211,13 +223,14 @@ export class AuthService {
     let recovered: Address;
 
     try {
-      switch (primaryType) {
+      const payload = { primaryType, message } as OwnerPayload;
+      switch (payload.primaryType) {
         case 'SessionGrant':
           recovered = await recoverTypedDataAddress({
             domain,
             types: EIP712_TYPES,
-            primaryType: 'SessionGrant',
-            message: message as SessionGrantMsg,
+            primaryType: payload.primaryType,
+            message: payload.message,
             signature,
           });
           break;
@@ -225,8 +238,8 @@ export class AuthService {
           recovered = await recoverTypedDataAddress({
             domain,
             types: EIP712_TYPES,
-            primaryType: 'DepositRequest',
-            message: message as DepositRequestMsg,
+            primaryType: payload.primaryType,
+            message: payload.message,
             signature,
           });
           break;
@@ -234,8 +247,8 @@ export class AuthService {
           recovered = await recoverTypedDataAddress({
             domain,
             types: EIP712_TYPES,
-            primaryType: 'Intent',
-            message: message as IntentMsg,
+            primaryType: payload.primaryType,
+            message: payload.message,
             signature,
           });
           break;
@@ -243,8 +256,8 @@ export class AuthService {
           recovered = await recoverTypedDataAddress({
             domain,
             types: EIP712_TYPES,
-            primaryType: 'CancelIntent',
-            message: message as CancelIntentMsg,
+            primaryType: payload.primaryType,
+            message: payload.message,
             signature,
           });
           break;
@@ -252,13 +265,13 @@ export class AuthService {
           recovered = await recoverTypedDataAddress({
             domain,
             types: EIP712_TYPES,
-            primaryType: 'Withdrawal',
-            message: message as WithdrawalMsg,
+            primaryType: payload.primaryType,
+            message: payload.message,
             signature,
           });
           break;
         default: {
-          const exhaustiveCheck: never = primaryType;
+          const exhaustiveCheck: never = payload;
           throw new AuthError(
             ERROR_CODES.INVALID_PAYLOAD,
             `Unsupported primary type: ${String(exhaustiveCheck)}`,
@@ -428,45 +441,7 @@ export class AuthService {
     message: MutatingMessageMap[K],
     signature: Hex,
   ): Promise<{ owner: Address; nonce: bigint }> {
-    let owner: Address;
-    switch (primaryType) {
-      case 'DepositRequest':
-        owner = await this.verifyOwnerSignature(
-          'DepositRequest',
-          message as DepositRequestMsg,
-          signature,
-        );
-        break;
-      case 'Intent':
-        owner = await this.verifyOwnerSignature(
-          'Intent',
-          message as IntentMsg,
-          signature,
-        );
-        break;
-      case 'CancelIntent':
-        owner = await this.verifyOwnerSignature(
-          'CancelIntent',
-          message as CancelIntentMsg,
-          signature,
-        );
-        break;
-      case 'Withdrawal':
-        owner = await this.verifyOwnerSignature(
-          'Withdrawal',
-          message as WithdrawalMsg,
-          signature,
-        );
-        break;
-      default: {
-        const exhaustiveCheck: never = primaryType;
-        throw new AuthError(
-          ERROR_CODES.INVALID_PAYLOAD,
-          `Unsupported mutation type: ${String(exhaustiveCheck)}`,
-        );
-      }
-    }
-
+    const owner = await this.verifyOwnerSignature(primaryType, message, signature);
     this.validateExpiry(message.expiry, false);
     await this.consumeNonce(owner, message.nonce);
     return { owner, nonce: message.nonce };
