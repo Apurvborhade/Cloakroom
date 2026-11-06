@@ -1,7 +1,8 @@
 [Unit]
 Description=Cloakroom Nitro attestation bootstrap
 Requires=nitro-enclaves-allocator.service
-After=nitro-enclaves-allocator.service
+Wants=cloakroom-storage.service cloakroom-kms.service
+After=nitro-enclaves-allocator.service cloakroom-storage.service cloakroom-kms.service
 
 [Service]
 Type=oneshot

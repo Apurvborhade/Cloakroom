@@ -18,12 +18,12 @@ Chain tests run against an Anvil fork. Set `CHAIN_ID` to whatever the fork repor
 | `price-poller.test.ts` | Apurva | Failed polls, condition met or not, condition no longer met on the swap's own quote | A failed poll triggers nothing; intent stays pending when the condition no longer holds |
 | `e2e.fork.test.ts` | Apurva, with everyone | The full demo fixture with two users | Reconcile is `ok` at the end |
 
-The spec lists no suite for keys or transport. Felix should add these, because the security checklist depends on them:
+TEE verification suites are implemented alongside the enclave package:
 
 | Suite | Owner | Covers | Must assert |
 | --- | --- | --- | --- |
-| `keys.test.ts` | Felix | Signing guard | Unregistered operations are refused; each `opId` signs once |
-| `envelope.test.ts` | Felix | HPKE seal and open, tampered ciphertext | Round-trips with the frontend library; tampering is rejected |
+| `keys.test.ts` | TEE | Signing guard | Unregistered operations are refused; each `opId` signs once |
+| `envelope.test.ts` | TEE | HPKE seal and open, tampered ciphertext | Round-trips with the frontend library; tampering is rejected |
 
 ## Rejection tests
 
@@ -45,8 +45,8 @@ The plan also listed "deposit from the wrong sender: not credited". The spec's b
 
 ## Security checklist
 
-- [ ] No endpoint returns a key or seed. The only address list is the one-time admin seeding call, which is then disabled (Felix)
-- [ ] Signing guard rejects unregistered operations, and each `opId` signs once (Felix)
+- [x] TEE bootstrap and custody plugin expose no custody key or seed; inventory disclosure is encrypted and durably consumed. Repeat after application routes are mounted (TEE)
+- [x] Withdrawal signing guard rejects unregistered operations, and each `opId` signs once across restart (TEE)
 - [ ] Router address pinned, and all API-provided calldata simulated before signing (Apurva)
 - [ ] zod validation on every decrypted body, plus a body size limit (Shreyas)
 - [ ] Logs contain no addresses, amounts or intent fields (Shreyas, everyone)
@@ -55,3 +55,11 @@ The plan also listed "deposit from the wrong sender: not credited". The spec's b
 - [ ] Journal tamper test passes (Shreyas)
 - [ ] TEE-simulated banner shown whenever the attestation is not real (Pradnyesh)
 - [ ] README lists the known leaks: amounts and timing, the visible payout edge, gas-funding links between EOAs, the enclave's own RPC reads, a small anonymity set, and trust in the operator and hardware (Pradnyesh)
+
+## TEE checks
+
+Run `pnpm typecheck`, `pnpm test`, `pnpm test:hpke:browser`, and `python -m unittest discover -s test -p '*_test.py' -v`. The Python verifier requirements are in `scripts/attestation-requirements.txt`. Install Anvil before the chain suites and Chromium before the browser check.
+
+Additional suites cover encrypted vault revisions, KMS recipient CMS, AWS TLS identity, parent credentials, external storage process restart, one-time admin disclosure and real signing through the withdrawal executor. KMS API responses are emulated offline; RSA, CMS, TLS and storage processes are real. Live Nitro/KMS recovery is still a separate deployment check.
+
+The GitHub TEE workflow runs these checks on pull requests, with pinned action commits. It needs no AWS credentials. Current bootstrap logging and endpoint checks cover custody material; repeat the audit when application routes are mounted.

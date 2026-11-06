@@ -87,15 +87,19 @@ TLS may terminate outside the enclave on some platforms, so request bodies are e
 
 ### HPKE parameters
 
-Browser sealing is implemented by `sealEnvelope` in `@cloakroom/shared`; enclave opening lives in `envelope.ts`. Both use `@hpke/core` 1.10.0 with DHKEM-X25519/HKDF-SHA256 (`0x0020`), HKDF-SHA256 (`0x0001`), and AES-256-GCM (`0x0002`). Each request creates a fresh HPKE context with info `cloakroom/hpke/v1`.
+Browser sealing is implemented by `sealEnvelopeWithResponse` in `@cloakroom/shared`; enclave opening lives in `envelope.ts`. The request-only `sealEnvelope` helper remains available for transports that need no private response. Both use `@hpke/core` 1.10.0 with DHKEM-X25519/HKDF-SHA256 (`0x0020`), HKDF-SHA256 (`0x0001`), and AES-256-GCM (`0x0002`). Each request creates a fresh HPKE context with info `cloakroom/hpke/v1`.
 
 Associated data is UTF-8 JSON `[1, chainId, path, lowercaseEnclavePublicKeyHex]`. The envelope fields use canonical padded base64. Plaintext is limited to 16 KiB. Transport decryption does not replace signature validation or nonce consumption.
+
+Private POST success responses use the request-bound exporter channel: the client keeps `openResponse` from `sealEnvelopeWithResponse`; the server calls `keys.decryptWithResponse` and its `sealResponse` closure. The outer response is `{ ct }`, while the endpoint table and shared response schemas describe its decrypted body. This authenticates responses from the enclave and conceals balances, operation status and funding addresses from the parent. The custody plugin implements this pattern; the application server must apply it when mounting the remaining routes. Public GET responses and standard error codes stay plaintext.
+
+The 16 KiB limit applies before encryption. Allow 24 KiB for the base64 wire envelope, then enforce the plaintext limit during decryption.
 
 ## Endpoints
 
 All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave public key with HPKE. Amounts are decimal strings in base units. Errors return `{ error: code }` with no detail about other users.
 
-| Method and path | Inner request | Response |
+| Method and path | Inner request | Response body after opening |
 | --- | --- | --- |
 | `GET /attestation` | none | `{ quote, enclavePubKey, buildHash, chainId }` |
 | `POST /session` | `SessionGrant` + wallet signature | `{ ok: true, expiresAt }` |

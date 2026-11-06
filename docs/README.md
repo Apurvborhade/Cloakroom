@@ -40,7 +40,7 @@ Converted from the Implementation Plan and the Technical Spec (both dated 2026-1
 
 The `@cloakroom/shared` package is the single source of truth for protocol constants, EIP-712 definitions, Zod wire schemas, and backend subsystem interfaces.
 
-### 1. Handoff to Felix (TEE & Custody)
+### 1. TEE and custody handoff
 
 - **Attestation handoff to API/frontend:** the phase-0 response and nonce encoding are documented in [api.md](api.md#attestation-response-nitro-phase-0). `AttestationService` is separate from the application server; public HTTPS ingress is pending. Decode its hex X25519 key to bytes before deriving the EIP-712 salt. The phase-0 key rotates on restart.
 
@@ -48,7 +48,7 @@ The `@cloakroom/shared` package is the single source of truth for protocol const
 - **Domain Salt:** Derived via `deriveEnclaveSalt(enclavePubKey: Hex): Hex` which computes `keccak256(enclavePubKey)`.
 - **EIP-712 Domain:** Created via `createDomain(chainId: number, enclaveKeyHash: Hex)`.
 - **Journal Event Format:** `JournalEvent` discriminated union for operation audit and signing guard verification.
-- **Unresolved decision for Felix:** HPKE key lifetime across restarts. If the TEE generates a new key pair on reboot without sealing it, the EIP-712 salt changes, invalidating client signatures. Felix must seal the HPKE key pair with the seed or coordinate salt refresh with Pradnyesh.
+- **Transport identity:** the custody HPKE key is derived from the sealed seed and survives restoration. `AttestationService` receives that same identity. The attestation-only bootstrap remains ephemeral; clients refetch and re-sign after an actual key rotation.
 
 ```ts
 import { deriveEnclaveSalt, createDomain, type JournalEvent, type Envelope } from '@cloakroom/shared';
@@ -59,7 +59,7 @@ const domain = createDomain(chainId, salt);
 
 - **Custody handoff:** use `KeyManager.allocate` asynchronously and await `registerOp`. The executor accepts both asynchronous real signers and synchronous test adapters. The durable journal must support `SIGNING_REGISTERED` and `SIGNING_COMPLETED`; see [custody handoff](enclave.md#custody-implementation-handoff).
 
-- **HPKE handoff to API/frontend:** `sealEnvelope` and `HPKE_PARAMETERS` are exported by `@cloakroom/shared`; `openEnvelope` is available in the enclave. Bind the exact request path and chain ID through the context. See [API transport](api.md#hpke-parameters).
+- **HPKE handoff to API/frontend:** use `sealEnvelopeWithResponse` and `keys.decryptWithResponse` for private POST results, then `sealResponse`/`openResponse`. Bind the exact request path and chain ID. Shared response schemas validate the decrypted body. The wire body limit is 24 KiB for at most 16 KiB plaintext. See [API transport](api.md#hpke-parameters).
 
 ### 2. Handoff to Apurva (On-Chain & Execution)
 

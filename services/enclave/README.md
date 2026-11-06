@@ -43,3 +43,5 @@ pnpm test:hpke:browser
 This bundles the shared sealing function for Chromium, checks concurrent request encryption, route binding and an authenticated encrypted response.
 
 The full production dependency tree is packaged with `pnpm deploy --prod --legacy`. The bootstrap runs an unfunded signing/restart/HPKE self-test before serving attestation. See [the Nitro runbook](../../infra/nitro/README.md) for KMS recipient sealing, ciphertext persistence, services and the remaining live configuration.
+
+Verified ARM64 bootstrap image: `sha256:caa509c87ceb024fab1e7723bc72feb679075b4a9b3b709adb96700324262515`. [Build hash, EIF digest and trusted PCRs](../../infra/nitro/bootstrap-release.json). This release serves attestation; it does not enable live custody.

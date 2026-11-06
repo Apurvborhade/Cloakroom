@@ -547,3 +547,9 @@ This document is the canonical, chronological record of all backend and accounti
 - Objective: keep KMS available after the first EC2 role credentials expire.
 - The parent credential provider now returns the AWS SDK's `expiration: Date` field. Without it, SDK memoization can treat temporary credentials as static. Updated the KMS/custody provider contracts.
 - Added a regression using the actual AWS KMS client, mocked HTTP responses and controlled time. It proves one cached role fetch followed by a new credential and authorization header near expiry. Typecheck and focused tests passed; the full suite now contains 205 tests. The runtime image is being refreshed with this fix. No pushes.
+
+- Final credential-refresh image built and deployed successfully. Production custody/admin modules import from the self-contained container; its custody self-test passes. Updated release measurements and source hash match the local build, and the independent fresh-quote verifier passes after service restart. The bootstrap release manifest was refreshed.
+- `pnpm test` now works on the standard local PATH after installing Anvil 1.9.0 into the local tools directory. All 205 tests pass without a temporary PATH override.
+- Local commit `c39c379` contains the AWS credential refresh fix. Remaining live provisioning is blocked by absent AWS control-plane credentials and the missing domain; offline code, policy and operations artifacts are ready. No pushes.
+
+- API handoff clarified: the implemented exporter response channel also protects private application responses when routes are mounted. Endpoint response schemas describe decrypted bodies; encrypted wire requests need a 24 KiB limit for 16 KiB plaintext. Public attestation and generic errors remain plaintext.

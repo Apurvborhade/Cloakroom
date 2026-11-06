@@ -12,7 +12,7 @@ fi
 mkdir -p "$output"
 docker build -f services/enclave/Dockerfile -t "$tag" .
 docker run --rm --entrypoint node "$tag" --input-type=module -e \
-  'await (await import("./dist/custody-selftest.js")).runCustodySelfTest(); console.log("CUSTODY_SELF_TEST_PASSED")'
+  'await import("./dist/nitro-custody.js"); await import("./dist/custody-routes.js"); await (await import("./dist/custody-selftest.js")).runCustodySelfTest(); console.log("CUSTODY_SELF_TEST_PASSED")'
 nitro-cli build-enclave --docker-uri "$tag" --output-file "$output/attestation.eif" > "$output/measurements.json"
 docker image inspect --format '{{.Id}}' "$tag" > "$output/docker-image-id"
 docker run --rm --entrypoint cat "$tag" /app/dist/build-hash > "$output/build-hash"

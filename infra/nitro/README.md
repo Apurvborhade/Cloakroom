@@ -26,6 +26,8 @@ Verify a fresh quote with `scripts/verify-attestation.py`, trusted `measurements
 5. Open the encrypted journal with `keys.journalCipher()`, replay application state, then call `keys.restoreSigningState()`. Inject `keys` into attestation, custody routes, inventory and executor. Mount the application only after all steps succeed.
 6. Test an actual enclave restart with the same state and KMS policy before funding. Both the wrapped data key and custody blob must survive. Back them up together; journal persistence remains an API workstream integration.
 
+AWS API behavior follows [GenerateDataKey recipient responses](https://docs.aws.amazon.com/kms/latest/APIReference/API_GenerateDataKey.html) and [Nitro attestation conditions](https://docs.aws.amazon.com/kms/latest/developerguide/conditions-nitro-enclave.html).
+
 KMS TLS terminates inside the enclave. The parent relays encrypted bytes to a fixed regional AWS endpoint. Recipient CMS by itself does not authenticate the KMS server. The RSA key is generated inside the enclave, supplied to NSM, and passed to the CMS helper through a private pipe and anonymous memory descriptor. The host sees wrapped KMS keys and authenticated custody ciphertext only.
 
 Revision CAS and the signing journal catch stale concurrent writers and vault rollback relative to the journal. A malicious host rolling back all stored state together still needs an external trusted checkpoint. Missing or corrupt state causes refusal; do not repair it by silently generating a new seed.
@@ -40,7 +42,7 @@ ENCLAVE_MEMORY=2048
 AWS_REGION=REGION
 ```
 
-Review paths, run `systemd-analyze verify` on the host, and enable storage/KMS relays before the custody application. The enclave unit starts a non-debug enclave; verify health and a fresh quote after each restart. It is a oneshot launch unit, so enclave process failure also needs external health monitoring.
+From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/release REGION` verifies the EIF digest and installs the helpers, release and units. It preserves an existing parent configuration and does not stop or start an enclave. Confirm allocator settings, then stop any previous manual instance and start the services. Enable storage/KMS relays before the custody application. The enclave unit starts a non-debug enclave; verify health and a fresh quote after each restart. It is a oneshot launch unit, so enclave process failure also needs external health monitoring.
 
 `Caddyfile` prepares HTTPS forwarding to the loopback ingress. Set `ENCLAVE_DOMAIN` to a controlled DNS name pointing to the parent and allow TCP 80/443 in the security group. Then validate and run Caddy. DNS, certificate issuance and public reachability are still pending. Caddy access logging is disabled by default; do not add request/response body logs.
 
