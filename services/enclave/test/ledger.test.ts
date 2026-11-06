@@ -429,8 +429,46 @@ describe('InMemoryLedger Unit Tests', () => {
         id: 'dep-missing',
         amount: 1000n,
         block: 100n,
-      }),
+      } as unknown as JournalEvent),
     ).toThrow(/Missing owner/);
+  });
+
+  it('27b. Missing baseline on DEPOSIT_SESSION_OPENED causes replay failure', () => {
+    expect(() =>
+      ledger.apply({
+        t: 'DEPOSIT_SESSION_OPENED',
+        id: 'dep-sess-no-baseline',
+        owner: alice,
+        eoa: freshAddress(88),
+        expiry: 1800000000,
+        baselineBlock: 100n,
+      } as unknown as JournalEvent),
+    ).toThrow(/Missing or invalid baseline/);
+  });
+
+  it('27c. Missing baselineBlock on DEPOSIT_SESSION_OPENED causes replay failure', () => {
+    expect(() =>
+      ledger.apply({
+        t: 'DEPOSIT_SESSION_OPENED',
+        id: 'dep-sess-no-baseline-block',
+        owner: alice,
+        eoa: freshAddress(88),
+        expiry: 1800000000,
+        baseline: 0n,
+      } as unknown as JournalEvent),
+    ).toThrow(/Missing or invalid baselineBlock/);
+  });
+
+  it('27d. Malformed DEPOSIT_CREDITED with non-positive amount causes replay failure', () => {
+    expect(() =>
+      ledger.apply({
+        t: 'DEPOSIT_CREDITED',
+        id: 'dep-bad-amount',
+        amount: 0n,
+        block: 100n,
+        owner: alice,
+      } as unknown as JournalEvent),
+    ).toThrow(/Invalid deposit amount/);
   });
 
   it('28. Replaying all 15 event variants behaves correctly', () => {

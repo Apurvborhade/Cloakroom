@@ -301,8 +301,28 @@ export class InMemoryLedger implements Ledger {
         break;
       }
       case 'SIGNING_REGISTERED':
-      case 'SIGNING_COMPLETED':
+      case 'SIGNING_COMPLETED': {
+        break;
+      }
       case 'DEPOSIT_SESSION_OPENED': {
+        if (
+          event.baseline === undefined ||
+          event.baseline === null ||
+          typeof event.baseline !== 'bigint'
+        ) {
+          throw new Error(
+            `Missing or invalid baseline on DEPOSIT_SESSION_OPENED event: ${event.id}`,
+          );
+        }
+        if (
+          event.baselineBlock === undefined ||
+          event.baselineBlock === null ||
+          typeof event.baselineBlock !== 'bigint'
+        ) {
+          throw new Error(
+            `Missing or invalid baselineBlock on DEPOSIT_SESSION_OPENED event: ${event.id}`,
+          );
+        }
         // Advisory metadata; no direct balance mutation
         break;
       }
@@ -310,8 +330,11 @@ export class InMemoryLedger implements Ledger {
         if (!event.owner) {
           throw new Error(`Missing owner on DEPOSIT_CREDITED event: ${event.id}`);
         }
-        if (event.amount <= 0n) {
+        if (typeof event.amount !== 'bigint' || event.amount <= 0n) {
           throw new Error(`Invalid deposit amount on DEPOSIT_CREDITED event: ${event.amount}`);
+        }
+        if (typeof event.block !== 'bigint') {
+          throw new Error(`Missing or invalid block on DEPOSIT_CREDITED event: ${event.id}`);
         }
         const ref = `deposit:${event.id}:${event.block.toString()}`;
         this.credit(event.owner, NATIVE, event.amount, ref);

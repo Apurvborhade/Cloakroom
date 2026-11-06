@@ -28,11 +28,11 @@ The canonical shapes in `@cloakroom/shared` are resolved as follows:
      owner: Address;
      eoa: Address;
      expiry: number;
-     baseline?: bigint;
-     baselineBlock?: bigint;
+     baseline: bigint;
+     baselineBlock: bigint;
    }
    ```
-   Contains `baseline` and `baselineBlock`. During replay, `DepositWatcher` restores sessions without performing historical chain RPC queries.
+   Requires `baseline: bigint` and `baselineBlock: bigint`. During session opening, the confirmed block and confirmed balance are queried on-chain and persisted to the journal before the session is returned. During replay, `DepositWatcher` restores sessions without performing historical chain RPC queries. Incomplete historical events missing either field are rejected explicitly.
 2. `DEPOSIT_CREDITED`:
    ```ts
    {
@@ -40,11 +40,11 @@ The canonical shapes in `@cloakroom/shared` are resolved as follows:
      id: string;
      amount: bigint;
      block: bigint;
-     owner?: Address;
+     owner: Address;
      txHash?: Hex;
    }
    ```
-   Requires `block: bigint` instead of mandatory `txHash`. Includes `owner: Address` so ledger replay can credit the owner directly without maintaining a secondary session map.
+   Requires `block: bigint` instead of mandatory `txHash`. Requires `owner: Address` so ledger replay can credit the owner directly without maintaining a secondary session map or risking state loss. Incomplete historical events missing `owner` are rejected explicitly.
 3. `DEPOSIT_SESSION_CLOSED`:
    ```ts
    {
@@ -54,6 +54,15 @@ The canonical shapes in `@cloakroom/shared` are resolved as follows:
    }
    ```
    Includes `eoa: Address`. When emitted or replayed, `Inventory` immediately relabels the custody EOA as available inventory via `markInventory(event.eoa)`.
+
+## Compatibility and Migration Strategy
+
+Prior developmental versions allowed optional `baseline` and `baselineBlock` on `DEPOSIT_SESSION_OPENED`, and optional `owner` on `DEPOSIT_CREDITED`.
+
+For production deployment:
+- All new journal writes strictly validate that `baseline` and `baselineBlock` are present on `DEPOSIT_SESSION_OPENED` and that `owner` is present on `DEPOSIT_CREDITED`.
+- Replay validation in both `InMemoryLedger.apply()` and `DepositWatcher.replay()` explicitly halts on malformed historical events lacking these mandatory fields rather than guessing or applying default values.
+- Pre-production test journals or development databases containing legacy partial events must be drained or migrated prior to production replay.
 
 ## Integration handoff for Apurva
 

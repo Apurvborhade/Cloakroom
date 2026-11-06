@@ -361,4 +361,188 @@ describe('DepositWatcher', () => {
     stop();
     expect(errors).toEqual([]);
   });
+
+  it('rejects replay of DEPOSIT_SESSION_OPENED with missing baseline', () => {
+    const { watcher } = setup();
+    expect(() =>
+      watcher.replay({
+        t: 'DEPOSIT_SESSION_OPENED',
+        id: 's-no-base',
+        owner: OWNER,
+        eoa,
+        expiry: 1000,
+        baselineBlock: 10n,
+      } as any),
+    ).toThrow(/baseline/);
+  });
+
+  it('rejects replay of DEPOSIT_SESSION_OPENED with missing baselineBlock', () => {
+    const { watcher } = setup();
+    expect(() =>
+      watcher.replay({
+        t: 'DEPOSIT_SESSION_OPENED',
+        id: 's-no-base-block',
+        owner: OWNER,
+        eoa,
+        expiry: 1000,
+        baseline: 0n,
+      } as any),
+    ).toThrow(/baselineBlock/);
+  });
+
+  it('rejects replay with missing owner on DEPOSIT_SESSION_OPENED and DEPOSIT_CREDITED', () => {
+    const { watcher } = setup();
+    expect(() =>
+      watcher.replay({
+        t: 'DEPOSIT_SESSION_OPENED',
+        id: 's-no-owner',
+        eoa,
+        expiry: 1000,
+        baseline: 0n,
+        baselineBlock: 10n,
+      } as any),
+    ).toThrow(/owner/);
+
+    watcher.replay({
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 's-has-owner',
+      owner: OWNER,
+      eoa,
+      expiry: 1000,
+      baseline: 0n,
+      baselineBlock: 10n,
+    });
+
+    expect(() =>
+      watcher.replay({
+        t: 'DEPOSIT_CREDITED',
+        id: 's-has-owner',
+        amount: parseEther('1'),
+        block: 15n,
+      } as any),
+    ).toThrow(/owner/);
+  });
+
+  it('valid deposit session survives watcher restart', async () => {
+    const first = setup();
+    const session = await first.watcher.openSession({
+      id: 's-survive',
+      owner: OWNER,
+      eoa,
+      expiry: (await now()) + 3600,
+    });
+
+    const second = setup();
+    for (const event of first.journal) {
+      second.watcher.replay(event);
+    }
+
+    const recovered = second.watcher.getSession('s-survive');
+    expect(recovered).toBeDefined();
+    expect(recovered?.id).toBe(session.id);
+    expect(recovered?.owner).toBe(session.owner);
+    expect(recovered?.eoa).toBe(session.eoa);
+    expect(recovered?.baseline).toBe(session.baseline);
+    expect(recovered?.lastCheckedBlock).toBe(session.baselineBlock);
+    expect(recovered?.open).toBe(true);
+  });
+
+  it('watcher resumes from the original baseline block', async () => {
+    const first = setup();
+    const session = await first.watcher.openSession({
+      id: 's-resume',
+      owner: OWNER,
+      eoa,
+      expiry: (await now()) + 3600,
+    });
+    const originalBlock = session.baselineBlock;
+
+    const second = setup();
+    for (const event of first.journal) {
+      second.watcher.replay(event);
+    }
+    const recovered = second.watcher.getSession('s-resume');
+    expect(recovered?.lastCheckedBlock).toBe(originalBlock);
+
+    // Send deposit and verify resumed watcher picks up from original baseline block
+    await send(eoa, parseEther('2'));
+    await anvil.mine({ blocks: 2 });
+    await second.watcher.tick();
+
+    expect(total(second.credits)).toBe(parseEther('2'));
+    expect(second.credits[0]?.owner).toBe(OWNER);
+  });
+
+  it('replay reconstructs the correct owner and credited balance', async () => {
+    const first = setup();
+    await first.watcher.openSession({
+      id: 's-recon',
+      owner: OWNER,
+      eoa,
+      expiry: (await now()) + 3600,
+    });
+    await send(eoa, parseEther('1.25'));
+    await anvil.mine({ blocks: 2 });
+    await first.watcher.tick();
+
+    expect(first.credits).toHaveLength(1);
+    expect(first.credits[0]?.owner).toBe(OWNER);
+    expect(first.credits[0]?.amount).toBe(parseEther('1.25'));
+
+    // Replay journal into a new watcher
+    const second = setup();
+    for (const event of first.journal) {
+      second.watcher.replay(event);
+    }
+    const restored = second.watcher.getSession('s-recon');
+    expect(restored?.owner).toBe(OWNER);
+    expect(restored?.credited).toBe(parseEther('1.25'));
+    expect(restored?.open).toBe(true);
+  });
+
+  it('malformed historical events fail recovery rather than silently producing incorrect balances', () => {
+    const { watcher } = setup();
+    watcher.replay({
+      t: 'DEPOSIT_SESSION_OPENED',
+      id: 's-malformed',
+      owner: OWNER,
+      eoa,
+      expiry: 1000,
+      baseline: 0n,
+      baselineBlock: 10n,
+    });
+
+    // Malformed amount (0n or negative)
+    expect(() =>
+      watcher.replay({
+        t: 'DEPOSIT_CREDITED',
+        id: 's-malformed',
+        owner: OWNER,
+        amount: 0n,
+        block: 15n,
+      }),
+    ).toThrow(/amount/);
+
+    // Malformed owner (different from session owner)
+    const imposter = freshEoa();
+    expect(() =>
+      watcher.replay({
+        t: 'DEPOSIT_CREDITED',
+        id: 's-malformed',
+        owner: imposter,
+        amount: parseEther('1'),
+        block: 15n,
+      }),
+    ).toThrow(/owner mismatch/i);
+
+    // Malformed missing block
+    expect(() =>
+      watcher.replay({
+        t: 'DEPOSIT_CREDITED',
+        id: 's-malformed',
+        owner: OWNER,
+        amount: parseEther('1'),
+      } as any),
+    ).toThrow(/block/);
+  });
 });
