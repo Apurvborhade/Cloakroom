@@ -78,10 +78,9 @@ From the repository root, `sudo bash infra/nitro/install-parent.sh /absolute/rel
 
 `Caddyfile` forwards HTTPS to the loopback ingress. Set `ENCLAVE_DOMAIN` to a controlled DNS name pointing to the parent and allow TCP 80/443 in the security group. Configure automatic certificates, persistent certificate storage and a restart policy for the HTTPS proxy. Caddy access logging is disabled; do not add request/response body logs.
 
-Use the configured API base URL; attestation is available at `/attestation`. Before connecting the hosted frontend, set `ALLOWED_ORIGIN` to its origin, rebuild the application and authorize the new KMS measurements as described above. Share deployment-specific endpoints and identifiers through the deployment handoff.
+Use the configured API base URL; attestation is available at `/attestation`. Add each exact frontend origin as a `header Origin https://app.example` line in the deployed Caddyfile's `cors_origins` block; retain localhost for local development. Caddy handles preflights and replaces the upstream origin header. Validate and reload Caddy after changes; the enclave image and KMS policy stay unchanged.
 
 ## Remaining integration
 
-- Frontend deployment and its allowed browser origin.
 - Deterministic OS package snapshots and build timestamps for independently matching image PCRs.
 - Fund unlinked inventory after verified deployment. Operator seeding is optional and remains disabled in the current application configuration.

@@ -1,7 +1,32 @@
+(cors_origins) {
+	header Origin http://localhost:3000
+}
+
 {$ENCLAVE_DOMAIN} {
 	header {
 		Cache-Control "no-store"
 		X-Content-Type-Options "nosniff"
 	}
-	reverse_proxy 127.0.0.1:8080
+	@cors {
+		import cors_origins
+	}
+	header @cors {
+		Access-Control-Allow-Origin "{http.request.header.Origin}"
+		Vary "Origin"
+		defer
+	}
+	@preflight {
+		import cors_origins
+		method OPTIONS
+		header Access-Control-Request-Method GET
+		header Access-Control-Request-Method POST
+	}
+	header @preflight {
+		Access-Control-Allow-Methods "GET, POST"
+		Access-Control-Allow-Headers "content-type"
+	}
+	respond @preflight 204
+	reverse_proxy 127.0.0.1:8080 {
+		header_down -Access-Control-Allow-Origin
+	}
 }
