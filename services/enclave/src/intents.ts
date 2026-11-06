@@ -40,6 +40,8 @@ function cloneStoredIntent(item: StoredIntent): StoredIntent {
     createdAt: item.createdAt,
     ...(item.settledAmountOut !== undefined ? { settledAmountOut: item.settledAmountOut } : {}),
     ...(item.failureReason !== undefined ? { failureReason: item.failureReason } : {}),
+    ...(item.attempts !== undefined ? { attempts: item.attempts } : {}),
+    ...(item.lastAttemptReason !== undefined ? { lastAttemptReason: item.lastAttemptReason } : {}),
   };
 }
 
@@ -187,6 +189,14 @@ export class InMemoryIntentStore implements IntentStore {
     }
 
     stored.status = 'expired';
+  }
+
+  /** Records one execution try and why it did not settle. Only for showing the owner, so it is not journaled. */
+  noteAttempt(id: string, reason: string): void {
+    const stored = this.intents.get(id);
+    if (!stored) return;
+    stored.attempts = (stored.attempts ?? 0) + 1;
+    stored.lastAttemptReason = reason;
   }
 
   mark(id: string, s: IntentStatus, amountOut?: bigint, failureReason?: string): void {

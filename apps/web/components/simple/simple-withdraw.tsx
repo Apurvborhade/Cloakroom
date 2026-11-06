@@ -11,6 +11,8 @@ import { appConfig, knownTokens, tokenFor } from '@/lib/config';
 import { formatUnitsDisplay } from '@/lib/format/units';
 import { validateWithdrawForm } from '@/lib/withdraw/form';
 import { TxLink } from '../transactions/tx-link';
+import { Address as AddressText } from '../ui/address';
+import { BalanceFreshness, DebugItem, DebugPanel, Elapsed } from './debug';
 import { RecentWithdrawals } from './recent-history';
 import { ActionButton, AmountBox, PrivateBalance, SimpleCard, StatusLine } from './parts';
 
@@ -23,7 +25,7 @@ export function SimpleWithdraw() {
   const [tokenAddress, setTokenAddress] = useState<Address>(tokens[0]!.address);
   const [amount, setAmount] = useState('');
   const [destination, setDestination] = useState('');
-  const [latest, setLatest] = useState<{ id: string; amount: bigint; decimals: number; symbol: string } | null>(null);
+  const [latest, setLatest] = useState<{ id: string; amount: bigint; decimals: number; symbol: string; to: string; at: number } | null>(null);
 
   const token = tokenFor(tokenAddress)!;
   const balance = balances.data?.balances.find((item) => item.token.toLowerCase() === tokenAddress.toLowerCase());
@@ -46,7 +48,7 @@ export function SimpleWithdraw() {
 
   const submit = () => {
     if (!ready) return;
-    const sending = { amount: form.amount!, decimals: token.decimals, symbol: token.symbol };
+    const sending = { amount: form.amount!, decimals: token.decimals, symbol: token.symbol, to: form.to!, at: Math.floor(Date.now() / 1000) };
     create.mutate(
       { token: tokenAddress, amount: form.amount!, to: form.to! },
       {
@@ -108,6 +110,21 @@ export function SimpleWithdraw() {
         </StatusLine>
       )}
       {status === 'failed' && <StatusLine tone="bad" title="Withdrawal failed">Your funds are back in your balance. Try again, or try a smaller amount.</StatusLine>}
+
+      {latest && status && (
+        <DebugPanel summary="Withdrawal details" defaultOpen>
+          <dl className="space-y-0.5">
+            <DebugItem label="Status"><code className="font-mono">{status}</code></DebugItem>
+            {open && <DebugItem label="Time so far"><Elapsed fromSec={latest.at} /></DebugItem>}
+            <DebugItem label="Balance updated"><BalanceFreshness /></DebugItem>
+            <DebugItem label="Amount">{formatUnitsDisplay(latest.amount, latest.decimals, 5)} {latest.symbol}</DebugItem>
+            <DebugItem label="To"><AddressText value={latest.to} head={8} tail={6} /></DebugItem>
+            {current?.reason && <DebugItem label="Reason"><code className="font-mono">{current.reason}</code></DebugItem>}
+            {current?.txHash && <DebugItem label="Transaction"><TxLink hash={current.txHash} /></DebugItem>}
+            <DebugItem label="Withdrawal ID"><AddressText value={latest.id} head={10} tail={8} /></DebugItem>
+          </dl>
+        </DebugPanel>
+      )}
 
       <ActionButton label={label} onClick={submit} disabled={!ready} loading={create.isPending} />
     </SimpleCard>

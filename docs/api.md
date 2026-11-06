@@ -121,7 +121,7 @@ All POST bodies are an `Envelope`: the inner JSON is sealed to the enclave publi
 | `POST /deposit-session` | `DepositRequest` + signature | `{ sessionId, depositAddress, expiresAt }` |
 | `POST /balance` | `SessionQuery` + session signature | `{ balances: Balance[] }` |
 | `POST /intents` | `Intent` + signature | `{ intentId, status: 'pending' }` |
-| `POST /intents/status` | `SessionQuery` + session signature | `{ intents: [{ id, status, amountOut? }] }` |
+| `POST /intents/status` | `SessionQuery` + session signature | `{ intents: [{ id, status, amountOut?, attempts?, reason? }] }` |
 | `POST /intents/cancel` | `CancelIntent` + signature | `{ status: 'cancelled' }` |
 | `POST /withdrawals` | `Withdrawal` + signature | `{ withdrawalId, status: 'locked' }` |
 | `POST /withdrawals/status` | `SessionQuery` + session signature | `{ withdrawals: [{ id, status, txHash?, reason? }] }` |

@@ -18,10 +18,12 @@ import { nowSec } from '@/lib/format/time';
 import { formatUnitsDisplay, parseUnitsStrict } from '@/lib/format/units';
 import { updateDeposit } from '@/lib/state/activity';
 import { TxLink } from '../transactions/tx-link';
+import { Address as AddressText } from '../ui/address';
+import { Countdown } from '../ui/countdown';
+import { BalanceFreshness, DebugItem, DebugPanel, Elapsed } from './debug';
 import { ActionButton, AmountBox, Detail, SimpleCard, StatusLine } from './parts';
 
 type Step = 'idle' | 'address' | 'send' | 'confirming' | 'done';
-const BALANCE_CHECK_MS = 8_000;
 
 function parseAmount(text: string): bigint | null {
   if (!text.trim()) return null;
@@ -43,7 +45,7 @@ export function SimpleDeposit() {
   const [amount, setAmount] = useState('');
   const [step, setStep] = useState<Step>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<{ hash: Hash; wei: bigint; before: bigint | null } | null>(null);
+  const [sent, setSent] = useState<{ hash: Hash; wei: bigint; before: bigint | null; at: number; address: Address; expiresAt: number | undefined } | null>(null);
 
   const wei = useMemo(() => parseAmount(amount), [amount]);
   const wallet = useQuery({
@@ -55,12 +57,6 @@ export function SimpleDeposit() {
 
   const eth = balances.data?.balances.find((item) => item.token.toLowerCase() === NATIVE);
   const total = eth ? BigInt(eth.available) + BigInt(eth.reserved) + BigInt(eth.pending) : null;
-
-  useEffect(() => {
-    if (step !== 'confirming') return;
-    const timer = setInterval(() => void balances.refetch(), BALANCE_CHECK_MS);
-    return () => clearInterval(timer);
-  }, [step, balances]);
 
   useEffect(() => {
     if (step === 'confirming' && sent && total !== null && sent.before !== null && total >= sent.before + sent.wei) setStep('done');
@@ -78,17 +74,19 @@ export function SimpleDeposit() {
       const unused = deposits.find((item) => !item.txHash && canSendNow(item.expiresAt - nowSec()));
       let sessionId = unused?.sessionId;
       let address: Address | undefined = unused?.depositAddress as Address | undefined;
+      let expiresAt = unused?.expiresAt;
       if (!unused) {
         setStep('address');
         const session = await openSession.mutateAsync();
         sessionId = session.sessionId;
         address = session.depositAddress as Address;
+        expiresAt = session.expiresAt;
       }
       setStep('send');
       const before = total;
       const hash = await send.sendTransactionAsync({ to: address!, value: wei!, chainId: appConfig.chainId });
       updateDeposit(sessionId!, { txHash: hash, amountWei: wei! });
-      setSent({ hash, wei: wei!, before });
+      setSent({ hash, wei: wei!, before, at: Math.floor(Date.now() / 1000), address: address!, expiresAt });
       setAmount('');
       setStep('confirming');
     } catch (cause) {
@@ -135,6 +133,20 @@ export function SimpleDeposit() {
         <StatusLine tone="ok" title="Deposit complete">
           {formatUnitsDisplay(sent.wei, 18, 5)} ETH is now in your Cloakroom balance.
         </StatusLine>
+      )}
+
+      {sent && (
+        <DebugPanel summary="Deposit details" defaultOpen>
+          <dl className="space-y-0.5">
+            <DebugItem label="Status">{step === 'done' ? 'Credited' : step === 'confirming' ? 'Waiting for credit' : 'Sent'}</DebugItem>
+            {step === 'confirming' && <DebugItem label="Time so far"><Elapsed fromSec={sent.at} /></DebugItem>}
+            <DebugItem label="Balance updated"><BalanceFreshness /></DebugItem>
+            <DebugItem label="Amount">{formatUnitsDisplay(sent.wei, 18, 5)} ETH</DebugItem>
+            <DebugItem label="Sent to"><AddressText value={sent.address} head={8} tail={6} /></DebugItem>
+            {sent.expiresAt !== undefined && <DebugItem label="Address valid for"><Countdown deadline={sent.expiresAt} expiredLabel="Expired" /></DebugItem>}
+            <DebugItem label="Transaction"><TxLink hash={sent.hash} /></DebugItem>
+          </dl>
+        </DebugPanel>
       )}
 
       <ActionButton label={label} onClick={() => void deposit()} disabled={!canDeposit} loading={step === 'address' || step === 'send'} />

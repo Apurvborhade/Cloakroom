@@ -179,6 +179,8 @@ export const IntentStatusItemSchema = z.object({
   id: z.string(),
   status: z.enum(['pending', 'executing', 'done', 'failed', 'cancelled', 'expired']),
   amountOut: decimalStringSchema.optional(),
+  attempts: z.number().int().nonnegative().optional(),
+  reason: z.string().optional(),
 });
 
 export const IntentStatusResponseSchema = z.object({

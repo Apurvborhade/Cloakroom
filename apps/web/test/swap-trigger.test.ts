@@ -6,8 +6,8 @@ const SPOT = price(26_000n);
 const FEE_BPS = 10;
 
 describe('swap trigger', () => {
-  it('uses 3% below the current price when left empty', () => {
-    expect(chooseTrigger('', SPOT, FEE_BPS)).toEqual({ trigger: price(25_220n), isAuto: true, invalid: false, aboveMarket: false });
+  it('uses 10% below the current price when left empty', () => {
+    expect(chooseTrigger('', SPOT, FEE_BPS)).toEqual({ trigger: price(23_400n), isAuto: true, invalid: false, aboveMarket: false });
     expect(chooseTrigger('   ', SPOT, FEE_BPS).isAuto).toBe(true);
   });
 

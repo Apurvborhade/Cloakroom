@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const NATIVE = '0x0000000000000000000000000000000000000000';
@@ -7,7 +7,10 @@ const state = vi.hoisted(() => ({
   withdrawals: undefined as unknown,
   intents: undefined as unknown,
   local: { withdrawals: {}, intents: {} } as { withdrawals: Record<string, unknown>; intents: Record<string, unknown> },
+  cancel: { mutate: vi.fn(), isPending: false, error: null as unknown },
 }));
+
+vi.mock('@/hooks/use-actions', () => ({ useCancelIntent: () => state.cancel }));
 
 vi.mock('@/hooks/use-private-data', () => ({
   useWithdrawalStatuses: () => ({ data: state.withdrawals }),
@@ -26,6 +29,7 @@ describe('recent history', () => {
     state.withdrawals = undefined;
     state.intents = undefined;
     state.local = { withdrawals: {}, intents: {} };
+    state.cancel = { mutate: vi.fn(), isPending: false, error: null };
   });
 
   it('shows nothing before the user has signed in', () => {
@@ -60,6 +64,28 @@ describe('recent history', () => {
     render(<RecentWithdrawals />);
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
     expect(screen.getByRole('link', { name: 'View all' }).getAttribute('href')).toBe('/activity');
+  });
+
+  it('offers cancel only while a swap is waiting, and cancels that swap', () => {
+    state.intents = {
+      intents: [
+        { id: '0xdone', status: 'done' },
+        { id: '0xrunning', status: 'executing' },
+        { id: '0xwaiting', status: 'pending' },
+      ],
+    };
+    render(<RecentSwaps />);
+    const buttons = screen.getAllByRole('button', { name: 'Cancel' });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]!);
+    expect(state.cancel.mutate).toHaveBeenCalledWith('0xwaiting');
+  });
+
+  it('says so when a cancel is refused', () => {
+    state.intents = { intents: [{ id: '0xwaiting', status: 'pending' }] };
+    state.cancel.error = new Error('too late');
+    render(<RecentSwaps />);
+    expect(screen.getByRole('alert').textContent).toContain("Couldn't cancel");
   });
 
   it('shows what a swap paid, and plain words when it did not fill', () => {

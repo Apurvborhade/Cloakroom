@@ -62,6 +62,8 @@ export interface BootOptions {
   }) => MarginAccounting;
   /** Replaces the Uniswap risk price, so a test or demo can move it. Simulation only. */
   riskPrices?: { latest(): PriceReport | null };
+  /** Try a new order against the latest price straight away. On unless a test needs to step it. */
+  runOrdersOnCreate?: boolean;
   /** Receives fixed status codes only, never request data or error text. */
   log?: (code: string) => void;
   drainTimeoutMs?: number;
@@ -319,7 +321,18 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
         }
       : {}),
   });
-  const intentOrders = new IntentOrders({ intents, journal: openedJournal, ledger, queue });
+  const intentOrders = new IntentOrders({
+    intents,
+    journal: openedJournal,
+    ledger,
+    queue,
+    // A new order shouldn't wait up to a full poll interval when a recent price already clears it.
+    onCreated: () => {
+      if (options.runOrdersOnCreate === false) return;
+      const report = poller.latest();
+      if (report) void pipeline.onReport(report).catch(() => log('INTENT_EXECUTION_ERROR'));
+    },
+  });
   const withdrawalOrders = new WithdrawalOrders({
     executor,
     journal: trackedJournal,
@@ -329,6 +342,9 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   });
   const pipeline = new IntentExecutionPipeline({
     intents,
+    onExecuted: (intent, outcome) => {
+      if (outcome.status === 'pending' || outcome.status === 'failed') intents.noteAttempt(intent.id, outcome.reason);
+    },
     executor,
     onIntentError: () => log('INTENT_EXECUTION_ERROR'),
   });

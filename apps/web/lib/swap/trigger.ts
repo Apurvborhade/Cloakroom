@@ -2,7 +2,7 @@ import { parsePrice } from '../format/units';
 
 const BPS = 10_000n;
 /** The order fills at the market price. Auto only sets the worst price it may accept. */
-export const AUTO_BELOW_PRICE_BPS = 300n;
+export const AUTO_BELOW_PRICE_BPS = 1_000n;
 
 export interface TriggerChoice {
   /** The price to sign, 1e18 fixed point. Null when it is invalid or no price is known yet. */

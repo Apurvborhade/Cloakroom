@@ -499,6 +499,37 @@ describe('running an order through the pipeline', () => {
     expect(nativeBalance(enclave, alice.address).reserved).toBe(AMOUNT);
   });
 
+  it('runs a new order straight away when a recent price already clears it', async () => {
+    const uniswap = await harness.localUniswap();
+    const enclave = await harness.boot({
+      config: harness.config({ TOKEN_OUT_ADDRESS: uniswap.token, UNIVERSAL_ROUTER_ADDRESS: uniswap.router }),
+      quoter: uniswap.quoter,
+      runOrdersOnCreate: true,
+    });
+    await harness.send(enclave.parts.keys.list()[0]!.address, parseEther('1'));
+    await enclave.parts.inventory.refresh();
+    await vi.waitFor(() => expect(enclave.parts.poller.latest()).not.toBeNull());
+    const api = client(enclave, uniswap.token);
+    await api.fund(alice);
+
+    const { body } = await api.create(alice);
+
+    await vi.waitFor(() => expect(statusOf(enclave, body.intentId)).toBe('done'), { timeout: 8000, interval: 50 });
+  });
+
+  it('tells the owner how many tries an order has had and why the last one did not run', async () => {
+    const { enclave, token } = await bootForSwaps({}, { fundInventory: false });
+    const api = client(enclave, token);
+    await api.fund(alice);
+    const { body } = await api.create(alice);
+
+    await enclave.parts.pipeline.handleReport(report(token));
+    await enclave.parts.pipeline.handleReport(report(token));
+
+    const { body: status } = await api.status(alice, privateKeyToAccount(generatePrivateKey()));
+    expect(status.intents).toEqual([{ id: body.intentId, status: 'pending', attempts: 2, reason: 'NO_INVENTORY' }]);
+  });
+
   it('runs an order once across overlapping price reports', async () => {
     const { enclave, token } = await bootForSwaps();
     const runIntent = vi.spyOn(enclave.parts.executor, 'runIntent');
