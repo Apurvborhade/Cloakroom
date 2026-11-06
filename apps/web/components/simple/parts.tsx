@@ -10,7 +10,7 @@ import { useSession } from '@/hooks/use-session';
 import { describeError } from '@/lib/api/errors';
 import { cn } from '@/lib/cn';
 import { appConfig } from '@/lib/config';
-import { floorToStep, isStepInput, stepAmount } from '@/lib/format/steps';
+import { floorToStep, isStepInput, STEP_LABEL, stepAmount } from '@/lib/format/steps';
 import { formatUnitsDisplay } from '@/lib/format/units';
 import { Button } from '../ui/button';
 
@@ -78,8 +78,8 @@ export function AmountBox({
         />
         {!readOnly && (
           <div className="flex shrink-0 items-center gap-1.5">
-            <StepButton label="Decrease by 0.01" symbol="−" onClick={() => onChange?.(stepAmount(value, -1))} />
-            <StepButton label="Increase by 0.01" symbol="+" onClick={() => onChange?.(stepAmount(value, 1))} />
+            <StepButton label={`Decrease by ${STEP_LABEL}`} symbol="−" onClick={() => onChange?.(stepAmount(value, -1))} />
+            <StepButton label={`Increase by ${STEP_LABEL}`} symbol="+" onClick={() => onChange?.(stepAmount(value, 1))} />
           </div>
         )}
         <span className="shrink-0 rounded-full border border-ink-600 bg-ink-900 px-3 py-1.5 text-sm font-medium text-fg">{symbol}</span>
@@ -108,7 +108,7 @@ export function PrivateBalance({
   const max = floorToStep(available, decimals);
   return (
     <>
-      <span>{formatUnitsDisplay(available, decimals, decimals === 18 ? 5 : 2)} {symbol}</span>
+      <span>{formatUnitsDisplay(available, decimals, decimals === 18 ? 5 : 3)} {symbol}</span>
       {max !== null && (
         <button type="button" className="font-medium text-accent hover:text-accent-strong" onClick={() => onMax(max)}>
           Max

@@ -87,6 +87,8 @@ export function enclaveHarness(anvilPort: number, apiPort: number) {
       chain,
       quoter,
       openKeys: openKeysWith(KeyManager),
+      // Most tests step orders through the price check themselves.
+      runOrdersOnCreate: false,
       ...overrides,
     });
     running.push(enclave);

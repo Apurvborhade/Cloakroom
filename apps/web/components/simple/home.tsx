@@ -7,6 +7,7 @@ import { useSession } from '@/hooks/use-session';
 import { describeError } from '@/lib/api/errors';
 import { knownTokens } from '@/lib/config';
 import { formatUnitsDisplay } from '@/lib/format/units';
+import { BalanceFreshness } from './debug';
 import { ActionButton, StatusLine } from './parts';
 
 const ACTIONS: Array<{ href: string; title: string; description: string; icon: string }> = [
@@ -16,7 +17,7 @@ const ACTIONS: Array<{ href: string; title: string; description: string; icon: s
 ];
 
 function display(value: bigint, decimals: number): string {
-  return formatUnitsDisplay(value, decimals, decimals === 18 ? 5 : 2);
+  return formatUnitsDisplay(value, decimals, decimals === 18 ? 5 : 3);
 }
 
 function TokenBalance({ symbol, decimals, available, onHold }: { symbol: string; decimals: number; available: bigint; onHold: bigint }) {
@@ -60,7 +61,10 @@ export function Home() {
   return (
     <div className="mx-auto w-full max-w-[640px] space-y-4 pt-4 sm:pt-12">
       <section aria-label="Private balance" className="rounded-3xl border border-ink-700 bg-ink-850 p-2 shadow-panel">
-        <h1 className="px-3 pb-3 pt-2 text-lg font-medium text-fg">Your private balance</h1>
+        <div className="flex items-baseline justify-between gap-4 px-3 pb-3 pt-2">
+          <h1 className="text-lg font-medium text-fg">Your private balance</h1>
+          <span className="text-xs text-fg-subtle"><BalanceFreshness /></span>
+        </div>
         <BalanceBody />
       </section>
       <nav aria-label="Actions" className="grid gap-4 sm:grid-cols-3">

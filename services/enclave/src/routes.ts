@@ -232,10 +232,12 @@ export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
   privateRoute(app, keys, '/intents/status', SignedSessionQuerySchema, async ({ message, signature }) => {
     const owner = await authorizeRead(auth, wireToSessionQueryMsg(message), signature as Hex);
     return {
-      intents: intents.listByOwner(owner).map(({ id, status, settledAmountOut }) => ({
+      intents: intents.listByOwner(owner).map(({ attempts, id, lastAttemptReason, status, settledAmountOut }) => ({
         id,
         status,
         ...(settledAmountOut === undefined ? {} : { amountOut: settledAmountOut.toString() }),
+        ...(attempts === undefined ? {} : { attempts }),
+        ...(lastAttemptReason === undefined ? {} : { reason: lastAttemptReason }),
       })),
     };
   });

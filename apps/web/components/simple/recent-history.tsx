@@ -1,9 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
+import type { Hex } from 'viem';
+import { useCancelIntent } from '@/hooks/use-actions';
 import { useActivity } from '@/hooks/use-activity';
 import { useIntentStatuses, useWithdrawalStatuses } from '@/hooks/use-private-data';
+import { describeError } from '@/lib/api/errors';
 import { cn } from '@/lib/cn';
 import { appConfig, tokenFor } from '@/lib/config';
 import { formatClock } from '@/lib/format/time';
@@ -29,14 +33,47 @@ const SWAP_STATUS: Record<string, { label: string; tone: StatusTone }> = {
   expired: { label: "Didn't fill, ETH returned", tone: 'bad' },
 };
 
+/**
+ * Stops a swap that is still waiting, which takes one wallet signature. A swap can start between
+ * the click and the signature; the enclave then refuses the cancel and the swap carries on.
+ */
+export function useCancelSwap() {
+  const cancel = useCancelIntent();
+  const [target, setTarget] = useState<string | null>(null);
+  return {
+    error: cancel.error,
+    isCancelling: (id: string) => cancel.isPending && target === id,
+    busy: cancel.isPending,
+    start: (id: string) => {
+      setTarget(id);
+      cancel.mutate(id as Hex);
+    },
+  };
+}
+
+export function CancelButton({ onClick, pending, disabled }: { onClick: () => void; pending: boolean; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="shrink-0 rounded-full border border-ink-600 px-3 py-1 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {pending ? 'Check your wallet' : 'Cancel'}
+    </button>
+  );
+}
+
 function Row({
   title,
   detail,
   status,
+  action,
 }: {
   title: ReactNode;
   detail?: ReactNode;
   status: { label: string; tone: StatusTone };
+  action?: ReactNode;
 }) {
   return (
     <li className="flex items-center justify-between gap-4 px-4 py-3">
@@ -44,16 +81,19 @@ function Row({
         <p className="truncate text-sm font-medium text-fg">{title}</p>
         {detail && <div className="mt-0.5 text-xs text-fg-subtle">{detail}</div>}
       </div>
-      <span
-        className={cn(
-          'shrink-0 text-right text-xs font-medium',
-          status.tone === 'ok' && 'text-ok',
-          status.tone === 'bad' && 'text-bad',
-          status.tone === 'working' && 'text-accent',
-        )}
-      >
-        {status.label}
-      </span>
+      <div className="flex shrink-0 items-center gap-3">
+        <span
+          className={cn(
+            'text-right text-xs font-medium',
+            status.tone === 'ok' && 'text-ok',
+            status.tone === 'bad' && 'text-bad',
+            status.tone === 'working' && 'text-accent',
+          )}
+        >
+          {status.label}
+        </span>
+        {action}
+      </div>
     </li>
   );
 }
@@ -107,12 +147,14 @@ export function RecentWithdrawals() {
 export function RecentSwaps() {
   const statuses = useIntentStatuses();
   const { intents: local } = useActivity();
+  const cancel = useCancelSwap();
   const tokenOut = appConfig.tokenOut;
   if (!statuses.data || !tokenOut) return null;
   const rows = [...statuses.data.intents].reverse();
   return (
     <HistoryCard title="Recent swaps" count={rows.length}>
       {rows.length === 0 && <Empty>Your swaps will show up here.</Empty>}
+      {cancel.error && <p role="alert" className="px-4 pt-2 text-sm text-bad">Couldn't cancel: {describeError(cancel.error)}</p>}
       <ul className="divide-y divide-ink-800 pb-1">
         {rows.slice(0, SHOWN).map((item) => {
           const detail = local[item.id.toLowerCase()];
@@ -124,6 +166,9 @@ export function RecentSwaps() {
               title={`${sold} → ${bought}`}
               detail={detail ? formatClock(detail.signedAt) : undefined}
               status={SWAP_STATUS[item.status] ?? { label: item.status, tone: 'working' }}
+              action={item.status === 'pending' ? (
+                <CancelButton onClick={() => cancel.start(item.id)} pending={cancel.isCancelling(item.id)} disabled={cancel.busy} />
+              ) : undefined}
             />
           );
         })}

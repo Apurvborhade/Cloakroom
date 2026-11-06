@@ -12,7 +12,7 @@ export function WalletButton() {
         if (!mounted) return <div className="h-9 w-32 rounded-lg bg-ink-800" aria-hidden />;
         if (!account || !chain) {
           return (
-            <Button size="sm" onClick={openConnectModal}>
+            <Button size="sm" className="whitespace-nowrap" onClick={openConnectModal}>
               Connect wallet
             </Button>
           );

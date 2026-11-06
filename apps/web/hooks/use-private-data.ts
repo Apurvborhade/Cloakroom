@@ -11,11 +11,14 @@ import {
 import { appConfig } from '@/lib/config';
 import { usePrivateRead } from './use-private-read';
 
-const FAST = 5_000;
+/** While something is in progress, so a result shows within a couple of seconds. */
+const FAST = 2_000;
+/** Balances people are watching. */
+const BALANCE = 4_000;
 const SLOW = 20_000;
 
 export function useBalances() {
-  return usePrivateRead('balance', getBalances, { refetchInterval: SLOW });
+  return usePrivateRead('balance', getBalances, { refetchInterval: BALANCE });
 }
 
 const OPEN_INTENT = new Set(['pending', 'executing']);

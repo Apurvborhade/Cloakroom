@@ -3,6 +3,7 @@
 import { NATIVE } from '@cloakroom/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { MAX_INTENT_LIFETIME_SEC, useCreateIntent } from '@/hooks/use-actions';
+import { useChainReadStatus } from '@/hooks/use-chain-reader';
 import { usePoolPrice } from '@/hooks/use-pool-price';
 import { useBalances, useIntentStatuses } from '@/hooks/use-private-data';
 import { describeError } from '@/lib/api/errors';
@@ -10,7 +11,9 @@ import { appConfig } from '@/lib/config';
 import { isStepInput } from '@/lib/format/steps';
 import { formatPrice, formatUnitsDisplay, minimumOutForLimit, parseUnitsStrict } from '@/lib/format/units';
 import { chooseTrigger } from '@/lib/swap/trigger';
-import { RecentSwaps } from './recent-history';
+import { explainAttempt } from '@/lib/swap/attempts';
+import { CancelButton, RecentSwaps, useCancelSwap } from './recent-history';
+import { SwapDetails } from './swap-details';
 import { ActionButton, AmountBox, Detail, PrivateBalance, SimpleCard, StatusLine } from './parts';
 
 const MAX_SLIPPAGE_BPS = 100;
@@ -35,9 +38,11 @@ export function SimpleSwap() {
   const [order, setOrder] = useState<{ id: string; at: number } | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const price = usePoolPrice();
+  const chain = useChainReadStatus();
   const balances = useBalances();
   const statuses = useIntentStatuses();
   const create = useCreateIntent();
+  const cancel = useCancelSwap();
 
   const amountIn = useMemo(() => parseAmount(amount), [amount]);
   const invalid = amount.trim() !== '' && amountIn === null;
@@ -49,12 +54,20 @@ export function SimpleSwap() {
   const current = order ? statuses.data?.intents.find((item) => item.id === order.id) : undefined;
   const status = current?.status ?? (order ? 'pending' : null);
   const open = status === 'pending' || status === 'executing';
+  const attempt = open ? explainAttempt(current?.reason) : null;
 
   useEffect(() => {
     if (!open) return;
     const timer = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(timer);
   }, [open]);
+
+  // The balance otherwise refreshes on a slow timer, which makes a finished swap look unfinished.
+  const finished = status !== null && !open;
+  const refetchBalances = balances.refetch;
+  useEffect(() => {
+    if (finished) void refetchBalances();
+  }, [finished, refetchBalances]);
 
   if (!tokenOut) return <SimpleCard title="Swap"><StatusLine tone="bad" title="Swaps aren't configured" /></SimpleCard>;
 
@@ -77,7 +90,7 @@ export function SimpleSwap() {
           : choice.invalid
             ? 'Enter a valid trigger price'
             : limit === null
-              ? 'Price unavailable'
+              ? (chain.state === 'starting' || price.isLoading ? 'Getting the price privately…' : 'Price unavailable. Enter a trigger price')
               : open
                 ? 'Swapping…'
                 : create.isPending
@@ -129,7 +142,7 @@ export function SimpleSwap() {
         <Detail label="Price">
           {spot !== null
             ? `1 ETH ≈ ${formatPrice(spot, 2)} ${tokenOut.symbol}`
-            : price.isLoading ? 'Loading…' : 'Unavailable'}
+            : price.isLoading || chain.state === 'starting' ? 'Connecting privately…' : 'Unavailable'}
         </Detail>
         <div className="flex items-center justify-between gap-4 px-3 py-1 text-sm">
           <label htmlFor="swap-trigger" className="shrink-0 text-fg-subtle">Trigger price</label>
@@ -168,11 +181,19 @@ export function SimpleSwap() {
       {create.error && <StatusLine tone="bad" title="Swap not sent">{describeError(create.error)}</StatusLine>}
       {open && order && (
         <StatusLine tone="working" title="Swapping">
-          {now - order.at < SLOW_AFTER_MS
+          {attempt
+            ? `${attempt.title}. ${attempt.action}`
+            : now - order.at < SLOW_AFTER_MS
             ? 'This usually takes a minute or two. You can leave this page open.'
             : "This is taking longer than usual. The pool may not have enough funds to run it yet. If it doesn't fill, your ETH comes back."}
+          {status === 'pending' && (
+            <div className="mt-3">
+              <CancelButton onClick={() => cancel.start(order.id)} pending={cancel.isCancelling(order.id)} disabled={cancel.busy} />
+            </div>
+          )}
         </StatusLine>
       )}
+      {cancel.error && <StatusLine tone="bad" title="Couldn't cancel">{describeError(cancel.error)}</StatusLine>}
       {status === 'done' && (
         <StatusLine tone="ok" title="Swap complete">
           {current?.amountOut
@@ -183,6 +204,10 @@ export function SimpleSwap() {
       {status === 'expired' && <StatusLine tone="bad" title="Swap didn't fill in time">Your ETH is back in your balance. You can try again.</StatusLine>}
       {status === 'failed' && <StatusLine tone="bad" title="Swap failed">Check your balance, then try again.</StatusLine>}
       {status === 'cancelled' && <StatusLine tone="bad" title="Swap cancelled">Your ETH is back in your balance.</StatusLine>}
+
+      {order && status && (
+        <SwapDetails id={order.id} status={status} attempts={current?.attempts} reason={current?.reason} poolPrice={price.data ?? null} placedAt={Math.floor(order.at / 1000)} />
+      )}
 
       <ActionButton label={label} onClick={submit} disabled={!canSwap} loading={create.isPending} />
     </SimpleCard>

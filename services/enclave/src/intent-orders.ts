@@ -17,6 +17,8 @@ export interface IntentOrdersDeps {
   ledger: Pick<InMemoryLedger, 'apply' | 'getBalance'>;
   queue: Pick<FifoSerialQueue, 'run'>;
   nowMs?: () => number;
+  /** Called once an order is journaled, so it can run without waiting for the next price check. */
+  onCreated?: () => void;
 }
 
 /**
@@ -30,7 +32,7 @@ export class IntentOrders {
   async create(owner: Address, intent: IntentMsg): Promise<string> {
     const { intents, journal, ledger, queue } = this.deps;
     const id = `0x${randomBytes(INTENT_ID_BYTES).toString('hex')}`;
-    return queue.run(async () => {
+    const created = await queue.run(async () => {
       // Check before journaling: a reservation that can't apply would stop every later replay.
       if (ledger.getBalance(owner, intent.tokenIn).available < intent.amountIn) {
         throw new AuthError(ERROR_CODES.INSUFFICIENT_BALANCE);
@@ -41,6 +43,8 @@ export class IntentOrders {
       intents.apply(event, entry.timestamp);
       return id;
     });
+    this.deps.onCreated?.();
+    return created;
   }
 
   /**

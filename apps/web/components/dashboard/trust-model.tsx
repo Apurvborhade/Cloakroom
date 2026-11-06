@@ -5,7 +5,7 @@ const POINTS = [
   ['What it is not', 'Not a ZK mixer, and not anonymity. Deposit and payout amounts and their timing are public on-chain and can be matched.'],
   ['Who you trust', 'The TEE hardware and the operator running it. A single operator holds every custody key; if it disappears, funds are inaccessible.'],
   ['Small anonymity set', 'A handful of custody addresses serve all users. Small sets and distinctive amounts are easy to link.'],
-  ['What the operator sees', 'Your IP address and request timing reach the API. Request contents are encrypted to the enclave key.'],
+  ['What the operator sees', 'Request timing reaches the API, and your IP address is hidden by Anon-RPC unless you choose a direct connection. Request contents are encrypted to the enclave key.'],
   ['Chain reads', "Browser reads go through Anon-RPC when configured. The enclave's own RPC reads and the Uniswap API are outside it."],
 ];
 

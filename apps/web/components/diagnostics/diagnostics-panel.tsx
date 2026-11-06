@@ -12,6 +12,7 @@ import { PRIVATE_QUERY_ROOT } from '@/hooks/use-private-read';
 import { useOwner } from '@/hooks/use-owner';
 import { useSession } from '@/hooks/use-session';
 import { describeError } from '@/lib/api/errors';
+import { AnonRpcIcon } from '../layout/anon-rpc-icon';
 import { BROWSER_READS, BYPASSING_TRAFFIC, chainReader } from '@/lib/chain';
 import { appConfig } from '@/lib/config';
 import { hpkeSelfTest } from '@/lib/crypto/self-test';
@@ -140,7 +141,7 @@ export function DiagnosticsPanel() {
       </div>
 
       <Card>
-        <CardHeader title="Anon-RPC and browser chain reads" description="Which browser reads go where. Counts are for this page load." />
+        <CardHeader title={<span className="flex items-center gap-2"><AnonRpcIcon size={18} />Anon-RPC and browser chain reads</span>} description="Which browser reads go where. Counts are for this page load." />
         <CardBody className="space-y-4">
           <dl className="divide-y divide-ink-700">
             <Row label="Route" status={chain.route === 'anon-rpc' ? 'Anon-RPC' : chain.route === 'direct-dev' ? 'DIRECT RPC (dev fallback, not anonymized)' : 'none: reads disabled'} tone={chainTone} />

@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({ active: false, balances: {} as { data?: unknow
 
 vi.mock('@/hooks/use-session', () => ({ useSession: () => ({ active: state.active }) }));
 vi.mock('@/hooks/use-private-data', () => ({ useBalances: () => state.balances }));
+vi.mock('@/components/simple/debug', () => ({ BalanceFreshness: () => null }));
 vi.mock('@/lib/config', () => ({
   knownTokens: () => [
     { address: NATIVE, symbol: 'ETH', decimals: 18 },

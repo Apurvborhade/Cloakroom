@@ -13,35 +13,35 @@ vi.mock('@/lib/config', () => ({ appConfig: {} }));
 
 const { AmountBox } = await import('@/components/simple/parts');
 
-describe('0.01 steps', () => {
-  it.each(['', '0', '0.', '.5', '0.01', '12.34'])('allows typing %s', (text) => {
+describe('0.001 steps', () => {
+  it.each(['', '0', '0.', '.5', '0.001', '0.01', '12.345'])('allows typing %s', (text) => {
     expect(isStepInput(text)).toBe(true);
   });
 
-  it.each(['0.015', '1.234', 'abc', '1,5', '-1', '1e2', '0.0.1'])('refuses typing %s', (text) => {
+  it.each(['0.0015', '1.2345', 'abc', '1,5', '-1', '1e2', '0.0.1'])('refuses typing %s', (text) => {
     expect(isStepInput(text)).toBe(false);
   });
 
   it('moves up and down by exactly one step, without rounding errors', () => {
-    expect(stepAmount('', 1)).toBe('0.01');
-    expect(stepAmount('0.01', 1)).toBe('0.02');
-    expect(stepAmount('0.07', 1)).toBe('0.08');
-    expect(stepAmount('0.29', 1)).toBe('0.30');
-    expect(stepAmount('0.99', 1)).toBe('1.00');
-    expect(stepAmount('1', 1)).toBe('1.01');
-    expect(stepAmount('0.5', -1)).toBe('0.49');
+    expect(stepAmount('', 1)).toBe('0.001');
+    expect(stepAmount('0.001', 1)).toBe('0.002');
+    expect(stepAmount('0.007', 1)).toBe('0.008');
+    expect(stepAmount('0.029', 1)).toBe('0.030');
+    expect(stepAmount('0.999', 1)).toBe('1.000');
+    expect(stepAmount('1', 1)).toBe('1.001');
+    expect(stepAmount('0.5', -1)).toBe('0.499');
   });
 
   it('clears the field instead of going to zero or below', () => {
-    expect(stepAmount('0.01', -1)).toBe('');
+    expect(stepAmount('0.001', -1)).toBe('');
     expect(stepAmount('', -1)).toBe('');
   });
 
   it('rounds a balance down to whole steps', () => {
-    expect(floorToStep(19_999_999_999_999_999n, 18)).toBe('0.01');
-    expect(floorToStep(10n ** 16n, 18)).toBe('0.01');
-    expect(floorToStep(258_268_122n, 6)).toBe('258.26');
-    expect(floorToStep(9_999_999_999_999_999n, 18)).toBeNull();
+    expect(floorToStep(1_999_999_999_999_999n, 18)).toBe('0.001');
+    expect(floorToStep(10n ** 15n, 18)).toBe('0.001');
+    expect(floorToStep(258_268_122n, 6)).toBe('258.268');
+    expect(floorToStep(999_999_999_999_999n, 18)).toBeNull();
   });
 });
 
@@ -54,21 +54,21 @@ describe('amount box', () => {
 
   it('steps with the buttons and the arrow keys', () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: 'Increase by 0.01' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Increase by 0.01' }));
-    expect(input().value).toBe('0.02');
+    fireEvent.click(screen.getByRole('button', { name: 'Increase by 0.001' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Increase by 0.001' }));
+    expect(input().value).toBe('0.002');
     fireEvent.keyDown(input(), { key: 'ArrowUp' });
-    expect(input().value).toBe('0.03');
+    expect(input().value).toBe('0.003');
     fireEvent.keyDown(input(), { key: 'ArrowDown' });
-    fireEvent.click(screen.getByRole('button', { name: 'Decrease by 0.01' }));
-    expect(input().value).toBe('0.01');
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease by 0.001' }));
+    expect(input().value).toBe('0.001');
   });
 
   it('ignores typing that is not a whole step', () => {
     render(<Harness />);
-    fireEvent.change(input(), { target: { value: '0.01' } });
-    expect(input().value).toBe('0.01');
-    fireEvent.change(input(), { target: { value: '0.015' } });
-    expect(input().value).toBe('0.01');
+    fireEvent.change(input(), { target: { value: '0.001' } });
+    expect(input().value).toBe('0.001');
+    fireEvent.change(input(), { target: { value: '0.0015' } });
+    expect(input().value).toBe('0.001');
   });
 });

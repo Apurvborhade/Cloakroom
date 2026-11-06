@@ -29,6 +29,10 @@ export interface StoredIntent {
   createdAt: number;
   settledAmountOut?: bigint;
   failureReason?: string;
+  /** How many times execution has been tried. Kept for the owner's status, and not journaled. */
+  attempts?: number;
+  /** Why the latest try did not settle: a fixed code, never request data. */
+  lastAttemptReason?: string;
 }
 
 export interface CustodyEOA {
