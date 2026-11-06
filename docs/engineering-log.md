@@ -807,7 +807,7 @@ This document is the canonical, chronological record of all backend and accounti
 
 - **Date:** 2026-11-06
 - **Task Number & Title:** Task A10 (Apurva's workstream) — Swap Execution
-- **Status:** Committed on branch `feat/run-intent`. Not yet run on Sepolia, and not pushed by this entry.
+- **Status:** Committed on branch `feat/run-intent`. A real swap passed on Sepolia with a stand-in journal and signer. Not pushed by this entry.
 - **Objective:** Swap an intent's reserved ETH from an EOA not linked to its owner, and settle from the receipt.
 
 ### Files Created
@@ -842,10 +842,10 @@ This document is the canonical, chronological record of all backend and accounti
 - `pnpm typecheck`: Exited with code 0.
 - A live quote confirmed `protocols` with `V2` and `V3` returns a decodable route. Without it, a small swap routed through V4.
 - `pnpm smoke:swap`, first run: the validator refused the live calldata (`UNSAFE_CALLDATA`), and nothing was signed. Single-pool quotes pay the EOA directly rather than through `SWEEP`, a shape the mock router and earlier split-route quote had not shown. The validator now allows it under strict rules, and a real response of that shape is a test fixture.
+- `pnpm smoke:swap`, second run, by Apurva: all 9 checks passed. 0.001 ETH swapped for 26.172175 USDC through the live Trading API and Universal Router (transaction `0x350ea3b0af02aeb7cb56c9bc7a00c2e8f210e0f7d9193734a6a6dd62e88ea557`), in 60 RPC requests.
 - `pnpm test` after that fix, on macOS: 3 failed | 458 passed (461). The same 3 sealing tests fail.
 
 ### Known Limitations & Unresolved Questions
-- No swap has run on a real router yet. Run `pnpm smoke:swap`.
 - `KeyManager` refuses swaps until Felix adds an authorization path, so the tests and `smoke:swap` use a stand-in signer.
 - `IntentStore` does not exist yet, and nothing connects the price poller to `runIntent` at boot.
 - `Executor.recover` is not built, so an `unresolved` swap stays reserved until it exists.

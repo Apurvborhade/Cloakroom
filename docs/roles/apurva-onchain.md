@@ -49,7 +49,7 @@ Read: [chain-logic.md](../chain-logic.md), [contracts.md](../contracts.md), [enc
 ### Phase 2 (hours 12 to 22)
 
 - [x] `runIntent`, following the steps in [chain-logic.md](../chain-logic.md)
-- [ ] Run `pnpm smoke:swap` on real Sepolia
+- [x] Run `pnpm smoke:swap` on real Sepolia
 - [x] Treat the API's transaction as untrusted: pin `to`, decode the calldata, run `eth_call`
 - [x] Price poller: quote every `PRICE_POLL_INTERVAL_SEC`, and trigger nothing when a poll fails
 - [x] Run `pnpm smoke:quote` against the live Trading API
