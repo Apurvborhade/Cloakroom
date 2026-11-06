@@ -63,4 +63,6 @@ Run `pnpm typecheck`, `pnpm test`, `pnpm test:hpke:browser`, and `python -m unit
 
 Additional suites cover encrypted vault revisions, KMS recipient CMS, AWS TLS identity, parent credentials, external storage process restart, one-time admin disclosure and real signing through the withdrawal executor. KMS API responses are emulated offline; RSA, CMS, TLS and storage processes are real. Live Nitro/KMS recovery is still a separate deployment check.
 
+KMS recipient tests using `memfd` and file-vault tests using `flock` run only on Linux. Other platforms skip those cases; portable encryption tests still run. Linux CI runs the full suite.
+
 The GitHub TEE workflow runs these checks on pull requests, with pinned action commits. It needs no AWS credentials. Current bootstrap logging and endpoint checks cover custody material; repeat the audit when application routes are mounted.

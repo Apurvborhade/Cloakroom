@@ -20,7 +20,7 @@ const TX: TransactionSerializableEIP1559 = { type: 'eip1559', chainId: POLICY.ch
   nonce: 0, to: TO, value: 10n, data: '0x', gas: 21_000n,
   maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n };
 
-describe('custody journal recovery', () => {
+describe.skipIf(process.platform !== 'linux')('custody journal recovery (Linux flock)', () => {
   let directory: string;
   const journals: EncryptedJournal[] = [];
   beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'cloakroom-custody-journal-')); });
