@@ -419,7 +419,6 @@ This document is the canonical, chronological record of all backend and accounti
 - **Commit:** `fae06c88c3250cdee348655e787aeabbd58c5d58` (`feat(enclave): add validated environment config`)
 - **Pushed to Remote:** No
 
-
 ---
 
 ## Task F0: Nitro Attestation Bootstrap
@@ -494,3 +493,56 @@ This document is the canonical, chronological record of all backend and accounti
 ### Commit Reference
 - **Commit:** `0bd017473130b179f19f1b76001555b8c0177a5b` (`fix(enclave): add owner and eoa to watcher journal events`)
 - **Pushed to Remote:** No
+
+---
+
+## Domain Alignment and Decision Resolution Audit
+
+- **Date:** 2026-11-06
+- **Task Number & Title:** Domain Alignment and Backend Readiness Audit (Shreyas)
+- **Status:** Completed
+- **Objective:** Perform a deep architectural audit of the Cloakroom domain model, solve all open domain decisions owned by Shreyas, harmonize `JournalEvent` definitions between shared contracts and enclave subsystems, specify the accounting invariant and state transitions, define concurrency and queue boundaries, formalize the withdrawal status endpoint, and prepare the implementation plan for Task 4 (Append-only encrypted Journal).
+
+### Files Created
+- `docs/decisions/2026-11-06-0745-journal-durability-and-replay.md`
+- `docs/decisions/2026-11-06-0745-concurrency-and-queue-boundaries.md`
+
+### Files Modified
+- `packages/shared/src/types/journal.ts` (canonical 15-event union harmonized with watcher, inventory, and executor)
+- `packages/shared/src/schemas/api.ts` (added `WithdrawalStatusItemSchema` and `WithdrawalStatusResponseSchema`)
+- `docs/decisions/2026-11-06-0151-fee-model.md` (accepted output-token basis point fee model)
+- `docs/decisions/2026-11-06-0151-pending-balance.md` (accepted display-only watcher pending balance semantics)
+- `docs/decisions/2026-11-06-0151-missing-eip712-types.md` (accepted `SessionQuery` and `CancelIntent`)
+- `docs/decisions/2026-11-06-0151-journal-replay-events.md` (accepted canonical 15-event union)
+- `docs/decisions/2026-11-06-0151-non-eth-deposits.md` (accepted native ETH only in v1)
+- `docs/decisions/2026-11-06-0258-deposit-journal-events.md` (accepted canonical deposit event shapes)
+- `docs/decisions/2026-11-06-0331-withdrawal-status-endpoint.md` (accepted `POST /withdrawals/status`)
+- `docs/decisions/2026-11-06-0151-salt-and-key-lifetime.md` (accepted `salt = keccak256(enclavePubKey)`)
+- `docs/decisions/2026-11-06-0151-admin-eoas-endpoint.md` (accepted `POST /admin/eoas` with admin auth)
+- `docs/decisions/README.md` (updated decision index)
+- `docs/data-model.md` (formalized solvency invariant, balance semantics, fee structure, state transition table)
+- `docs/api.md` (added `/withdrawals/status`, updated typed data rules, error codes)
+- `docs/enclave.md` (updated canonical `JournalEvent` and references)
+- `docs/roles/shreyas-api.md` (checked off resolved decisions)
+
+### Dependencies Added or Changed
+- None.
+
+### Architectural Decisions
+- Solvency invariant mathematically formalized: physical custody balances minus inventory gas reserves must equal or exceed total user claims (`available + reserved`) plus protocol fees per token.
+- `pending` balance is display-only from `DepositWatcher`; core `Ledger` only tracks `available` and `reserved`.
+- Protocol fee calculated as `(amountOut * FEE_BPS) / 10000n` from `tokenOut` upon swap settlement. Zero protocol fee on failed swaps or withdrawals.
+- Gas spent on-chain (`gasUsed * effectiveGasPrice`) recorded via `FEE_BOOKED` to an operational fee ledger, not charged to users.
+- In-memory `FifoSerialQueue` bounds strictly defined: only nonce checks, journal appends, and state mutations execute inside the queue; network I/O, encryption, and RPC calls run outside the queue.
+- Journal durability specified: AES-256-GCM encryption at rest, atomic framing, `fsync()` on every append, partial write rollback at EOF.
+
+### Exact Verification Commands & Results
+- `pnpm typecheck`: Exited with code 0 (all workspace packages pass).
+- `pnpm test`: Exited with code 0 (159 passed in 8 test files across monorepo).
+- `pnpm build`: Exited with code 0.
+- `git diff --check`: Clean (0 whitespace errors or conflicts).
+
+### Integration Handoffs
+- **Apurva:** In `services/enclave/src/watcher.ts`, replace local `DepositEvent` with `JournalEvent` from `@cloakroom/shared`, add `session.owner` to `DEPOSIT_CREDITED`, and pass `session.eoa` to `DEPOSIT_SESSION_CLOSED`.
+- **Pradnyesh:** Use `WithdrawalStatusResponse` for `/withdraw` page status tracking via `POST /withdrawals/status`.
+- **Felix:** Implement journal sealing key derivation for AES-256-GCM in `KeyManager`.

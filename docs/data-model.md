@@ -4,30 +4,58 @@ Every asset the pool holds must be explainable as a claim, per token. The ledger
 
 ## Entities
 
-| Entity | Key fields | States |
-| --- | --- | --- |
-| Owner | wallet address, last nonce | active |
-| Balance | owner, token, available, reserved | one row per owner and token |
-| DepositSession | session ID, assigned deposit EOA, owner, expiry | open, credited, expired |
-| CustodyEOA | index, address, role, last used | deposit, inventory |
-| Intent | owner, tokenIn, tokenOut, amountIn, price condition, max slippage, expiry | pending, executing, done, failed, cancelled, expired |
-| Withdrawal | owner, token, amount, destination, tx hash | locked, sent, confirmed, failed |
-| Journal entry | sequence number, event, previous hash | append-only |
+| Entity | Key fields | States | Description |
+| --- | --- | --- | --- |
+| Owner | wallet address, last nonce | active | User who signs EIP-712 messages. |
+| Balance | owner, token, available, reserved | one record per owner and token | Spendable (`available`) and locked (`reserved`) internal credits. |
+| DepositSession | session ID, assigned deposit EOA, owner, expiry, baseline, baselineBlock | open, credited, expired | Single-user assigned EOA watching incoming native ETH deposits. |
+| CustodyEOA | index, address, role, lastUsedAt, inFlight | deposit, inventory | Enclave-managed EOA for deposits or pooled inventory. |
+| Intent | owner, tokenIn, tokenOut, amountIn, comparator, triggerPrice, maxSlippageBps, nonce, expiry | pending, executing, done, failed, cancelled, expired | Conditional swap instruction with reserved input. |
+| Withdrawal | id, owner, token, amount, to, nonce, expiry | locked, sent, confirmed, failed | User withdrawal claim reserved under withdrawal ID. |
+| Journal entry | sequence, timestamp, prevHash, event, entryHash | append-only | Durably encrypted, hash-chained log entry on disk. |
+
+## Balance semantics
+
+- **Available balance (`available`):** Spendable funds held by the owner. Can be used to create intents or request withdrawals.
+- **Reserved balance (`reserved`):** Funds locked for active intents or pending withdrawals. Reserved funds cannot be spent or withdrawn simultaneously.
+- **Pending balance (`pending`):** Advisory display-only metric from `DepositWatcher` indicating deposits observed on-chain before reaching finality (`CONFIRMATIONS` depth). Never credited to `available` and cannot be spent.
+- **Physical on-chain balance:** Actual balance held across all custody EOAs (deposit + inventory).
+- **Gas reserve (`GAS_RESERVE_WEI`):** Native ETH kept by inventory EOAs strictly for transaction gas; excluded from user claims.
 
 ## Invariants
 
-Enforce these in code and assert them in tests.
+Enforce these in code and assert them in tests:
 
-1. Per token, on-chain balances across all custody EOAs (minus a gas reserve) are at least the sum of every owner's available, reserved and pending-withdrawal amounts.
-2. A surplus in one token never covers a shortfall in another.
-3. Available and reserved are never negative. Funds are reserved before an intent or withdrawal can proceed.
-4. Each owner nonce is used once. Each on-chain deposit is credited once.
-5. Every broadcast transaction maps to exactly one intent or withdrawal, and its hash is journaled before broadcast so a restart cannot execute it twice.
+1. **Solvency invariant:** For every supported token $T$:
+   $$\text{PhysicalBalance}(T) - \text{GasReserve}(T) \ge \sum_{\text{all owners } u} (\text{available}(u, T) + \text{reserved}(u, T)) + \text{ProtocolFeeBalance}(T)$$
+   Where:
+   - $\text{GasReserve}(NATIVE) = \sum_{e \in \text{inventory EOAs}} \text{GAS\_RESERVE\_WEI}$.
+   - $\text{GasReserve}(ERC20) = 0$.
+   - Physical balances include all deposit EOAs and inventory EOAs.
+2. **Token isolation:** A surplus in one token never covers a shortfall in another.
+3. **Non-negativity:** Available and reserved balances are never negative ($\ge 0$). Funds must be reserved prior to intent execution or withdrawal broadcast.
+4. **Replay & double-credit prevention:** Each owner nonce is strictly monotonic and consumed once. Each on-chain deposit increase is credited once against the session's recorded baseline.
+5. **Single execution:** Every broadcast transaction maps to exactly one intent or withdrawal, and its hash and raw payload are journaled before broadcast so a restart cannot execute it twice.
+
+## State transition table
+
+| Operation | Trigger | Journal event | Available | Reserved | Physical balance |
+| --- | --- | --- | --- | --- | --- |
+| Deposit credit | Watcher confirmed block | `DEPOSIT_CREDITED` | $+A$ | $0$ | Already $+A$ on deposit EOA |
+| Intent create | User signs `Intent` | `INTENT_CREATED` | $-A$ | $+A$ | Unchanged |
+| Intent cancel | User signs `CancelIntent` | `INTENT_CANCELLED` | $+A$ | $-A$ | Unchanged |
+| Intent expire | Expired during tick | `INTENT_EXPIRED` | $+A$ | $-A$ | Unchanged |
+| Swap success | Swap confirmed on chain | `EXEC_SETTLED`, `FEE_BOOKED` | $+(\text{out} - \text{fee})$ | $-A$ | $-\text{in}$ on EOA, $+\text{out}$ on EOA |
+| Swap revert | Swap reverted on chain | `EXEC_FAILED`, `FEE_BOOKED` | $+A$ | $-A$ | Unchanged (gas booked separately) |
+| Withdrawal lock | User signs `Withdrawal` | `WITHDRAWAL_LOCKED` | $-A$ | $+A$ | Unchanged |
+| Withdrawal confirm | Transfer confirmed | `WITHDRAWAL_CONFIRMED`, `FEE_BOOKED` | $0$ | $-A$ | $-A$ on inventory EOA |
+| Withdrawal fail | Transfer reverted | `WITHDRAWAL_FAILED`, `FEE_BOOKED` | $+A$ | $-A$ | Unchanged |
 
 ## Fees
 
-Gas spent by custody EOAs is booked against a separate fee ledger so invariant 1 still holds. The fee charge itself is unresolved: see [fee model](decisions/2026-11-06-0151-fee-model.md).
+- **Protocol fee:** Deducted in basis points (`FEE_BPS`) from the output token (`tokenOut`) upon confirmed swap execution. Credited to the protocol revenue balance.
+- **Gas expenditure:** Native ETH spent on-chain (`gasUsed * effectiveGasPrice`) is booked via `FEE_BOOKED` to a dedicated operational fee ledger. It is not charged to users.
 
 ## Concurrency
 
-One serialized queue handles every ledger mutation. It is the simplest defence against double spends, and fast enough for a demo.
+All state-mutating operations and journal appends are serialized through `FifoSerialQueue`. External network RPCs and encryption operations occur outside the queue.

@@ -30,11 +30,14 @@ Read: [api.md](../api.md), [enclave.md](../enclave.md), [data-model.md](../data-
 
 Closed in shared contracts (Task 2):
 
-- [ ] [Fee model](../decisions/2026-11-06-0151-fee-model.md), with Apurva
-- [ ] [Missing EIP-712 types](../decisions/2026-11-06-0151-missing-eip712-types.md), with Pradnyesh
-- [ ] [Journal replay events](../decisions/2026-11-06-0151-journal-replay-events.md) and [deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md)
-- [ ] [Meaning of `pending`](../decisions/2026-11-06-0151-pending-balance.md)
-- [ ] [Non-ETH deposits](../decisions/2026-11-06-0151-non-eth-deposits.md), with Apurva
+- [x] [Fee model](../decisions/2026-11-06-0151-fee-model.md), with Apurva
+- [x] [Missing EIP-712 types](../decisions/2026-11-06-0151-missing-eip712-types.md), with Pradnyesh
+- [x] [Journal replay events](../decisions/2026-11-06-0151-journal-replay-events.md) and [deposit journal events](../decisions/2026-11-06-0258-deposit-journal-events.md)
+- [x] [Meaning of `pending`](../decisions/2026-11-06-0151-pending-balance.md)
+- [x] [Non-ETH deposits](../decisions/2026-11-06-0151-non-eth-deposits.md), with Apurva
+- [x] [Withdrawal status endpoint](../decisions/2026-11-06-0331-withdrawal-status-endpoint.md), with Pradnyesh
+- [x] [Journal durability and replay](../decisions/2026-11-06-0745-journal-durability-and-replay.md)
+- [x] [Concurrency and queue boundaries](../decisions/2026-11-06-0745-concurrency-and-queue-boundaries.md)
 
 Then build:
 

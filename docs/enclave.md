@@ -54,26 +54,32 @@ export class FifoSerialQueue implements SerialQueue {
 
 ## Journal (Shreyas)
 
-Append-only. Each entry carries the hash of the previous one. This event list has known gaps: see [journal replay events](decisions/2026-11-06-0151-journal-replay-events.md) and [deposit journal events](decisions/2026-11-06-0258-deposit-journal-events.md).
+Append-only, hash-chained, and encrypted at rest with AES-256-GCM. Every append operation calls `fsync()` before returning. Replaying the journal from sequence 1 deterministically reconstructs the in-memory ledger and state after a restart. See [journal durability and replay](decisions/2026-11-06-0745-journal-durability-and-replay.md).
 
 ```ts
-// journal.ts
+// packages/shared/src/types/journal.ts
 export type JournalEvent =
   | { t: 'NONCE_USED'; owner: Address; nonce: bigint }
-  | { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number }
-  | { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; txHash: Hex }
+  | { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number; baseline?: bigint; baselineBlock?: bigint }
+  | { t: 'DEPOSIT_CREDITED'; id: string; amount: bigint; block: bigint; owner?: Address; txHash?: Hex }
+  | { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address }
   | { t: 'INTENT_CREATED'; id: string; owner: Address; intent: IntentMsg }
-  | { t: 'EXEC_BROADCAST'; opId: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex }
-  | { t: 'EXEC_SETTLED'; opId: string; amountOut: bigint }
-  | { t: 'EXEC_FAILED'; opId: string; reason: string }
+  | { t: 'INTENT_CANCELLED'; id: string; owner: Address }
+  | { t: 'INTENT_EXPIRED'; id: string; owner: Address }
+  | { t: 'EXEC_BROADCAST'; opId: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex; intentId?: string }
+  | { t: 'EXEC_SETTLED'; opId: string; intentId: string; owner: Address; tokenOut: Address; amountOut: bigint; fee: bigint }
+  | { t: 'EXEC_FAILED'; opId: string; intentId: string; owner: Address; reason: string }
   | { t: 'WITHDRAWAL_LOCKED'; id: string; owner: Address; token: Address; amount: bigint; to: Address }
   | { t: 'WITHDRAWAL_BROADCAST'; id: string; eoa: Address; nonce: number; txHash: Hex; raw: Hex }
-  | { t: 'WITHDRAWAL_CONFIRMED'; id: string }
-  | { t: 'WITHDRAWAL_FAILED'; id: string; reason: string };
+  | { t: 'WITHDRAWAL_CONFIRMED'; id: string; owner: Address }
+  | { t: 'WITHDRAWAL_FAILED'; id: string; owner: Address; reason: string }
+  | { t: 'FEE_BOOKED'; opId: string; token: Address; feeAmount: bigint };
 
 export interface Journal {
-  append(e: JournalEvent): Promise<void>; // encrypted at rest, fsync before returning
-  replay(): AsyncIterable<JournalEvent>;
+  append(e: JournalEvent): Promise<JournalEntry>; // encrypted at rest, fsync before returning
+  replay(): AsyncIterable<JournalEntry>;
+  lastEntryHash(): Hex;
+  close(): Promise<void>;
 }
 ```
 

@@ -1,36 +1,66 @@
-# Deposit journal events
+# Deposit journal event resolution
 
 | Status | Owner | Needed by |
 | --- | --- | --- |
-| Proposed, watcher.ts side done | Shreyas, Apurva | Phase 1 |
+| Accepted | Shreyas, Apurva | Phase 1 |
 
 ## Problem
 
-The spec's deposit events do not match balance-based crediting. `DEPOSIT_CREDITED` needs a `txHash`, but reading a balance does not reveal one. `DEPOSIT_SESSION_OPENED` has no baseline, so a restart would lose it.
+The initial deposit event types in `docs/enclave.md` did not align with balance-based deposit tracking in `DepositWatcher`:
+1. `DEPOSIT_CREDITED` expected a transaction hash (`txHash`), but reading an EOA balance delta does not reveal transaction hashes without heavy block/trace RPC scans.
+2. `DEPOSIT_SESSION_OPENED` lacked baseline balance and baseline block information, causing replay on boot to lose the baseline.
+3. `DEPOSIT_SESSION_CLOSED` in `watcher.ts` lacked the `eoa` address, which `Inventory.replay` requires to relabel the EOA to `inventory`.
 
-## Proposal
+## Existing behavior
 
-`watcher.ts` uses these shapes. Shreyas to adopt them in `journal.ts`, and the ledger's replay can read the owner from `DEPOSIT_CREDITED`.
+Both sides are now aligned:
+- `watcher.ts` emits `owner` in `DEPOSIT_CREDITED` and `eoa` in `DEPOSIT_SESSION_CLOSED`.
+- `packages/shared/src/types/journal.ts` defines `baseline` and `baselineBlock` in `DEPOSIT_SESSION_OPENED`, accepts `block` and `owner` in `DEPOSIT_CREDITED`, and requires `eoa` in `DEPOSIT_SESSION_CLOSED`.
 
-```ts
-| { t: 'DEPOSIT_SESSION_OPENED'; id: string; owner: Address; eoa: Address; expiry: number; baseline: bigint; baselineBlock: bigint }
-| { t: 'DEPOSIT_CREDITED'; id: string; owner: Address; amount: bigint; block: bigint }
-| { t: 'DEPOSIT_SESSION_CLOSED'; id: string; eoa: Address }
-```
+## Decision
 
-## Conflict with `packages/shared`
+The canonical shapes in `@cloakroom/shared` are resolved as follows:
+1. `DEPOSIT_SESSION_OPENED`:
+   ```ts
+   {
+     t: 'DEPOSIT_SESSION_OPENED';
+     id: string;
+     owner: Address;
+     eoa: Address;
+     expiry: number;
+     baseline?: bigint;
+     baselineBlock?: bigint;
+   }
+   ```
+   Contains `baseline` and `baselineBlock`. During replay, `DepositWatcher` restores sessions without performing historical chain RPC queries.
+2. `DEPOSIT_CREDITED`:
+   ```ts
+   {
+     t: 'DEPOSIT_CREDITED';
+     id: string;
+     amount: bigint;
+     block: bigint;
+     owner?: Address;
+     txHash?: Hex;
+   }
+   ```
+   Requires `block: bigint` instead of mandatory `txHash`. Includes `owner: Address` so ledger replay can credit the owner directly without maintaining a secondary session map.
+3. `DEPOSIT_SESSION_CLOSED`:
+   ```ts
+   {
+     t: 'DEPOSIT_SESSION_CLOSED';
+     id: string;
+     eoa: Address;
+   }
+   ```
+   Includes `eoa: Address`. When emitted or replayed, `Inventory` immediately relabels the custody EOA as available inventory via `markInventory(event.eoa)`.
 
-`JournalEvent` in `packages/shared/src/types/journal.ts` was added without these changes, so `watcher.ts` cannot use the real `Journal` yet.
+## Integration handoff for Apurva
 
-| Event | `packages/shared` | `watcher.ts` |
-| --- | --- | --- |
-| `DEPOSIT_SESSION_OPENED` | No baseline | `baseline`, `baselineBlock` |
-| `DEPOSIT_CREDITED` | `owner`, `txHash` | `owner`, `block` |
-| `DEPOSIT_SESSION_CLOSED` | `eoa` | `eoa` |
+In `services/enclave/src/watcher.ts`:
+- Replace internal `DepositEvent` with `JournalEvent` from `@cloakroom/shared`.
 
-## Suggested resolution
+## Consequences
 
-`watcher.ts` now has `owner` in `DEPOSIT_CREDITED` and `eoa` in `DEPOSIT_SESSION_CLOSED`. What remains:
-
-- **`packages/shared`:** add `baseline` and `baselineBlock` to `DEPOSIT_SESSION_OPENED`. In `DEPOSIT_CREDITED`, replace `txHash` with `block`.
-- **`watcher.ts`:** after that, import `JournalEvent` instead of its own `DepositEvent`.
+- Resolves the blocking conflict between `watcher.ts` and `packages/shared`.
+- Deposit replay is deterministic and requires zero RPC queries.
