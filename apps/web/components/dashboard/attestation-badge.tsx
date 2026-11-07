@@ -6,7 +6,7 @@ import { Badge } from '../ui/badge';
 
 /**
  * Green only when this browser checked the Nitro quote against a pinned release. Otherwise the best
- * honest state is "attestation received, unverified".
+ * honest state is "attestation available". The attestation page explains how to verify it.
  */
 export function AttestationBadge() {
   const { identity, isLoading, error } = useEnclave();
@@ -15,7 +15,7 @@ export function AttestationBadge() {
   else if (error || !identity) content = <Badge tone="bad" dot>Enclave unavailable</Badge>;
   else if (identity.mode === 'simulated') content = <Badge tone="warn" dot>TEE-simulated</Badge>;
   else if (identity.mode === 'attested-verified') content = <Badge tone="ok" dot>Attestation verified</Badge>;
-  else content = <Badge tone="accent" dot>Attestation received · unverified in browser</Badge>;
+  else content = <Badge tone="accent" dot>Attestation available</Badge>;
   return (
     <Link href="/attestation" className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" aria-label="Attestation details">
       {content}

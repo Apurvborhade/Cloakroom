@@ -112,8 +112,8 @@ describe('TEE status', () => {
   it('never claims verification just because /attestation answered', () => {
     enclave.value = { ...enclave.value, identity: { mode: 'attested-unverified' } };
     const { container } = wrap(<><SimBanner /><AttestationBadge /></>);
-    expect(container.textContent).toMatch(/unverified/);
-    expect(container.textContent).not.toMatch(/\bVerified\b/);
+    expect(container.textContent).toMatch(/Attestation available/);
+    expect(container.textContent).not.toMatch(/\bverified\b/i);
     expect(screen.queryByText('TEE-SIMULATED')).toBeNull();
   });
 });
