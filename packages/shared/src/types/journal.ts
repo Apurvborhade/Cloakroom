@@ -1,3 +1,4 @@
+import type { EscapeEvent } from '../escape.js';
 import type { Address, Hex } from 'viem';
 import type { IntentMsg, MarginOpenMsg, MarginCloseMsg, MarginAddCollateralMsg } from '../eip712.js';
 import type { MarginFundingEvent } from './margin-funding.js';
@@ -11,6 +12,7 @@ import type { MarginFundingEvent } from './margin-funding.js';
  * - EOA Relabeling: DEPOSIT_COMPLETED or DEPOSIT_SESSION_CLOSED makes an address inventory.
  */
 export type JournalEvent =
+  | EscapeEvent
   | MarginFundingEvent
   | { t: 'SIGNING_REGISTERED'; opId: string; eoa: Address; to: Address; value: bigint; dataHash: Hex; data?: Hex; chainId: number }
   | { t: 'SIGNING_COMPLETED'; opId: string; txHash: Hex }

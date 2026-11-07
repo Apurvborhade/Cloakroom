@@ -106,15 +106,20 @@ describe('encrypted snapshot journal', () => {
     expect(await entries(await SnapshotJournal.open({ store, cipher }))).toEqual([committed]);
   });
 
-  it('enforces the total size limit before writing and preserves the committed snapshot', async () => {
-    const journal = await SnapshotJournal.open({ store, cipher, allowCreate: true, maxBytes: 1024 });
+  it('faults custody on exhaustion without changing the committed snapshot', async () => {
+    const onFault = vi.fn();
+    const journal = await SnapshotJournal.open({ store, cipher, allowCreate: true, maxBytes: 1024, onFault });
     const committed = await journal.append(event);
     const previous = await store.read();
     const cas = vi.spyOn(store, 'compareAndSwap');
     await expect(journal.append({ ...event, id: 'a'.repeat(1024) })).rejects.toThrow('JOURNAL_FULL');
+    await expect(journal.append(event)).rejects.toThrow('JOURNAL_UNAVAILABLE');
+    await expect(entries(journal)).rejects.toThrow('JOURNAL_UNAVAILABLE');
+    expect(() => journal.lastEntryHash()).toThrow('JOURNAL_UNAVAILABLE');
+    expect(onFault).toHaveBeenCalledTimes(1);
     expect(cas).not.toHaveBeenCalled();
     expect(await store.read()).toEqual(previous);
-    expect(await entries(journal)).toEqual([committed]);
+    expect(await entries(await SnapshotJournal.open({ store, cipher, maxBytes: 1024 }))).toEqual([committed]);
     await expect(SnapshotJournal.open({ store, cipher, maxBytes: MAX_BLOB_BYTES + 1 })).rejects.toThrow('JOURNAL_LIMIT_INVALID');
   });
 

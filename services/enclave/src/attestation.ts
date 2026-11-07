@@ -12,6 +12,7 @@ export type AttestationResponse = {
   enclavePubKey: string;
   buildHash: string;
   chainId: number;
+  escapeSigner?: string;
 };
 
 type QuoteRequest = { publicKey: Buffer; userData: Buffer; nonce?: Buffer };
@@ -31,7 +32,7 @@ export const nitroQuote: QuoteProvider = async ({ publicKey, userData, nonce }) 
 
 export class AttestationService {
   constructor(readonly buildHash: string, readonly options: {
-    identity: { transportPublicKey(): Hex }; chainId: number; provider?: QuoteProvider;
+    identity: { transportPublicKey(): Hex; attestedEscapeSigner?(): string | undefined }; chainId: number; provider?: QuoteProvider;
   }) {
     if (!/^[a-f0-9]{64}$/.test(buildHash)) throw new Error('Invalid build hash');
     if (!Number.isSafeInteger(options.chainId) || options.chainId <= 0) throw new Error('Invalid chain ID');
@@ -42,8 +43,13 @@ export class AttestationService {
     const hex = this.options.identity.transportPublicKey();
     if (!/^0x[a-fA-F0-9]{64}$/.test(hex)) throw new Error('Invalid transport key');
     const publicKey = Buffer.from(hex.slice(2), 'hex');
-    const userData = createHash('sha256')
-      .update(publicKey).update(Buffer.from(this.buildHash, 'hex')).digest();
+    const escapeSigner = this.options.identity.attestedEscapeSigner?.();
+    if (escapeSigner !== undefined && !/^0x[a-fA-F0-9]{40}$/.test(escapeSigner)) throw new Error('Invalid escape signer');
+    const binding = createHash('sha256');
+    if (escapeSigner) binding.update('cloakroom/attestation/escape/v1\0');
+    binding.update(publicKey).update(Buffer.from(this.buildHash, 'hex'));
+    if (escapeSigner) binding.update(Buffer.from(escapeSigner.slice(2), 'hex'));
+    const userData = binding.digest();
     // The raw X25519 public key also occupies the signed public_key field.
     const quote = await (this.options.provider ?? nitroQuote)({ publicKey, userData, nonce });
     return {
@@ -51,6 +57,7 @@ export class AttestationService {
       enclavePubKey: `0x${publicKey.toString('hex')}`,
       buildHash: `0x${this.buildHash}`,
       chainId: this.options.chainId,
+      ...(escapeSigner ? { escapeSigner } : {}),
     };
   }
 }

@@ -4,6 +4,8 @@ on:
     paths:
       - 'packages/shared/**'
       - 'services/enclave/**'
+      - 'services/rpc-gateway/**'
+      - 'contracts/**'
       - 'scripts/**'
       - 'test/**'
       - 'infra/nitro/**'
@@ -11,7 +13,7 @@ on:
       - 'package.json'
       - 'pnpm-workspace.yaml'
       - 'tsconfig*.json'
-      - 'vitest.config.*'
+      - 'vitest*.config.*'
       - '.github/workflows/tee-checks.yml'
   workflow_dispatch:
 
@@ -36,6 +38,8 @@ jobs:
       - run: corepack enable && pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm test:contracts
+      - run: pnpm test:escape
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:hpke:browser
       - run: python -m pip install -r scripts/attestation-requirements.txt

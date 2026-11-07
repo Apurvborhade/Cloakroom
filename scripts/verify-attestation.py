@@ -38,7 +38,8 @@ def decode_cbor(data):
 
 
 def verify(response, measurements, build_hash, nonce, root_pem,
-           chain_id=11155111, now=None, root_fingerprint=ROOT_SHA256):
+           chain_id=11155111, now=None, root_fingerprint=ROOT_SHA256,
+           expected_escape_signer=None):
     require(isinstance(response, dict), "Invalid response")
     require(response.get("chainId") == chain_id, "Wrong chain ID")
     require(isinstance(build_hash, str) and len(build_hash) in (64, 66),
@@ -108,7 +109,20 @@ def verify(response, measurements, build_hash, nonce, root_pem,
     require(isinstance(document.get("nonce"), bytes)
             and hmac.compare_digest(document["nonce"], nonce), "Wrong challenge nonce")
     require(document.get("public_key") == public_key, "Wrong public key")
-    binding = hashlib.sha256(public_key + bytes.fromhex(build_hash)).digest()
+    escape_signer = response.get("escapeSigner")
+    binding_input = public_key + bytes.fromhex(build_hash)
+    if "escapeSigner" in response:
+        require(isinstance(escape_signer, str)
+                and re.fullmatch(r"0x[0-9a-fA-F]{40}", escape_signer)
+                and int(escape_signer[2:], 16) != 0, "Invalid escape signer")
+        escape_signer = escape_signer.lower()
+        binding_input = (b"cloakroom/attestation/escape/v1\0" + binding_input
+                         + bytes.fromhex(escape_signer[2:]))
+    if expected_escape_signer is not None:
+        require(isinstance(expected_escape_signer, str)
+                and re.fullmatch(r"0x[0-9a-fA-F]{40}", expected_escape_signer)
+                and escape_signer == expected_escape_signer.lower(), "Wrong escape signer")
+    binding = hashlib.sha256(binding_input).digest()
     require(document.get("user_data") == binding, "Wrong key/build binding")
     pcrs = document.get("pcrs")
     require(isinstance(pcrs, dict), "Missing PCRs")
@@ -119,7 +133,10 @@ def verify(response, measurements, build_hash, nonce, root_pem,
         require(len(trusted) == 48 and trusted != bytes(48), "Invalid trusted PCR")
         require(isinstance(measured, bytes) and hmac.compare_digest(measured, trusted),
                 f"PCR{index} mismatch (wrong image or debug mode)")
-    return {"ok": True, "buildHash": "0x" + build_hash, "chainId": chain_id}
+    result = {"ok": True, "buildHash": "0x" + build_hash, "chainId": chain_id}
+    if escape_signer is not None:
+        result["escapeSigner"] = escape_signer
+    return result
 
 
 def main():
@@ -128,6 +145,7 @@ def main():
     parser.add_argument("--measurements", required=True, type=Path,
                         help="Trusted nitro-cli build-enclave JSON; never take PCRs from the quote")
     parser.add_argument("--build-hash", required=True)
+    parser.add_argument("--escape-signer", help="Expected EscapeHatch signer address, when enabled")
     args = parser.parse_args()
     nonce = secrets.token_bytes(32)
     parts = urllib.parse.urlsplit(args.url)
@@ -138,7 +156,8 @@ def main():
         raw = result.read(65_537)
     require(len(raw) <= 65_536, "Response too large")
     result = verify(json.loads(raw), json.loads(args.measurements.read_text()),
-                    args.build_hash, nonce, Path(__file__).with_name("nitro-root.pem").read_bytes())
+                    args.build_hash, nonce, Path(__file__).with_name("nitro-root.pem").read_bytes(),
+                    expected_escape_signer=args.escape_signer)
     print(json.dumps(result))
 
 

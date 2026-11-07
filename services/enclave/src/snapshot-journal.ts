@@ -75,7 +75,11 @@ export class SnapshotJournal implements Journal {
   async #persist(entries: JournalEntry[]): Promise<void> {
     const plaintext = new TextEncoder().encode(JSON.stringify({ version: 1, entries }, (_key, value: unknown) =>
       typeof value === 'bigint' ? { $bigint: value.toString() } : value));
-    if (plaintext.byteLength + 28 > this.#limit) throw new Error('JOURNAL_FULL');
+    if (plaintext.byteLength + 28 > this.#limit) {
+      this.#faulted = true;
+      this.#options.onFault?.();
+      throw new Error('JOURNAL_FULL');
+    }
     const sealed = this.#options.cipher.encrypt(plaintext, AAD);
     if (sealed.byteLength !== plaintext.byteLength + 28) throw new Error('JOURNAL_CIPHER_INVALID');
     try {

@@ -1,3 +1,4 @@
+import { EscapeState } from './escape-state.js';
 import { DepositCompletedEventSchema, ERROR_CODES, NATIVE } from '@cloakroom/shared';
 import type {
   BalanceRecord,
@@ -43,6 +44,7 @@ export interface OperationalGasRecord {
  * 5. Strict BigInt precision: no floating-point arithmetic.
  */
 export class InMemoryLedger implements Ledger {
+  readonly escape = new EscapeState(this);
   private readonly userBalances = new Map<Address, Map<Address, BalanceRecord>>();
   private readonly reservations = new Map<string, Reservation>();
   private readonly credits = new Map<string, CreditRecord>();
@@ -311,6 +313,13 @@ export class InMemoryLedger implements Ledger {
 
   apply(event: JournalEvent): void {
     switch (event.t) {
+      case 'ESCAPE_RESERVED':
+      case 'ESCAPE_BROADCAST':
+      case 'ESCAPE_REGISTERED':
+      case 'ESCAPE_FAILED':
+      case 'ESCAPE_CLAIMED':
+        this.escape.apply(event);
+        break;
       case 'MARGIN_SUPPLIED':
       case 'MARGIN_REDEEMED':
       case 'MARGIN_OPEN_RESERVED':

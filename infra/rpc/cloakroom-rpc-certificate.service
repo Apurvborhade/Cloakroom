@@ -1,0 +1,9 @@
+[Unit]
+Description=Renew the RPC enclave certificate from its public CSR
+After=network-online.target cloakroom-rpc-enclave.service
+Requires=cloakroom-rpc-enclave.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/cloakroom-rpc/renew-certificate.sh
+TimeoutStartSec=180

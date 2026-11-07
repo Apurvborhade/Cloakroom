@@ -4,6 +4,8 @@ import {
   createDomain,
   EIP712_TYPES,
   type ErrorCode,
+  type EscapeErrorCode,
+  type EscapeActivateMsg,
   type SessionGrantMsg,
   type SessionQueryMsg,
   type DepositRequestMsg,
@@ -23,9 +25,9 @@ import { getAddress, recoverTypedDataAddress } from 'viem';
 import type { Address, Hex } from 'viem';
 
 export class AuthError extends Error {
-  readonly code: ErrorCode;
+  readonly code: ErrorCode | EscapeErrorCode;
 
-  constructor(code: ErrorCode, message?: string) {
+  constructor(code: ErrorCode | EscapeErrorCode, message?: string) {
     super(message ?? code);
     this.name = 'AuthError';
     this.code = code;
@@ -33,6 +35,7 @@ export class AuthError extends Error {
 }
 
 export type MutatingPrimaryType =
+  | 'EscapeActivate'
   | 'DepositRequest'
   | 'Intent'
   | 'CancelIntent'
@@ -44,6 +47,7 @@ export type MutatingPrimaryType =
   | 'MarginClose';
 
 export type MutatingMessageMap = {
+  EscapeActivate: EscapeActivateMsg;
   DepositRequest: DepositRequestMsg;
   Intent: IntentMsg;
   CancelIntent: CancelIntentMsg;
@@ -62,6 +66,7 @@ export type OwnerMessageMap = MutatingMessageMap & {
 };
 
 export type OwnerPayload =
+  | { primaryType: 'EscapeActivate'; message: EscapeActivateMsg }
   | { primaryType: 'SessionGrant'; message: SessionGrantMsg }
   | { primaryType: 'DepositRequest'; message: DepositRequestMsg }
   | { primaryType: 'Intent'; message: IntentMsg }
@@ -325,6 +330,9 @@ export class AuthService {
             message: payload.message,
             signature,
           });
+          break;
+        case 'EscapeActivate':
+          recovered = await recoverTypedDataAddress({ domain, types: EIP712_TYPES, primaryType: payload.primaryType, message: payload.message, signature });
           break;
         case 'MarginClose':
           recovered = await recoverTypedDataAddress({

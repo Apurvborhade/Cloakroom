@@ -61,6 +61,7 @@ export type ExecutorChain = Pick<
   | 'estimateFeesPerGas'
   | 'call'
   | 'estimateGas'
+  | 'getBalance'
   | 'getTransactionCount'
   | 'getTransactionReceipt'
   | 'sendRawTransaction'
@@ -658,99 +659,117 @@ export class Executor {
     } catch {
       return fail('INVENTORY_UNAVAILABLE');
     }
-    const chosen = inventory.pick(tokenIn, amountIn, margin.inventory.depositEoasOf(owner));
-    if (!chosen) return fail(ERROR_CODES.NO_INVENTORY);
-    const eoa = chosen.address;
-    inventory.hold(eoa, tokenIn, amountIn, opId);
-
-    if (!nativeIn) {
-      try {
-        await this.ensureApprovals(eoa, tokenIn, amountIn, margin);
-      } catch {
-        return fail('APPROVAL_FAILED');
-      }
-    }
-
-    const nowSec = BigInt(Math.floor((margin.nowMs ?? Date.now)() / MS_PER_SECOND));
-    if (BigInt(operation.expiry) <= nowSec) return fail(ERROR_CODES.EXPIRED);
-
-    const requestQuote = (slippageBps: number) =>
-      margin.quoter.quote({
-        tokenIn,
-        tokenOut,
-        amountIn,
-        swapper: eoa,
-        slippagePercent: slippageBps / BPS_PER_PERCENT,
-        protocols: SWAP_PROTOCOLS,
-      });
-    const minimumAfter = (amountOut: bigint, slippageBps: number) =>
-      (amountOut * (BPS_SCALE - BigInt(slippageBps))) / BPS_SCALE;
-
-    let slippageBps = Math.min(operation.maxSlippageBps, margin.maxSlippageBpsCap);
-    let quote: Quote;
-    try {
-      quote = await requestQuote(slippageBps);
-      if (quote.amountOut < minAmountOut) return fail('LIMIT_NOT_MET');
-      // Slippage may only use the room above the approved minimum.
-      if (minimumAfter(quote.amountOut, slippageBps) < minAmountOut) {
-        slippageBps = Number(((quote.amountOut - minAmountOut) * BPS_SCALE) / quote.amountOut);
-        if (slippageBps === 0) return fail('LIMIT_NOT_MET');
-        quote = await requestQuote(slippageBps);
-      }
-    } catch {
-      return fail('QUOTE_UNAVAILABLE');
-    }
-    const minOut = minimumAfter(quote.amountOut, slippageBps);
-    const transaction = quote.transaction;
-    if (minOut < minAmountOut) return fail('LIMIT_NOT_MET');
-    if (!transaction) return fail('NO_TRANSACTION');
-    if (
-      transaction.to !== getAddress(margin.routerAddress) ||
-      transaction.from !== getAddress(eoa) ||
-      transaction.value !== (nativeIn ? amountIn : 0n)
-    ) {
-      return fail('UNEXPECTED_TRANSACTION');
-    }
-    try {
-      if (nativeIn) {
-        assertSafeSwapCalldata({ data: transaction.data, eoa, tokenOut, minOut, floor: minAmountOut, nowSec });
-      } else {
-        assertSafeTokenToNativeCalldata({
-          data: transaction.data,
-          eoa,
-          tokenIn,
-          wethAddress: margin.wethAddress,
-          amountIn,
-          minOut,
-          nowSec,
-        });
-      }
-    } catch {
-      return fail('UNSAFE_CALLDATA');
-    }
-
+    const nativeExit = nativeIn && (operation.kind === 'close' || operation.kind === 'liquidate');
+    // An exit may spend the remaining gas reserve; verify its actual fee cap before signing.
+    const gasRequiredWei = nativeExit ? 0n : undefined;
+    const excluded = new Set(margin.inventory.depositEoasOf(owner));
+    let insufficientGas = false;
+    let eoa: Address;
     let raw: Hex;
     let txHash: Hex;
     let nonce: number;
-    try {
-      const prepared = await this.prepareCall(eoa, transaction);
-      nonce = prepared.nonce;
-      await signer.registerOp(opId, {
-        eoa,
-        to: transaction.to,
-        value: transaction.value,
-        dataHash: keccak256(transaction.data),
-        data: transaction.data,
-      });
-      raw = await signer.sign(eoa, { ...prepared, chainId }, opId);
-      txHash = keccak256(raw);
-      await queue.run(async () => {
-        const event = { t: 'MARGIN_OP_BROADCAST', opId, eoa, nonce, txHash, raw } as const;
-        await journal.append(event);
-        margin.ledger.apply(event);
-      });
-    } catch {
-      return fail('PREPARE_FAILED');
+    while (true) {
+      const chosen = inventory.pick(tokenIn, amountIn, excluded, gasRequiredWei);
+      if (!chosen) return fail(insufficientGas ? 'INSUFFICIENT_GAS' : ERROR_CODES.NO_INVENTORY);
+      eoa = chosen.address;
+      inventory.hold(eoa, tokenIn, amountIn, opId, gasRequiredWei);
+
+      if (!nativeIn) {
+        try {
+          await this.ensureApprovals(eoa, tokenIn, amountIn, margin);
+        } catch {
+          return fail('APPROVAL_FAILED');
+        }
+      }
+
+      const nowSec = BigInt(Math.floor((margin.nowMs ?? Date.now)() / MS_PER_SECOND));
+      if (BigInt(operation.expiry) <= nowSec) return fail(ERROR_CODES.EXPIRED);
+
+      const requestQuote = (slippageBps: number) =>
+        margin.quoter.quote({
+          tokenIn,
+          tokenOut,
+          amountIn,
+          swapper: eoa,
+          slippagePercent: slippageBps / BPS_PER_PERCENT,
+          protocols: SWAP_PROTOCOLS,
+        });
+      const minimumAfter = (amountOut: bigint, slippageBps: number) =>
+        (amountOut * (BPS_SCALE - BigInt(slippageBps))) / BPS_SCALE;
+
+      let slippageBps = Math.min(operation.maxSlippageBps, margin.maxSlippageBpsCap);
+      let quote: Quote;
+      try {
+        quote = await requestQuote(slippageBps);
+        if (quote.amountOut < minAmountOut) return fail('LIMIT_NOT_MET');
+        // Slippage may only use the room above the approved minimum.
+        if (minimumAfter(quote.amountOut, slippageBps) < minAmountOut) {
+          slippageBps = Number(((quote.amountOut - minAmountOut) * BPS_SCALE) / quote.amountOut);
+          if (slippageBps === 0) return fail('LIMIT_NOT_MET');
+          quote = await requestQuote(slippageBps);
+        }
+      } catch {
+        return fail('QUOTE_UNAVAILABLE');
+      }
+      const minOut = minimumAfter(quote.amountOut, slippageBps);
+      const transaction = quote.transaction;
+      if (minOut < minAmountOut) return fail('LIMIT_NOT_MET');
+      if (!transaction) return fail('NO_TRANSACTION');
+      if (
+        transaction.to !== getAddress(margin.routerAddress) ||
+        transaction.from !== getAddress(eoa) ||
+        transaction.value !== (nativeIn ? amountIn : 0n)
+      ) {
+        return fail('UNEXPECTED_TRANSACTION');
+      }
+      try {
+        if (nativeIn) {
+          assertSafeSwapCalldata({ data: transaction.data, eoa, tokenOut, minOut, floor: minAmountOut, nowSec });
+        } else {
+          assertSafeTokenToNativeCalldata({
+            data: transaction.data,
+            eoa,
+            tokenIn,
+            wethAddress: margin.wethAddress,
+            amountIn,
+            minOut,
+            nowSec,
+          });
+        }
+      } catch {
+        return fail('UNSAFE_CALLDATA');
+      }
+
+      try {
+        const prepared = await this.prepareCall(eoa, transaction);
+        if (nativeExit) {
+          const balance = await chain.getBalance({ address: eoa, blockTag: 'pending' });
+          if (balance < prepared.value + prepared.gas * prepared.maxFeePerGas) {
+            insufficientGas = true;
+            excluded.add(eoa);
+            inventory.free(opId);
+            continue;
+          }
+        }
+        nonce = prepared.nonce;
+        await signer.registerOp(opId, {
+          eoa,
+          to: transaction.to,
+          value: transaction.value,
+          dataHash: keccak256(transaction.data),
+          data: transaction.data,
+        });
+        raw = await signer.sign(eoa, { ...prepared, chainId }, opId);
+        txHash = keccak256(raw);
+        await queue.run(async () => {
+          const event = { t: 'MARGIN_OP_BROADCAST', opId, eoa, nonce, txHash, raw } as const;
+          await journal.append(event);
+          margin.ledger.apply(event);
+        });
+      } catch {
+        return fail('PREPARE_FAILED');
+      }
+      break;
     }
 
     this.nextNonces.set(eoa, nonce + 1);

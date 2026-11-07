@@ -20,7 +20,7 @@ const address = z
 const flag = z.enum(['true', 'false']).transform((value) => value === 'true');
 const secret = z.string().min(1);
 
-/** Every environment variable the enclave reads. All but MARGIN_ENABLED are required: see .env.example. */
+/** Environment variables read at boot; optional features default to disabled. */
 const ENV_SCHEMA = z.object({
   CHAIN_ID: positiveNumber,
   RPC_URL: z.string().url(),
@@ -69,6 +69,7 @@ const ENV_SCHEMA = z.object({
 
   // Off unless set, so an existing deployment's configuration keeps working unchanged.
   MARGIN_ENABLED: flag.optional().transform((value) => value ?? false),
+  ESCAPE_HATCH_ADDRESS: address.optional(),
 });
 
 export type EnclaveConfig = z.infer<typeof ENV_SCHEMA>;
@@ -118,6 +119,7 @@ export function toSigningPolicy(config: EnclaveConfig): SigningPolicy {
       tokenOutDecimals: config.TOKEN_OUT_DECIMALS,
       feeBps: config.FEE_BPS,
     },
+    ...(config.ESCAPE_HATCH_ADDRESS ? { escapeHatch: config.ESCAPE_HATCH_ADDRESS } : {}),
     ...(config.MARGIN_ENABLED ? { margin: { wethAddress: config.WETH_ADDRESS } } : {}),
   };
 }

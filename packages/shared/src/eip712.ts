@@ -17,6 +17,14 @@ export function createDomain(chainId: number, enclaveKeyHash: Hex) {
 }
 
 export const EIP712_TYPES = {
+  EscapeActivate: [
+    { name: 'owner', type: 'address' },
+    { name: 'hatch', type: 'address' },
+    { name: 'claimId', type: 'bytes32' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'nonce', type: 'uint64' },
+    { name: 'expiry', type: 'uint64' },
+  ],
   AdminEoas: [
     { name: 'admin', type: 'address' },
     { name: 'nonce', type: 'uint64' },
@@ -183,6 +191,15 @@ export type MarginCloseMsg = {
   positionId: Hex;
   limitPrice: bigint;
   maxSlippageBps: number;
+  nonce: bigint;
+  expiry: bigint;
+};
+
+export type EscapeActivateMsg = {
+  owner: Address;
+  hatch: Address;
+  claimId: Hex;
+  amount: bigint;
   nonce: bigint;
   expiry: bigint;
 };

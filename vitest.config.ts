@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     projects: [
       'apps/web/vitest.config.ts',
-      { test: { name: 'backend', exclude: [...configDefaults.exclude, 'apps/web/**', '**/.next/**'] } },
+      { test: { name: 'backend', exclude: [...configDefaults.exclude, 'apps/web/**', '**/.next/**', '**/*.integration.test.ts'] } },
     ],
   },
 });
