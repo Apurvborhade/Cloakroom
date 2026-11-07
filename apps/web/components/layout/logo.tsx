@@ -1,12 +1,13 @@
 export function Logo() {
   return (
     <span className="flex items-center gap-2.5">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <rect x="3" y="3" width="18" height="18" rx="5" stroke="#5cc8f0" strokeWidth="1.5" />
-        <path d="M8 12.5h8M12 8.5v8" stroke="#5cc8f0" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" />
-        <circle cx="12" cy="12" r="2.25" fill="#5cc8f0" />
+      <svg width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden>
+        <circle cx="16" cy="16" r="15" fill="#8b9bff" />
+        <path d="M10.5 23v-7.5a5.5 5.5 0 0 1 11 0V23" stroke="#131313" strokeWidth="3.4" strokeLinecap="round" />
       </svg>
-      <span className="text-[15px] font-semibold tracking-tight text-fg">Cloakroom</span>
+      <span className="text-[15px] font-semibold tracking-tight text-fg">
+        nony<span className="text-fg-subtle">.money</span>
+      </span>
     </span>
   );
 }

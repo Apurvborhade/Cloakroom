@@ -19,7 +19,7 @@ export function Providers({ children }: { children: ReactNode }) {
           theme={darkTheme({ accentColor: '#5cc8f0', accentColorForeground: '#0a0a0b', borderRadius: 'medium', overlayBlur: 'small' })}
           modalSize="compact"
           showRecentTransactions={false}
-          appInfo={{ appName: 'Cloakroom' }}
+          appInfo={{ appName: 'nony.money' }}
         >
           <ToastProvider>
             <SessionGuard />

@@ -26,8 +26,8 @@ export function AnonRpcBanner() {
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 text-xs text-fg-muted sm:px-6">
         <span>
           {failed
-            ? "Private routing is down, so Cloakroom can't be reached. Retrying… A direct connection works now, but shows the server your IP address."
-            : 'You are connected directly, so the Cloakroom server can see your IP address.'}
+            ? "Private routing is down, so nony.money can't be reached. Retrying… A direct connection works now, but shows the server your IP address."
+            : 'You are connected directly, so the nony.money server can see your IP address.'}
         </span>
         <button
           type="button"

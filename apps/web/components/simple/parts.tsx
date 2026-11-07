@@ -183,7 +183,7 @@ export function ActionButton({
   if (!binding) {
     return (
       <div className="space-y-1.5">
-        {enclaveError && <StatusLine tone="bad" title="Can't reach Cloakroom">{describeError(enclaveError)}</StatusLine>}
+        {enclaveError && <StatusLine tone="bad" title="Can't reach nony.money">{describeError(enclaveError)}</StatusLine>}
         <Button size="lg" className={big} loading={enclaveLoading || isFetching} onClick={() => refetch()}>Retry</Button>
       </div>
     );

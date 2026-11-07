@@ -21,7 +21,7 @@ const walletGroups = [
 ];
 
 const connectors = connectorsForWallets(walletGroups, {
-  appName: 'Cloakroom',
+  appName: 'nony.money',
   projectId: appConfig.walletConnectProjectId ?? 'not-configured',
 });
 

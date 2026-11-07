@@ -39,7 +39,7 @@ export function AnonRpcBadge() {
   const tone = route === 'anon-rpc' && state === 'ready' && apiRoute === 'anon-rpc' ? 'ok' : route === 'anon-rpc' && state !== 'failed' && state !== 'ready' ? 'accent' : 'warn';
 
   return (
-    <Link href="/diagnostics" title="This browser's chain reads and Cloakroom API requests go through Anon-RPC. See the details on Diagnostics.">
+    <Link href="/diagnostics" title="This browser's chain reads and nony.money API requests go through Anon-RPC. See the details on Diagnostics.">
       <Badge tone={tone}><AnonRpcIcon />{label}</Badge>
     </Link>
   );

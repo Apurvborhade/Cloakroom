@@ -55,7 +55,7 @@ const MESSAGES: Record<ApiErrorCode, string> = {
   POSITION_BUSY: 'The position is not open (it is opening, closing or already settled), so this action is not possible now.',
   INSUFFICIENT_COLLATERAL: 'Not enough collateral for this leverage.',
   INSUFFICIENT_LIQUIDITY: 'Not enough lending liquidity for this request.',
-  NETWORK_ERROR: 'Could not reach the Cloakroom API.',
+  NETWORK_ERROR: 'Could not reach the nony.money API.',
   NOT_CONFIGURED: 'The app is missing configuration for this action. See the diagnostics page.',
   BAD_RESPONSE: 'The API answered with a response the app could not authenticate or validate.',
   ROUTE_NOT_FOUND: 'The API does not offer this endpoint.',

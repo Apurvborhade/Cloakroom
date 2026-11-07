@@ -48,7 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-40 bg-ink-950/85 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-8">
-            <Link href="/" aria-label="Cloakroom home">
+            <Link href="/" aria-label="nony.money home">
               <Logo />
             </Link>
             <nav aria-label="Primary" className="hidden sm:block">

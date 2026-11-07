@@ -8,6 +8,16 @@ Cloakroom does it differently. You deposit to an address we run, and your balanc
 
 The catch is trust: you're trusting the TEE hardware and one operator, not math. It also isn't anonymity. Amounts and timing are still public, and with a few users that can give you away. [Known leaks](#known-leaks) has the full list.
 
+## Screenshots
+
+| Home | Swap |
+| --- | --- |
+| ![Home page with the private balance and links to deposit, swap, withdraw and margin](docs/screenshots/home.png) | ![Swap form selling ETH for USDC with a live price and trigger price](docs/screenshots/swap.png) |
+
+| Margin | Attestation |
+| --- | --- |
+| ![Margin long form with collateral, leverage and liquidation price](docs/screenshots/margin.png) | ![Attestation page with the enclave key, build hash and trust model](docs/screenshots/attestation.png) |
+
 ## A real example
 
 We ran this on Sepolia through the real server and signer. It wasn't inside a TEE yet, so there's no confidentiality claim for this run.
