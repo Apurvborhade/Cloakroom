@@ -17,7 +17,7 @@ export interface InventoryDeps {
   keys: CustodyEoaSource;
   /** ERC-20 tokens to track. The native token is always tracked. */
   tokens: readonly Address[];
-  /** Wei every inventory EOA keeps for gas. It is never spent or counted against claims. */
+  /** Default gas allowance for selection, excluded from custody claims. */
   gasReserveWei: bigint;
 }
 
@@ -68,16 +68,16 @@ export class Inventory implements InventoryReader {
   }
 
   /**
-   * Chooses the least recently used inventory EOA that can cover the amount and still keep its
-   * gas reserve. Returns null when none can, which callers report as NO_INVENTORY.
+   * Chooses an idle, eligible EOA with enough principal and gas. A caller overriding the default
+   * allowance must check the concrete transaction's gas budget before signing.
    */
-  pick(token: Address, amount: bigint, exclude: ReadonlySet<Address>): CustodyEOA | null {
+  pick(token: Address, amount: bigint, exclude: ReadonlySet<Address>, gasRequiredWei = this.deps.gasReserveWei): CustodyEOA | null {
     const excluded = new Set([...exclude].map((address) => getAddress(address)));
     const tokenAddress = getAddress(token);
 
     const candidates = [...this.eoas.values()]
       .filter((eoa) => eoa.role === 'inventory' && !eoa.inFlight && !excluded.has(eoa.address))
-      .filter((eoa) => this.canCover(eoa.address, tokenAddress, amount))
+      .filter((eoa) => this.canCover(eoa.address, tokenAddress, amount, gasRequiredWei))
       .sort((a, b) => a.lastUsedAt - b.lastUsedAt || a.index - b.index);
 
     const chosen = candidates[0];
@@ -85,7 +85,7 @@ export class Inventory implements InventoryReader {
   }
 
   /** Sets funds aside for an operation and marks the EOA busy until free is called. */
-  hold(eoa: Address, token: Address, amount: bigint, opId: string): void {
+  hold(eoa: Address, token: Address, amount: bigint, opId: string, gasRequiredWei = this.deps.gasReserveWei): void {
     const address = getAddress(eoa);
     const tokenAddress = getAddress(token);
     const custody = this.eoas.get(address);
@@ -94,7 +94,7 @@ export class Inventory implements InventoryReader {
     if (!custody) throw new Error('UNKNOWN_EOA');
     if (custody.role !== 'inventory') throw new Error('NOT_INVENTORY');
     if (custody.inFlight) throw new Error('EOA_IN_FLIGHT');
-    if (!this.canCover(address, tokenAddress, amount)) throw new Error(ERROR_CODES.NO_INVENTORY);
+    if (!this.canCover(address, tokenAddress, amount, gasRequiredWei)) throw new Error(ERROR_CODES.NO_INVENTORY);
 
     this.useSequence += 1;
     custody.inFlight = true;
@@ -241,10 +241,11 @@ export class Inventory implements InventoryReader {
     return new Map<Address, bigint>([[NATIVE, native], ...tokens]);
   }
 
-  private canCover(eoa: Address, token: Address, amount: bigint): boolean {
+  private canCover(eoa: Address, token: Address, amount: bigint, gasRequiredWei: bigint): boolean {
+    if (gasRequiredWei < 0n) throw new Error('INVALID_GAS_BUDGET');
     const freeNative = this.freeBalance(eoa, NATIVE);
-    if (token === NATIVE) return freeNative >= amount + this.deps.gasReserveWei;
-    return freeNative >= this.deps.gasReserveWei && this.freeBalance(eoa, token) >= amount;
+    if (token === NATIVE) return freeNative >= amount + gasRequiredWei;
+    return freeNative >= gasRequiredWei && this.freeBalance(eoa, token) >= amount;
   }
 
   private freeBalance(eoa: Address, token: Address): bigint {
