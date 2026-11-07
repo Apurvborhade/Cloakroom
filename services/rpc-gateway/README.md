@@ -6,7 +6,7 @@ The native transport uses the official Nox SDK and its TLS tunnel protocol. Node
 
 The Nitro image commits to the boot configuration. It generates its TLS key inside the enclave and seals it with recipient-attested KMS under a separate vault ID. The parent forwards TCP and stores ciphertext. The parent still sees connection IPs and timing; Nox testnet deployment does not establish independence of its node operators.
 
-The parent-loopback control endpoint on port 9081 exposes `GET /csr`, `GET /status` and `POST /certificate` (PEM full chain). It never exports the private key. Obtain a public certificate from that CSR, then upload it; renewal uses the same CSR and does not change the image. RPC starts only after a matching, current certificate is installed. Back up the encrypted state. Remove the initial KMS `GenerateDataKey` grant after provisioning; runtime needs `Decrypt`. Missing state then fails closed.
+The parent-loopback control endpoint on port 9081 exposes `GET /csr`, `GET /status` and `POST /certificate` (PEM full chain). It never exports the private key. Obtain a public certificate from that CSR, then upload it; renewal uses the same CSR and does not change the image. RPC starts only after a matching, current certificate is installed. Back up the encrypted state. Remove the initial KMS `GenerateDataKey` grant after provisioning; runtime needs `Decrypt`. Losing the wrapping blob then blocks boot. Losing only the TLS identity requires a new key and certificate; no wallet funds depend on this key.
 
 Public traffic uses port 443. `GET /attestation?nonce=<32-byte hex>` binds a fresh Nitro quote to the TLS public-key hash, build and chain. Before publishing the wallet endpoint, verify it against an independently approved release:
 
