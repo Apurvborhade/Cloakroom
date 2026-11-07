@@ -30,6 +30,7 @@ export interface GatewayOptions {
   maxBatch?: number;
   maxConcurrent?: number;
   timeoutMs?: number;
+  attestation?: (nonce: string) => Promise<unknown>;
 }
 
 function bounded(value: number | undefined, fallback: number, maximum: number): number {
@@ -105,16 +106,33 @@ export function createRpcGateway(options: GatewayOptions) {
   const timeoutMs = bounded(options.timeoutMs, 15_000, 120_000);
   let active = 0;
   let transportActive = 0;
+  let quotesActive = 0;
   const respond = (response: ServerResponse, status: number, body: unknown) => {
     if (response.destroyed || response.writableEnded) return;
     let json = JSON.stringify(body);
     if (Buffer.byteLength(json) > maxResponse) { status = 502; json = JSON.stringify(error(null, -32000, 'RPC response too large')); }
-    response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...(status >= 400 ? { connection: 'close' } : {}) });
+    response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store',
+      'access-control-allow-origin': '*', ...(status >= 400 ? { connection: 'close' } : {}) });
     response.end(json);
   };
   const server = createServer({ ...options.tls, minVersion: 'TLSv1.2', handshakeTimeout: 10_000 }, async (request, response) => {
     // A peer may reset the stream after body parsing or an early rejection finished.
     request.on('error', () => {});
+    if (request.method === 'OPTIONS' && request.url === '/') {
+      response.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST',
+        'access-control-allow-headers': 'content-type', 'access-control-max-age': '600' });
+      response.end(); return;
+    }
+    if (request.method === 'GET' && request.url?.startsWith('/attestation') && options.attestation) {
+      const nonce = /^\/attestation\?nonce=([a-f0-9]{64})$/i.exec(request.url)?.[1];
+      if (!nonce) { respond(response, 400, { error: 'INVALID_NONCE' }); return; }
+      if (quotesActive >= 2) { respond(response, 429, { error: 'ATTESTATION_BUSY' }); return; }
+      quotesActive++;
+      try { respond(response, 200, await options.attestation(nonce)); }
+      catch { respond(response, 503, { error: 'ATTESTATION_UNAVAILABLE' }); }
+      finally { quotesActive--; }
+      return;
+    }
     if (request.url !== '/' || request.method !== 'POST') { respond(response, 404, error(null, -32601, 'Not found')); return; }
     if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] ?? '')) {
       respond(response, 415, error(null, -32600, 'Expected application/json')); return;

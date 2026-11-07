@@ -1,0 +1,14 @@
+[Unit]
+Description=Cloakroom RPC Nitro enclave
+Requires=nitro-enclaves-allocator.service cloakroom-rpc-parent.service
+After=nitro-enclaves-allocator.service cloakroom-rpc-parent.service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/bash /opt/cloakroom-rpc/run-enclave.sh
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

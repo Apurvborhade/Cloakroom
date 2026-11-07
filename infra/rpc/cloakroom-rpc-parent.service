@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloakroom RPC TCP and ciphertext relays
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=PYTHONPATH=/opt/cloakroom-rpc/common
+ExecStart=/usr/bin/python3 /opt/cloakroom-rpc/nitro/gateway.py parent --cid 18 --region ap-south-1 --config /etc/cloakroom-rpc/runtime.json --state /var/lib/cloakroom-rpc --common /opt/cloakroom-rpc/common
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/cloakroom-rpc
+
+[Install]
+WantedBy=multi-user.target

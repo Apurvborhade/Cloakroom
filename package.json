@@ -10,7 +10,7 @@
   "packageManager": "pnpm@10.13.1",
   "scripts": {
     "build": "pnpm --filter '@cloakroom/*' run build",
-    "typecheck": "pnpm --filter @cloakroom/shared run build && pnpm --filter '@cloakroom/*' run typecheck",
+    "typecheck": "pnpm --filter @cloakroom/shared --filter @cloakroom/attestation --filter @cloakroom/enclave run build && pnpm --filter '@cloakroom/*' run typecheck",
     "test": "pnpm --filter @cloakroom/shared run build && vitest run --test-timeout=15000",
     "test:watch": "pnpm --filter @cloakroom/shared run build && vitest --test-timeout=15000",
     "test:hpke:browser": "pnpm --filter @cloakroom/shared build && pnpm --filter @cloakroom/enclave build && node scripts/check-hpke-browser.mjs",

@@ -4,7 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node nitro/build-hash.mjs",
     "typecheck": "tsc --noEmit"
-  }
+  },
+  "dependencies": {
+    "@cloakroom/attestation": "workspace:*",
+    "@cloakroom/enclave": "workspace:*",
+    "@hisoka-io/nox-client": "0.8.0"
+  },
+  "files": ["dist", "nitro"]
 }

@@ -62,6 +62,26 @@ function post(url: string, input: unknown, headers: Record<string, string> = {})
 const call = (method = 'eth_chainId', params: unknown[] = [], id = 1) => ({ jsonrpc: '2.0', id, method, params });
 
 describe('isolated TLS RPC gateway', () => {
+  it('serves challenged attestations and wallet preflight without sending an upstream RPC', async () => {
+    const attestation = vi.fn(async (nonce: string) => ({ nonce, quote: 'synthetic' }));
+    const { url, send } = await start({ attestation });
+    const get = (path: string, method = 'GET') => new Promise<{ status: number; body: string; cors?: string }>((resolve, reject) => {
+      const req = request(new URL(path, url), { method, ca: tls.cert }, (res) => {
+        let body = ''; res.on('data', (part) => { body += part; });
+        res.on('end', () => resolve({ status: res.statusCode!, body, cors: res.headers['access-control-allow-origin'] as string }));
+      });
+      req.on('error', reject); req.end();
+    });
+    expect((await get('/attestation?nonce=bad')).status).toBe(400);
+    const nonce = 'ab'.repeat(32);
+    const response = await get(`/attestation?nonce=${nonce}`);
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ nonce, quote: 'synthetic' });
+    expect(attestation).toHaveBeenCalledExactlyOnceWith(nonce);
+    expect(await get('/', 'OPTIONS')).toEqual({ status: 204, body: '', cors: '*' });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('forwards a wallet-signed transaction unchanged and reads its confirmed receipt', async () => {
     const { url, send } = await start();
     const account = privateKeyToAccount(generatePrivateKey());

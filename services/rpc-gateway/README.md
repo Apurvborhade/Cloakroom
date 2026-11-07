@@ -1,25 +1,31 @@
-# RPC gateway prototype
+# Isolated RPC gateway
 
-A separate HTTPS JSON-RPC server that accepts wallet-signed `eth_sendRawTransaction` and common wallet reads. It has no wallet keys, custody access or escape-hatch heartbeat. Signing/admin methods are refused. Requests, responses, concurrency and timeouts are bounded; a timed-out broadcast is never retried automatically. The server does not log request payloads or client addresses.
+HTTPS JSON-RPC for wallet-signed `eth_sendRawTransaction` and common wallet reads. Wallet keys stay in the wallet. Signing/admin methods are refused. Bodies, responses, connections and timeouts are bounded. A timed-out transaction is never resubmitted automatically; query its hash before deciding what to do next. Payloads and client addresses are not logged.
 
-`createRpcGateway({ tls, transport })` requires an explicitly supplied transport. `createFetchTransport(url, anonymousFetch)` adapts an anonymous fetch; it has no direct-fetch fallback. Supplying ordinary fetch does **not** make traffic anonymous.
+The native transport uses the official Nox SDK and its TLS tunnel protocol. Node validates the upstream certificate inside the enclave; Nox exits relay encrypted TLS bytes. Repeated tunnel frames retain the same sequence and bytes, which the exit writes once. This is a Nox integration, not a completed implementation of the generic Anon-RPC Node harness. Tor and Nym adapters are not included. The separate browser compatibility probe still exercises the existing Anon-RPC browser harness.
 
-TLS terminates in this server. A future Nitro deployment must generate/seal its TLS private key inside the enclave and bind `tlsSpkiSha256(cert)` to a verified fresh attestation. The parent must forward TCP without terminating TLS. These deployment and verification steps are not implemented here. Adding a custom RPC URL to MetaMask does not itself verify Nitro attestation.
+The Nitro image commits to the boot configuration. It generates its TLS key inside the enclave and seals it with recipient-attested KMS under a separate vault ID. The parent forwards TCP and stores ciphertext. The parent still sees connection IPs and timing; Nox testnet deployment does not establish independence of its node operators.
 
-The existing Anon-RPC harness needs a browser sandbox and WebRTC. Its native Node/Nitro adapter is still missing. The external compatibility probe below runs the existing browser harness in Playwright, outside the custody service; Chromium is not an enclave runtime dependency.
+The parent-loopback control endpoint on port 9081 exposes `GET /csr`, `GET /status` and `POST /certificate` (PEM full chain). It never exports the private key. Obtain a public certificate from that CSR, then upload it; renewal uses the same CSR and does not change the image. RPC starts only after a matching, current certificate is installed. Back up the encrypted state. Remove the initial KMS `GenerateDataKey` grant after provisioning; runtime needs `Decrypt`. Missing state then fails closed.
+
+Public traffic uses port 443. `GET /attestation?nonce=<32-byte hex>` binds a fresh Nitro quote to the TLS public-key hash, build and chain. Before publishing the wallet endpoint, verify it against an independently approved release:
 
 ```sh
-pnpm exec tsc -p services/rpc-gateway/tsconfig.json --noEmit
-pnpm exec vitest run --project backend services/rpc-gateway/test
-
-ANON_RPC_SPECIFIER=<network-specifier-address> \
-ANON_RPC_BOOTSTRAP_URL=<https-rpc-for-specifier-chain> \
-ANON_RPC_TARGET_URL=<https-sepolia-rpc> \
-pnpm exec tsx services/rpc-gateway/scripts/check-anon-write.ts
+pnpm --filter @cloakroom/attestation build
+pnpm exec tsx services/rpc-gateway/scripts/verify-endpoint.ts <https-url> <trusted-release.json>
 ```
 
-The probe verifies a worker bundle through the harness, reads Sepolia through the injected transport, and submits a newly generated, unfunded account's signed transaction. Success means the upstream rejects it for insufficient funds; no assets are spent. It requires installed Playwright Chromium and an operational anonymous network. `ANON_RPC_WORKER_CONFIG` optionally supplies that network's JSON configuration. Keep credentialed endpoints out of Git and shared output.
+Adding the URL to MetaMask does not automatically verify that attestation. Browser Fetch cannot read the TLS peer certificate. No on-chain registry is required for this MVP.
 
-The local Anvil tests separately verify successful broadcast and settlement through the TLS gateway. They use a direct transport explicitly and make no anonymity claim. Neither test establishes deployed Nitro attestation or MetaMask UI compatibility.
+Local tests cover successful signed broadcast/settlement on Anvil, TLS validation through a simulated Nox exit and the parent relay, sealing/restart, limits and cancellation. An unfunded Sepolia probe exercises the real Nox network without spending assets:
 
-[Anon-RPC browser integration](https://github.com/ethereum/anon-rpc/blob/main/docs/integrate-wallet.md) · [Network deployments](https://github.com/ethereum/anon-rpc/blob/main/adopters.json5)
+```sh
+NOX_REGISTRY_RPC=<https-registry-chain-rpc> \
+NOX_REGISTRY_ADDRESS=<registry-address> \
+RPC_UPSTREAM_URL=<https-sepolia-rpc> \
+pnpm exec tsx services/rpc-gateway/scripts/check-native-write.ts
+```
+
+Keep deployment configuration outside Git. Build with `services/rpc-gateway/Dockerfile` and `RPC_CONFIG_SHA256=<sha256 of exact config bytes>`. `nitro/gateway.py parent` runs the CID-restricted relays; only its certificate-control socket is bound to loopback. TLS terminates in the enclave, so a parent proxy must not terminate HTTPS. Deployment also requires a Nitro-enabled host, matching KMS policy and public DNS/certificate.
+
+[Nox SDK](https://github.com/hisoka-io/nox-sdk) · [Anon-RPC native harness status](https://github.com/ethereum/anon-rpc/tree/main/impl/node-harness)
