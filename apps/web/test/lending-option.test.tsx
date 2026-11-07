@@ -19,7 +19,9 @@ vi.mock('@/hooks/use-private-data', () => ({
 }));
 
 const { LendingOption } = await import('@/components/simple/lending-option');
-const renderOption = () => render(<LendingOption token={NATIVE} symbol="ETH" decimals={18} />);
+const renderOption = (props: { lendDeposit?: boolean; onChange?: (on: boolean) => void; locked?: boolean } = {}) => render(
+  <LendingOption token={NATIVE} symbol="ETH" decimals={18} lendDeposit={props.lendDeposit ?? false} onLendDepositChange={props.onChange ?? (() => undefined)} locked={props.locked} />,
+);
 
 describe('lending change', () => {
   it('takes back everything when the pool can pay it', () => {
@@ -43,24 +45,45 @@ describe('lending info', () => {
     state.redeem = vi.fn();
   });
 
-  it('is information only, with no checkbox or way to lend', () => {
-    renderOption();
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    expect(screen.queryByRole('radiogroup')).toBeNull();
-    expect(screen.queryByRole('button', { name: /Lend/ })).toBeNull();
+  it('is off by default, and the switch asks to turn it on', () => {
+    const onChange = vi.fn();
+    renderOption({ onChange });
+    const toggle = screen.getByRole('switch', { name: 'Lend this deposit to margin traders' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it('warns about the extra signature only when on', () => {
+    renderOption({ lendDeposit: true });
+    expect(screen.getByText(/sign once more/)).toBeTruthy();
+  });
+
+  it('cannot be changed once the deposit has finished', () => {
+    renderOption({ lendDeposit: true, locked: true });
+    expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('never shows the APY without saying it is not paid yet', () => {
     renderOption();
-    expect(screen.getByText('Lending to margin traders: 7% APY (planned, not paid yet)')).toBeTruthy();
+    expect(screen.getByText('Lend to margin traders: 7% APY (planned, not paid yet)')).toBeTruthy();
   });
 
-  it('explains the risks on request', () => {
+  it('explains the risks on hover', () => {
     renderOption();
+    const help = screen.getByRole('button', { name: 'What are the risks of lending?' });
     expect(screen.queryByText(/Lenders can lose money/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'What are the risks of lending?' }));
+    fireEvent.mouseEnter(help.parentElement!);
     expect(screen.getByText(/Lenders can lose money/)).toBeTruthy();
     expect(screen.getByText(/No interest is paid yet/)).toBeTruthy();
+    fireEvent.mouseLeave(help.parentElement!);
+    expect(screen.queryByText(/Lenders can lose money/)).toBeNull();
+  });
+
+  it('keeps the risks open after a tap, for touch screens', () => {
+    renderOption();
+    fireEvent.click(screen.getByRole('button', { name: 'What are the risks of lending?' }));
+    expect(screen.getByText(/Lenders can lose money/)).toBeTruthy();
   });
 
   it('lets someone with lent funds take them back', () => {
