@@ -6,7 +6,7 @@ export const chainReader = new ChainReader(appConfig.chainRead);
 
 /** Which browser reads exist and where they go, for the diagnostics panel and README. */
 export const BROWSER_READS = [
-  { name: 'Cloakroom API requests (encrypted)', methods: ['every API route, unless you choose a direct connection'] },
+  { name: 'nony.money API requests (encrypted)', methods: ['every API route, unless you choose a direct connection'] },
   { name: 'Deposit transaction receipts', methods: ['eth_getTransactionReceipt'] },
   { name: 'Wallet ETH balance', methods: ['eth_getBalance'] },
   { name: 'Wallet USDC balance', methods: ['eth_call (balanceOf)'] },

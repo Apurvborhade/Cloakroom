@@ -44,7 +44,7 @@ interface SentFunds {
   token?: Hash;
 }
 
-const USDC_UNAVAILABLE = "The Cloakroom server doesn't accept USDC deposits yet, so nothing was sent. Choose ETH to deposit now, then swap it for USDC.";
+const USDC_UNAVAILABLE = "The nony.money server doesn't accept USDC deposits yet, so nothing was sent. Choose ETH to deposit now, then swap it for USDC.";
 
 const STATUS_LABEL: Record<string, string> = {
   awaiting_funds: 'Waiting for your transfer',
@@ -329,7 +329,7 @@ export function SimpleDeposit() {
         <div className="py-1">
           {usdcBlocked && <StatusLine tone="bad" title="USDC deposits aren't available yet">{USDC_UNAVAILABLE}</StatusLine>}
           {!isEth && !usdcBlocked && <p className="px-3 py-1 text-sm text-fg-subtle">This ETH goes to the same address as your USDC. The minimum pays for gas later and isn't credited. Anything above it is added to your balance.</p>}
-          {assetBalance && <Detail label="Your Cloakroom balance">{display(BigInt(assetBalance.available), token.decimals)} {token.symbol}</Detail>}
+          {assetBalance && <Detail label="Your nony.money balance">{display(BigInt(assetBalance.available), token.decimals)} {token.symbol}</Detail>}
         </div>
       )}
 
@@ -364,11 +364,11 @@ export function SimpleDeposit() {
       {credited && (
         <StatusLine tone="ok" title="Deposit complete">
           {session && BigInt(session.tokenCredited) > 0n
-            ? `${display(BigInt(session.tokenCredited), token.decimals)} ${token.symbol}${BigInt(session.nativeCredited) > 0n ? ` and ${display(BigInt(session.nativeCredited), 18)} ETH` : ''} ${BigInt(session.nativeCredited) > 0n ? 'are' : 'is'} now in your Cloakroom balance.`
+            ? `${display(BigInt(session.tokenCredited), token.decimals)} ${token.symbol}${BigInt(session.nativeCredited) > 0n ? ` and ${display(BigInt(session.nativeCredited), 18)} ETH` : ''} ${BigInt(session.nativeCredited) > 0n ? 'are' : 'is'} now in your nony.money balance.`
             : session && BigInt(session.nativeCredited) > 0n
-              ? `${display(BigInt(session.nativeCredited), 18)} ETH is now in your Cloakroom balance.`
+              ? `${display(BigInt(session.nativeCredited), 18)} ETH is now in your nony.money balance.`
               : amount !== null
-                ? `${display(amount, token.decimals)} ${token.symbol} is now in your Cloakroom balance.`
+                ? `${display(amount, token.decimals)} ${token.symbol} is now in your nony.money balance.`
                 : 'Your balance has been updated.'}
         </StatusLine>
       )}

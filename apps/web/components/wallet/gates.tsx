@@ -27,7 +27,7 @@ function GateCard({ title, children, action }: { title: string; children: ReactN
 }
 
 /** Children render only with a connected wallet on the configured chain. */
-export function RequireWallet({ children, purpose = 'use Cloakroom' }: { children: ReactNode; purpose?: string }) {
+export function RequireWallet({ children, purpose = 'use nony.money' }: { children: ReactNode; purpose?: string }) {
   const { isConnected, isConnecting, wrongChain, walletChainId } = useOwner();
   const { openConnectModal } = useConnectModal();
   const { switchChain, isPending } = useSwitchChain();
@@ -35,7 +35,7 @@ export function RequireWallet({ children, purpose = 'use Cloakroom' }: { childre
   if (!isConnected) {
     return (
       <GateCard title="Connect a wallet" action={<Button onClick={openConnectModal}>Connect wallet</Button>}>
-        Connect the Ethereum wallet you want to {purpose} with. It signs structured EIP-712 messages; Cloakroom never sees its private key.
+        Connect the Ethereum wallet you want to {purpose} with. It signs structured EIP-712 messages; nony.money never sees its private key.
       </GateCard>
     );
   }

@@ -234,7 +234,7 @@ describe('deposit screen', () => {
     state.statuses = { data: { deposits: [status({ status: 'credited', nativeReceived: '40000000000000000', nativeCredited: '30000000000000000' })] } };
     rerender(<SimpleDeposit />);
     expect(await screen.findByText('Deposit complete')).toBeTruthy();
-    expect(screen.getByText(/0.03 ETH is now in your Cloakroom balance/)).toBeTruthy();
+    expect(screen.getByText(/0.03 ETH is now in your nony.money balance/)).toBeTruthy();
     expect(main().textContent).toBe('Start a new deposit');
     fireEvent.click(main());
     expect(screen.getByLabelText('Amount')).toBeTruthy();
