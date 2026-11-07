@@ -8,6 +8,7 @@ import { custodyRoutes } from './custody-routes.js';
 import type { CustodyRuntime } from './custody-runtime.js';
 import { apiRoutes } from './routes.js';
 import type { ApiDeps } from './routes.js';
+import { EscapeHatchService } from './escape.js';
 import { Executor } from './executor.js';
 import type { RecoveredOperation, SwapDeps } from './executor.js';
 import { IntentOrders } from './intent-orders.js';
@@ -71,6 +72,7 @@ export interface BootOptions {
 
 export interface EnclaveParts {
   auth: AuthService;
+  escape?: EscapeHatchService;
   executor: Executor;
   intentOrders: IntentOrders;
   intents: InMemoryIntentStore;
@@ -135,6 +137,12 @@ export async function buildApp(options: {
     } finally {
       attestationsInFlight -= 1;
     }
+  });
+
+  app.get('/escape/identity', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return { escapeSigner: keys.escapeSignerAddress(), chainId: config.CHAIN_ID,
+      enabled: Boolean(config.ESCAPE_HATCH_ADDRESS), unverified: true };
   });
 
   // Simulation has no quote to prove this key, so clients must not treat it as attested.
@@ -394,10 +402,26 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   log(stuck === 0 ? 'RECOVERY_DONE' : 'RECOVERY_DONE_WITH_LOCKED_FUNDS');
   await step('expiry', () => intentOrders.expireDue());
 
+  let escape: EscapeHatchService | undefined;
+  if (config.ESCAPE_HATCH_ADDRESS) {
+    escape = new EscapeHatchService({ chain, chainId: config.CHAIN_ID, hatch: config.ESCAPE_HATCH_ADDRESS,
+      keys, ledger, journal: openedJournal, queue, confirmations, receiptTimeoutMs: config.RECEIPT_TIMEOUT_MS,
+      gasMarginPercent: BigInt(config.GAS_MARGIN_PERCENT), healthy: () => stuck === 0,
+      onError: () => log('ESCAPE_UNAVAILABLE') });
+    await step('escape', () => escape!.init());
+  } else {
+    await step('escape', () => {
+      if (keys.escapePending() || ledger.escape.all().some((record) => record.status !== 'failed' && record.status !== 'claimed')) {
+        throw new Error('ESCAPE_CONFIGURATION_REQUIRED');
+      }
+    });
+  }
+
+
   const app = await step('routes', () =>
     buildApp({
       api: {
-        auth, config, intentOrders, intents, inventory, keys, ledger, watcher, withdrawalOrders, withdrawalStatuses,
+        auth, config, intentOrders, intents, inventory, keys, ledger, watcher, withdrawalOrders, withdrawalStatuses, escape,
         ...(margin
           ? {
               margin: {
@@ -433,6 +457,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
   await step('listen', () => app.listen(options.socketPath
     ? { path: options.socketPath } : { host: config.HOST, port: config.PORT }));
   log('LISTENING');
+  if (escape) cleanups.push(escape.start());
 
   const drainSwaps = async () => {
     const deadline = Date.now() + drainTimeoutMs;
@@ -456,7 +481,7 @@ export async function bootEnclave(options: BootOptions): Promise<RunningEnclave>
 
   return {
     app,
-    parts: { auth, executor, intentOrders, intents, inventory, journal: openedJournal, keys, ledger, margin, pipeline, poller, queue, watcher, withdrawalOrders, withdrawalStatuses },
+    parts: { auth, escape, executor, intentOrders, intents, inventory, journal: openedJournal, keys, ledger, margin, pipeline, poller, queue, watcher, withdrawalOrders, withdrawalStatuses },
     recovery,
     stop,
   };

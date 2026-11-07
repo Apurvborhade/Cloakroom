@@ -156,6 +156,24 @@ Poll `/deposits/status` for `awaiting_funds`, `awaiting_gas`, `awaiting_token`, 
 
 For freshness, supply `?nonce=<hex>` with 32–64 random bytes encoded as lowercase hex. The document signs that nonce, the raw public key in `public_key`, and `sha256(rawPublicKey || rawBuildHash)` in `user_data`. Decode the build hash from hex before concatenation. Verify against trusted PCR0–2 from the build, not just the response's build hash. The attestation-only bootstrap key changes on restart. Custody attestation uses the sealed `KeyManager` identity, which survives state restoration. A new vault rotates the key and EIP-712 domain salt.
 
+With escape protection enabled, the response also contains `escapeSigner`. Its binding is `sha256(UTF8("cloakroom/attestation/escape/v1\0") || rawPublicKey || rawBuildHash || rawEscapeSigner)`, where the last field is 20 bytes. Use `scripts/verify-attestation.py --escape-signer <address>` with trusted measurements to check the contract's signer. Publishing this response on-chain would not by itself verify it.
+
+### ETH escape hatch (optional)
+
+Enabled by `ESCAPE_HATCH_ADDRESS`. It covers one fixed ETH amount from the separate contract reserve. Activation requires the entire available ETH balance, closed deposit sessions, no other token balance or reservations, and no spot-intent, lending or margin history. The amount stays reserved through restarts and cannot be withdrawn or traded normally. Later deposits are not added to the claim.
+
+| Endpoint | Authentication | Response |
+| --- | --- | --- |
+| `GET /escape/identity` | Public, including before configuration | `{ escapeSigner, chainId, enabled, unverified: true }`; a deployment hint, not an attestation |
+| `POST /escape/activate` | Owner signs `EIP712_TYPES.EscapeActivate`; HPKE envelope | `{ claim }` after reserving the balance; poll for registration |
+| `POST /escape/status` | Encrypted `SessionQuery` | `{ claim, hatch, escapeSigner, expired, lastHeartbeat, timeout }` |
+
+Generate and save a random 32-byte `code` before activation. Compute `claimId` with `escapeClaimId(chainId, hatch, owner, code)` from `@cloakroom/shared`. The activation plaintext is `{ message: { owner, hatch, claimId, amount, nonce, expiry }, signature, code }`; integer fields use decimal strings. The code is checked against the signed claim ID and then discarded, never journaled.
+
+Activation may return `ESCAPE_INELIGIBLE`, `ESCAPE_ALREADY_REGISTERED` or `ESCAPE_UNAVAILABLE` (exported as `ESCAPE_ERROR_CODES`). There is no deactivation or code replacement.
+
+Claim status is `reserved`, `broadcast`, `registered`, `failed` or `claimed`; records include the amount and, when available, the transaction hash or failure reason. Show protection as active only at `registered`. An uncertain transaction keeps the funds reserved. After the contract timeout, the same owner wallet calls `claim(code)` through Etherscan or another client using an independent RPC. The wallet needs gas. This path needs neither the application nor a fresh enclave signature. Registration amounts and claims are public. See [contract instructions](../contracts/README.md).
+
 ### Example: create an intent (inner JSON before sealing)
 
 ```json

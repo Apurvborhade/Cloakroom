@@ -31,7 +31,8 @@ function validEnv(overrides: Record<string, string | undefined> = {}) {
 
 describe('loadConfig', () => {
   it('stays in step with .env.example', () => {
-    expect(Object.keys(readExample()).sort()).toEqual([...ENV_VARIABLES].sort());
+    expect(Object.keys(readExample()).sort()).toEqual(ENV_VARIABLES.filter((name) => name !== 'ESCAPE_HATCH_ADDRESS').sort());
+    expect(readFileSync(EXAMPLE_PATH, 'utf8')).toContain('# ESCAPE_HATCH_ADDRESS=');
   });
 
   it('parses every kind of value', () => {
@@ -67,7 +68,7 @@ describe('loadConfig', () => {
     expect(config.FEE_BPS).toBe(0);
   });
 
-  it.each(ENV_VARIABLES.filter((name) => name !== 'MARGIN_ENABLED'))('refuses to start without %s', (name) => {
+  it.each(ENV_VARIABLES.filter((name) => !['MARGIN_ENABLED', 'ESCAPE_HATCH_ADDRESS'].includes(name)))('refuses to start without %s', (name) => {
     expect(() => loadConfig(validEnv({ [name]: undefined }))).toThrow(name);
   });
 

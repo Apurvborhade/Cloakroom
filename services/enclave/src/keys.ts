@@ -1,8 +1,8 @@
 import { createCipheriv, createDecipheriv, createSecretKey, hkdfSync, randomBytes } from 'node:crypto';
 import { inspect } from 'node:util';
-import { createTransportSuite, NATIVE, PERMIT2_ADDRESS } from '@cloakroom/shared';
+import { createTransportSuite, ESCAPE_HATCH_ABI, NATIVE, PERMIT2_ADDRESS } from '@cloakroom/shared';
 import type { CustodyEOA, Envelope, Journal, JournalEvent } from '@cloakroom/shared';
-import { encodeFunctionData, getAddress, keccak256, parseAbi, serializeTransaction } from 'viem';
+import { encodeFunctionData, getAddress, keccak256, parseAbi, parseTransaction, serializeTransaction } from 'viem';
 import type { Address, Hex, TransactionSerializableEIP1559 } from 'viem';
 import { HDKey, hdKeyToAccount } from 'viem/accounts';
 import { z } from 'zod';
@@ -17,6 +17,7 @@ const STATE_SCHEMA = z.object({
   version: z.literal(1), seed: z.string().regex(/^[a-f0-9]{64}$/),
   allocations: z.array(z.enum(['deposit', 'inventory'])).max(10_000),
   seedingClaimed: z.boolean().default(false),
+  escapePending: z.object({ raw: HEX, nonce: z.number().int().nonnegative(), id: z.string().optional() }).strict().optional(),
   signedOperations: z.array(z.object({
     opId: z.string().min(1).max(128), index: z.number().int().nonnegative(), raw: HEX,
     requestHash: z.string().regex(/^0x[a-f0-9]{64}$/),
@@ -55,6 +56,7 @@ export interface SigningPolicy {
   };
   /** Present only when margin trading is switched on. */
   margin?: { wethAddress: Address };
+  escapeHatch?: Address;
 }
 
 export interface JournalCipher {
@@ -95,7 +97,7 @@ export class KeyManager implements TransactionSigner {
       if (swaps && (!Number.isInteger(swaps.tokenOutDecimals)
           || swaps.tokenOutDecimals < 0 || swaps.tokenOutDecimals > 255
           || !Number.isInteger(swaps.feeBps) || swaps.feeBps < 0 || swaps.feeBps >= 10_000)) throw new Error();
-      this.#policy = Object.freeze({ ...policy, ...(swaps ? { swaps: Object.freeze({
+      this.#policy = Object.freeze({ ...policy, ...(policy.escapeHatch ? { escapeHatch: getAddress(policy.escapeHatch) } : {}), ...(swaps ? { swaps: Object.freeze({
         routerAddress: getAddress(swaps.routerAddress), tokenOut: getAddress(swaps.tokenOut),
         tokenOutDecimals: swaps.tokenOutDecimals, feeBps: swaps.feeBps,
       }) } : {}) });
@@ -220,6 +222,79 @@ export class KeyManager implements TransactionSigner {
     this.#ready();
     if (!this.#initialized || !this.#transportPublicKey) throw new Error('KEY_MANAGER_UNAVAILABLE');
     return this.#transportPublicKey;
+  }
+
+  #escapeAccount() {
+    if (!this.#initialized) throw new Error('KEY_MANAGER_UNAVAILABLE');
+    const seed = this.#derive('cloakroom/escape/v1');
+    try { return hdKeyToAccount(HDKey.fromMasterSeed(seed)); }
+    finally { seed.fill(0); }
+  }
+
+  escapeSignerAddress(): Address { return this.#escapeAccount().address; }
+  attestedEscapeSigner(): Address | undefined {
+    return this.#policy.escapeHatch ? this.escapeSignerAddress() : undefined;
+  }
+
+  /** Registration bytes are journaled before broadcast. Heartbeats spend no custody principal. */
+  signEscape(input: TransactionSerializableEIP1559, id?: string): Promise<Hex> {
+    const tx = Object.freeze({ ...input });
+    return this.#queue.run(async () => {
+      await this.#restoreSigningState();
+      const allowed = new Set(['type', 'chainId', 'nonce', 'to', 'value', 'data', 'gas', 'maxFeePerGas', 'maxPriorityFeePerGas']);
+      if (this.#ready().escapePending || !this.#policy.escapeHatch || Object.keys(tx).some((field) => !allowed.has(field))
+          || tx.type !== 'eip1559' || tx.chainId !== this.#policy.chainId || !tx.to
+          || getAddress(tx.to) !== this.#policy.escapeHatch || tx.value !== 0n
+          || typeof tx.nonce !== 'number' || !Number.isSafeInteger(tx.nonce) || tx.nonce < 0
+          || typeof tx.gas !== 'bigint' || tx.gas <= 0n || tx.gas > this.#policy.maxGas
+          || typeof tx.maxFeePerGas !== 'bigint' || tx.maxFeePerGas <= 0n || tx.maxFeePerGas > this.#policy.maxFeePerGas
+          || typeof tx.maxPriorityFeePerGas !== 'bigint' || tx.maxPriorityFeePerGas < 0n
+          || tx.maxPriorityFeePerGas > this.#policy.maxPriorityFeePerGas || tx.maxPriorityFeePerGas > tx.maxFeePerGas) throw denied();
+      let data: Hex;
+      if (id === undefined) {
+        data = encodeFunctionData({ abi: ESCAPE_HATCH_ABI, functionName: 'heartbeat' });
+      } else {
+        let approved: Extract<JournalEvent, { t: 'ESCAPE_RESERVED' }> | undefined;
+        const reservations: Extract<JournalEvent, { t: 'ESCAPE_RESERVED' }>[] = [];
+        const failed = new Set<string>();
+        for await (const { event } of this.#journal.replay()) {
+          if (event.t === 'ESCAPE_RESERVED') reservations.push(event);
+          if (event.t === 'ESCAPE_FAILED') failed.add(event.id);
+          if (event.t === 'ESCAPE_RESERVED' && event.id === id) {
+            if (approved) throw denied();
+            approved = event;
+          }
+          if ((event.t === 'ESCAPE_BROADCAST' || event.t === 'ESCAPE_REGISTERED'
+              || event.t === 'ESCAPE_FAILED' || event.t === 'ESCAPE_CLAIMED') && event.id === id) throw denied();
+        }
+        if (!approved || getAddress(approved.hatch) !== this.#policy.escapeHatch || approved.amount <= 0n) throw denied();
+        if (reservations.some((entry) => entry.id !== id && !failed.has(entry.id)
+            && (getAddress(entry.owner) === getAddress(approved!.owner) || entry.claimId.toLowerCase() === approved!.claimId.toLowerCase()))) throw denied();
+        data = encodeFunctionData({ abi: ESCAPE_HATCH_ABI, functionName: 'registerClaim', args: [approved.claimId, approved.amount] });
+      }
+      if (tx.data !== data) throw denied();
+      const raw = await this.#escapeAccount().signTransaction(tx);
+      await this.#persist({ ...this.#ready(), escapePending: { raw, nonce: tx.nonce, ...(id ? { id } : {}) } });
+      return raw;
+    });
+  }
+
+  escapePending(): { raw: Hex; nonce: number; id?: string } | undefined {
+    const pending = this.#ready().escapePending;
+    if (!pending) return undefined;
+    const tx = parseTransaction(pending.raw as Hex);
+    if (!this.#policy.escapeHatch || !tx.to || getAddress(tx.to) !== this.#policy.escapeHatch
+        || tx.chainId !== this.#policy.chainId || (tx.value ?? 0n) !== 0n) throw denied();
+    return { ...pending, raw: pending.raw as Hex };
+  }
+
+  clearEscapePending(txHash: Hex): Promise<void> {
+    return this.#queue.run(async () => {
+      const current = this.#ready();
+      if (!current.escapePending || keccak256(current.escapePending.raw as Hex) !== txHash) throw denied();
+      const { escapePending: _pending, ...next } = current;
+      await this.#persist(next);
+    });
   }
 
   /** Authorization belongs to the admin route. Persist consumption before disclosure. */

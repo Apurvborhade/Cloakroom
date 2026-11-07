@@ -81,6 +81,44 @@ class VerificationTests(unittest.TestCase):
     def test_valid_signed_document(self):
         self.assertTrue(self.verify()["ok"])
 
+    def escape_response(self):
+        signer = "0x" + "aB" * 20
+        document = deepcopy(self.document)
+        document["user_data"] = hashlib.sha256(
+            b"cloakroom/attestation/escape/v1\0" + self.public_key
+            + bytes.fromhex(self.build_hash) + bytes.fromhex(signer[2:])).digest()
+        return {**self.response(document), "escapeSigner": signer}
+
+    def test_bound_escape_signer(self):
+        response = self.escape_response()
+        result = self.verify(response, expected_escape_signer=response["escapeSigner"].lower())
+        self.assertEqual(result["escapeSigner"], response["escapeSigner"].lower())
+
+    def test_escape_signer_cannot_be_changed_or_removed(self):
+        for replacement in [None, "0x" + "cd" * 20]:
+            with self.subTest(replacement=replacement), self.assertRaisesRegex(ValueError, "binding"):
+                response = self.escape_response()
+                if replacement is None:
+                    del response["escapeSigner"]
+                else:
+                    response["escapeSigner"] = replacement
+                self.verify(response)
+
+    def test_old_quote_cannot_claim_an_escape_signer(self):
+        response = {**self.response(), "escapeSigner": "0x" + "ab" * 20}
+        with self.assertRaisesRegex(ValueError, "binding"):
+            self.verify(response)
+
+    def test_expected_escape_signer_is_required_and_must_match(self):
+        for response in [self.response(), self.escape_response()]:
+            with self.subTest(response=response.get("escapeSigner")), self.assertRaisesRegex(ValueError, "Wrong escape signer"):
+                self.verify(response, expected_escape_signer="0x" + "cd" * 20)
+
+    def test_malformed_escape_signer(self):
+        for value in [None, 1, "0x" + "00" * 20, "0x" + "ab" * 19, "0x" + "xx" * 20]:
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "Invalid escape signer"):
+                self.verify({**self.escape_response(), "escapeSigner": value})
+
     def test_nitro_leaf_without_authority_key_identifier(self):
         document = deepcopy(self.document)
         leaf = certificate(self.signing_key, "Nitro-style leaf", "test root",

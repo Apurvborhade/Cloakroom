@@ -15,7 +15,7 @@ import {
   wireToSessionQueryMsg,
   wireToWithdrawalMsg,
 } from '@cloakroom/shared';
-import type { Envelope, ErrorCode, IntentMsg, SessionQueryMsg, WithdrawalMsg } from '@cloakroom/shared';
+import type { Envelope, ErrorCode, EscapeErrorCode, IntentMsg, SessionQueryMsg, WithdrawalMsg } from '@cloakroom/shared';
 import type { FastifyInstance } from 'fastify';
 import { getAddress } from 'viem';
 import type { Address, Hex } from 'viem';
@@ -28,6 +28,8 @@ import type { InMemoryIntentStore } from './intents.js';
 import type { Inventory } from './inventory.js';
 import type { KeyManager } from './keys.js';
 import type { InMemoryLedger } from './ledger.js';
+import { escapeRoutes } from './escape-routes.js';
+import type { EscapeHatchService } from './escape.js';
 import { marginRoutes } from './margin-routes.js';
 import type { MarginRouteDeps } from './margin-routes.js';
 import type { DepositWatcher } from './watcher.js';
@@ -38,7 +40,10 @@ const WIRE_BODY_LIMIT_BYTES = 24 * 1024;
 const MS_PER_SECOND = 1000;
 const SESSION_ID_BYTES = 32;
 
-const ERROR_STATUS: Partial<Record<ErrorCode, number>> = {
+const ERROR_STATUS: Partial<Record<ErrorCode | EscapeErrorCode, number>> = {
+  ESCAPE_INELIGIBLE: 409,
+  ESCAPE_UNAVAILABLE: 503,
+  ESCAPE_ALREADY_REGISTERED: 409,
   BAD_SIGNATURE: 401,
   UNKNOWN_SESSION: 401,
   UNAUTHORIZED: 403,
@@ -70,6 +75,7 @@ export interface ApiDeps {
   withdrawalStatuses: Pick<WithdrawalStatuses, 'listByOwner'>;
   /** Present only when MARGIN_ENABLED is set. Without it the margin routes do not exist. */
   margin?: MarginRouteDeps;
+  escape?: EscapeHatchService;
 }
 
 function nowSec(): number {
@@ -91,7 +97,7 @@ export function privateRoute<T>(
 ): void {
   app.post<{ Body: Envelope }>(path, { bodyLimit: WIRE_BODY_LIMIT_BYTES }, async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
-    const refuse = (code: ErrorCode) => reply.code(ERROR_STATUS[code] ?? 500).send({ error: code });
+    const refuse = (code: ErrorCode | EscapeErrorCode) => reply.code(ERROR_STATUS[code] ?? 500).send({ error: code });
 
     let channel;
     try {
@@ -155,6 +161,7 @@ function assertPayableWithdrawal(withdrawal: WithdrawalMsg, config: EnclaveConfi
 }
 
 export function apiRoutes(app: FastifyInstance, deps: ApiDeps): void {
+  if (deps.escape) escapeRoutes(app, { keys: deps.keys, auth: deps.auth, escape: deps.escape });
   const {
     auth,
     config,

@@ -13,3 +13,4 @@ export * from './schemas/envelope.js';
 export * from './schemas/api.js';
 export * from './schemas/journal.js';
 export * from './transport.js';
+export * from './escape.js';

@@ -10,6 +10,7 @@ import {
   uint256StringSchema,
 } from './common.js';
 import type {
+  EscapeActivateMsg,
   SessionGrantMsg,
   SessionQueryMsg,
   DepositRequestMsg,
@@ -267,6 +268,7 @@ export const StandardErrorResponseSchema = z.object({
 export type StandardErrorResponse = z.infer<typeof StandardErrorResponseSchema>;
 
 export const AttestationResponseSchema = z.object({
+  escapeSigner: addressSchema.optional(),
   quote: z.string(),
   enclavePubKey: hexSchema,
   buildHash: hex32Schema,
@@ -385,4 +387,13 @@ export function wireToPriceReport(wire: PriceReportWire): PriceReport {
     ts: wire.ts,
     source: wire.source,
   };
+}
+
+export const EscapeActivateWireSchema = z.object({
+  owner: addressSchema, hatch: addressSchema, claimId: hex32Schema,
+  amount: uint256StringSchema, nonce: uint64StringSchema, expiry: uint64StringSchema,
+}).strict();
+export const SignedEscapeActivateSchema = createSignedRequestSchema(EscapeActivateWireSchema).extend({ code: hex32Schema }).strict();
+export function wireToEscapeActivateMsg(value: z.infer<typeof EscapeActivateWireSchema>): EscapeActivateMsg {
+  return { ...value, amount: BigInt(value.amount), nonce: BigInt(value.nonce), expiry: BigInt(value.expiry) };
 }

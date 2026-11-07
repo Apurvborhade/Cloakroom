@@ -35,6 +35,22 @@ test('keeps the transport key for one boot and rotates it for a new boot', async
   assert.notEqual((await first.response()).enclavePubKey, (await second.response()).enclavePubKey);
 });
 
+test('binds the optional escape signer with a separate attestation domain', async () => {
+  const identity = await createBootstrapIdentity();
+  const escapeSigner = '0x1111111111111111111111111111111111111111';
+  const requests: Parameters<QuoteProvider>[0][] = [];
+  const service = new AttestationService(buildHash, {
+    chainId: 11155111, identity: { ...identity, attestedEscapeSigner: () => escapeSigner },
+    provider: async (request) => { requests.push(request); return Buffer.from('quote'); },
+  });
+  const response = await service.response();
+  AttestationResponseSchema.parse(response);
+  assert.equal(response.escapeSigner, escapeSigner);
+  assert.deepEqual(requests[0]!.userData, createHash('sha256').update('cloakroom/attestation/escape/v1\0')
+    .update(Buffer.from(response.enclavePubKey.slice(2), 'hex')).update(Buffer.from(buildHash, 'hex'))
+    .update(Buffer.from(escapeSigner.slice(2), 'hex')).digest());
+});
+
 test('does not return simulated attestation when NSM fails', async () => {
   const service = new AttestationService(buildHash, { chainId: 11155111, identity: await createBootstrapIdentity(), provider: async () => { throw new Error('No NSM'); } });
   await assert.rejects(service.response(), /No NSM/);
