@@ -32,7 +32,7 @@ function AccountCard() {
             {wrongChain ? <Badge tone="bad" dot>Chain {walletChainId} (expected {appConfig.chainId})</Badge> : <Badge tone="ok" dot>{appConfig.chain.name}</Badge>}
           </KeyValue>
           <KeyValue label="Enclave mode">
-            {identity?.mode === 'simulated' ? <Badge tone="warn" dot>TEE-simulated</Badge> : identity ? <Badge tone="accent" dot>Attested · unverified in browser</Badge> : <Badge tone="neutral">Unknown</Badge>}
+            {identity?.mode === 'simulated' ? <Badge tone="warn" dot>TEE-simulated</Badge> : identity?.mode === 'attested-verified' ? <Badge tone="ok" dot>Attestation verified</Badge> : identity ? <Badge tone="accent" dot>Attested · unverified in browser</Badge> : <Badge tone="neutral">Unknown</Badge>}
           </KeyValue>
           <KeyValue label="Read session"><SessionIndicator /></KeyValue>
         </KeyValueList>

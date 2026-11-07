@@ -24,6 +24,7 @@ import { Address as AddressText } from '../ui/address';
 import { Countdown } from '../ui/countdown';
 import { BalanceFreshness, DebugItem, DebugPanel, Elapsed } from './debug';
 import { LendingOption } from './lending-option';
+import { WalletRpc } from './wallet-rpc';
 import { ActionButton, AmountBox, Detail, SimpleCard, StatusLine } from './parts';
 
 interface ActiveDeposit {
@@ -443,6 +444,7 @@ export function SimpleDeposit() {
       <p className="px-3 pb-1 pt-1 text-center text-xs text-fg-subtle">
         Your deposit is public on-chain. What stays private is which swap or withdrawal is yours.
       </p>
+      {!active && <WalletRpc />}
     </SimpleCard>
   );
 }

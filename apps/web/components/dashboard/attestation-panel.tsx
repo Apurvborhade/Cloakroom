@@ -37,6 +37,10 @@ export function AttestationPanel({ detailed = false }: { detailed?: boolean }) {
                 The key came from <span className="font-mono">GET /sim/enclave-key</span>. It is not attested and there is no Nitro confidentiality: the operator can read every request.
                 {identity.attestationFailure && <> /attestation answered {identity.attestationFailure}.</>}
               </Notice>
+            ) : identity.mode === 'attested-verified' ? (
+              <Notice tone="ok" title="Attestation verified in this browser">
+                The quote's AWS signature, certificate chain, freshness, enclave key and PCR measurements all match the release pinned in this site's build. That pin comes from this site, so for an independent check, run the command below yourself.
+              </Notice>
             ) : (
               <Notice tone="info" title="Attestation data received · not verified in this browser">
                 The API returned a Nitro attestation document, but this app does not verify its signature, certificate chain or PCR measurements. Until you verify it yourself against trusted measurements, treat the key as unverified.
@@ -44,7 +48,7 @@ export function AttestationPanel({ detailed = false }: { detailed?: boolean }) {
             )}
             <KeyValueList>
               <KeyValue label="Status">
-                {identity.mode === 'simulated' ? <Badge tone="warn" dot>Simulated</Badge> : <Badge tone="accent" dot>Received · unverified</Badge>}
+                {identity.mode === 'simulated' ? <Badge tone="warn" dot>Simulated</Badge> : identity.mode === 'attested-verified' ? <Badge tone="ok" dot>Verified</Badge> : <Badge tone="accent" dot>Received · unverified</Badge>}
               </KeyValue>
               <KeyValue label="Chain ID">{identity.chainId}</KeyValue>
               <KeyValue label="Enclave key (X25519)"><Address value={identity.enclavePubKey} head={10} tail={8} /></KeyValue>

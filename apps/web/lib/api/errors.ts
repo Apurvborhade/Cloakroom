@@ -12,6 +12,7 @@ export const CLIENT_ERROR_CODES = {
   WRONG_WALLET_CHAIN: 'WRONG_WALLET_CHAIN',
   NO_SESSION: 'NO_SESSION',
   ENCLAVE_UNAVAILABLE: 'ENCLAVE_UNAVAILABLE',
+  ATTESTATION_INVALID: 'ATTESTATION_INVALID',
 } as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[keyof typeof CLIENT_ERROR_CODES];
@@ -65,6 +66,7 @@ const MESSAGES: Record<ApiErrorCode, string> = {
   WRONG_WALLET_CHAIN: 'Your wallet is connected to a different network.',
   NO_SESSION: 'Unlock private data first: sign a read-only session grant.',
   ENCLAVE_UNAVAILABLE: 'The enclave key is not available yet.',
+  ATTESTATION_INVALID: "This server's attestation doesn't match the trusted release, so nothing will be signed for it.",
 };
 
 export function describeError(error: unknown): string {

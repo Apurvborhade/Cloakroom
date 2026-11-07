@@ -18,7 +18,7 @@ const state = vi.hoisted(() => ({
   walletToken: 1_000_000_000n,
 }));
 
-vi.mock('wagmi', () => ({ useSendTransaction: () => ({ sendTransactionAsync: state.send }) }));
+vi.mock('wagmi', () => ({ useAccount: () => ({ connector: undefined }), useSendTransaction: () => ({ sendTransactionAsync: state.send }) }));
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[1] === 'native-balance' ? state.wallet : state.walletToken }),
 }));

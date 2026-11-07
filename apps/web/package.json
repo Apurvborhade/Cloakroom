@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "pnpm --filter @cloakroom/shared run build && next build",
+    "build": "pnpm --filter @cloakroom/shared --filter @cloakroom/attestation run build && next build",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@anon-rpc/browser-harness": "0.4.0",
+    "@cloakroom/attestation": "workspace:*",
     "@cloakroom/shared": "workspace:*",
     "@rainbow-me/rainbowkit": "2.2.11",
     "@tanstack/react-query": "5.106.1",

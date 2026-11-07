@@ -14,7 +14,7 @@ export const ENCLAVE_QUERY_KEY = ['enclave', appConfig.apiUrl] as const;
 export function useEnclave() {
   const query = useQuery<EnclaveIdentity>({
     queryKey: ENCLAVE_QUERY_KEY,
-    queryFn: () => loadEnclaveIdentity(api, { expectedChainId: appConfig.chainId, allowSimulated: appConfig.allowSimulatedEnclave }),
+    queryFn: () => loadEnclaveIdentity(api, { expectedChainId: appConfig.chainId, allowSimulated: appConfig.allowSimulatedEnclave, trustedRelease: appConfig.attestationRelease }),
     enabled: Boolean(appConfig.apiUrl),
     staleTime: Infinity,
     gcTime: Infinity,

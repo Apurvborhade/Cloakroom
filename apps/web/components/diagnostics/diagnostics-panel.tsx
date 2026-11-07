@@ -103,7 +103,7 @@ export function DiagnosticsPanel() {
                 {identity && <Address value={identity.enclavePubKey} head={8} tail={6} />}
                 {enclaveError && <span className="text-xs text-fg-subtle">{describeError(enclaveError)}</span>}
               </Row>
-              <Row label="Attestation" status={identity?.mode === 'attested-unverified' ? 'received, not verified in browser' : identity?.mode === 'simulated' ? 'none (simulated key)' : 'unknown'} tone={identity?.mode === 'simulated' ? 'warn' : 'accent'} />
+              <Row label="Attestation" status={identity?.mode === 'attested-verified' ? 'verified against the pinned release' : identity?.mode === 'attested-unverified' ? 'received, not verified in browser' : identity?.mode === 'simulated' ? 'none (simulated key)' : 'unknown'} tone={identity?.mode === 'simulated' ? 'warn' : 'accent'} />
               <Row label="Simulation" status={identity?.mode === 'simulated' ? 'TEE-SIMULATED' : identity ? 'not simulated' : 'unknown'} tone={identity?.mode === 'simulated' ? 'warn' : 'neutral'}>
                 <span className="text-xs text-fg-subtle">Simulated keys {appConfig.allowSimulatedEnclave ? 'allowed' : 'refused'} by this build</span>
               </Row>

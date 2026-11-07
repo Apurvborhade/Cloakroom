@@ -1,3 +1,4 @@
+import type { TrustedRelease } from '@cloakroom/attestation';
 import { NATIVE } from '@cloakroom/shared';
 import { defineChain, getAddress, isAddress } from 'viem';
 import type { Address, Chain } from 'viem';
@@ -31,6 +32,10 @@ export interface AppConfig {
   maxSlippageBpsCap: number;
   walletConnectProjectId: string | null;
   allowSimulatedEnclave: boolean;
+  /** Checked against every attestation. Must come from a reviewed release, never from the API. */
+  attestationRelease: TrustedRelease | null;
+  /** The RPC gateway users can add to their wallet. It can't be selected for them. */
+  walletRpcUrl: string | null;
   marginUi: MarginUiMode;
   marginMaxLeverageBps: number;
   /** Shorts are refused by the live enclave until they are merged and tested. */
@@ -61,6 +66,8 @@ export interface RawEnv {
   NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP?: string;
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?: string;
   NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE?: string;
+  NEXT_PUBLIC_ATTESTATION_RELEASE?: string;
+  NEXT_PUBLIC_WALLET_RPC_URL?: string;
   NEXT_PUBLIC_MARGIN_UI?: string;
   NEXT_PUBLIC_MARGIN_MAX_LEVERAGE_BPS?: string;
   NEXT_PUBLIC_MARGIN_SHORTS?: string;
@@ -97,6 +104,8 @@ function readEnv(): RawEnv {
     NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP: process.env.NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP,
     NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
     NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE: process.env.NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE,
+    NEXT_PUBLIC_ATTESTATION_RELEASE: process.env.NEXT_PUBLIC_ATTESTATION_RELEASE,
+    NEXT_PUBLIC_WALLET_RPC_URL: process.env.NEXT_PUBLIC_WALLET_RPC_URL,
     NEXT_PUBLIC_MARGIN_UI: process.env.NEXT_PUBLIC_MARGIN_UI,
     NEXT_PUBLIC_MARGIN_MAX_LEVERAGE_BPS: process.env.NEXT_PUBLIC_MARGIN_MAX_LEVERAGE_BPS,
     NEXT_PUBLIC_MARGIN_SHORTS: process.env.NEXT_PUBLIC_MARGIN_SHORTS,
@@ -157,6 +166,21 @@ function chainFor(chainId: number, rpcUrl: string | null): Chain {
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     rpcUrls: { default: { http: rpcUrl ? [rpcUrl] : [] } },
   });
+}
+
+/** Takes the buildHash and PCRs of a release file. A set value that can't be used is a config error. */
+function parseRelease(value: string | undefined, chainId: number, issues: string[]): TrustedRelease | null {
+  const text = value?.trim();
+  if (!text) return null;
+  try {
+    const { buildHash, measurements } = JSON.parse(text);
+    const { PCR0, PCR1, PCR2 } = measurements;
+    if ([buildHash, PCR0, PCR1, PCR2].every((item) => typeof item === 'string' && item)) {
+      return { buildHash, chainId, measurements: { PCR0, PCR1, PCR2 } };
+    }
+  } catch { /* reported below */ }
+  issues.push('NEXT_PUBLIC_ATTESTATION_RELEASE needs a buildHash and measurements PCR0, PCR1 and PCR2');
+  return null;
 }
 
 export function parseConfig(env: RawEnv): AppConfig {
@@ -226,6 +250,8 @@ export function parseConfig(env: RawEnv): AppConfig {
     maxSlippageBpsCap: int(env.NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP, 100, 'NEXT_PUBLIC_MAX_SLIPPAGE_BPS_CAP', issues, 10_000),
     walletConnectProjectId: trimmed(env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID),
     allowSimulatedEnclave: trimmed(env.NEXT_PUBLIC_ALLOW_SIMULATED_ENCLAVE) === 'true',
+    attestationRelease: parseRelease(env.NEXT_PUBLIC_ATTESTATION_RELEASE, chainId, issues),
+    walletRpcUrl: url(trimmed(env.NEXT_PUBLIC_WALLET_RPC_URL) ?? 'https://rpc.nony.money', 'NEXT_PUBLIC_WALLET_RPC_URL', issues),
     marginUi,
     marginMaxLeverageBps: Math.max(10_000, marginMaxLeverageBps),
     marginShortsEnabled: trimmed(env.NEXT_PUBLIC_MARGIN_SHORTS) === 'true',

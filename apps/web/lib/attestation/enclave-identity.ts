@@ -1,4 +1,5 @@
 import { deriveEnclaveSalt, transportPublicKey } from '@cloakroom/shared';
+import type { TrustedRelease } from '@cloakroom/attestation';
 import type { Hex } from 'viem';
 import type { CloakroomApi } from '../api/client';
 import { ApiError, CLIENT_ERROR_CODES } from '../api/errors';
@@ -6,14 +7,13 @@ import { ApiError, CLIENT_ERROR_CODES } from '../api/errors';
 /**
  * Where the enclave key came from, and how much the browser actually knows about it.
  *
- * - `attested-unverified`: GET /attestation returned a Nitro quote, but this app does NOT verify
- *   the COSE signature, certificate chain or PCR measurements. Verify it with
- *   scripts/verify-attestation.py against trusted measurements before trusting the key.
+ * - `attested-verified`: the quote's AWS signature, certificate chain, nonce, key binding and PCRs
+ *   all matched a release pinned in this build's config.
+ * - `attested-unverified`: GET /attestation returned a Nitro quote, but no release is pinned, so this
+ *   app checked nothing. Verify it with scripts/verify-attestation.py before trusting the key.
  * - `simulated`: GET /sim/enclave-key. There is no TEE and no confidentiality claim.
- *
- * There is deliberately no "verified" state: none can be reached without a real verifier.
  */
-export type EnclaveMode = 'attested-unverified' | 'simulated';
+export type EnclaveMode = 'attested-verified' | 'attested-unverified' | 'simulated';
 
 export interface EnclaveIdentity {
   mode: EnclaveMode;
@@ -51,7 +51,7 @@ function checkKey(enclavePubKey: Hex): Hex {
  */
 export async function loadEnclaveIdentity(
   api: CloakroomApi,
-  options: { expectedChainId: number; allowSimulated: boolean; now?: () => number },
+  options: { expectedChainId: number; allowSimulated: boolean; trustedRelease?: TrustedRelease | null; now?: () => number },
 ): Promise<EnclaveIdentity> {
   const now = options.now ?? Date.now;
   const nonce = randomAttestationNonce();
@@ -62,8 +62,17 @@ export async function loadEnclaveIdentity(
       throw new ApiError('WRONG_CHAIN', { path: '/attestation' });
     }
     const enclavePubKey = checkKey(attestation.enclavePubKey);
+    if (options.trustedRelease) {
+      // Loaded only when needed: the verifier pulls in a certificate library.
+      const { verifyCustodyAttestation } = await import('@cloakroom/attestation');
+      try {
+        await verifyCustodyAttestation(attestation, { release: options.trustedRelease, nonce });
+      } catch {
+        throw new ApiError(CLIENT_ERROR_CODES.ATTESTATION_INVALID, { path: '/attestation' });
+      }
+    }
     return {
-      mode: 'attested-unverified',
+      mode: options.trustedRelease ? 'attested-verified' : 'attested-unverified',
       enclavePubKey,
       chainId: attestation.chainId,
       salt: deriveEnclaveSalt(enclavePubKey),
@@ -74,7 +83,7 @@ export async function loadEnclaveIdentity(
       attestationFailure: null,
     };
   } catch (error) {
-    if (error instanceof ApiError && (error.code === 'WRONG_CHAIN' || error.code === 'BAD_RESPONSE')) throw error;
+    if (error instanceof ApiError && (error.code === 'WRONG_CHAIN' || error.code === 'BAD_RESPONSE' || error.code === 'ATTESTATION_INVALID')) throw error;
     attestationFailure = error instanceof ApiError ? error.code : 'INTERNAL_ERROR';
   }
 
