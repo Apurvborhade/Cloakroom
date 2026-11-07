@@ -196,13 +196,6 @@ The operator, KMS policy administrator and TEE hardware are trusted. There is on
 - Uniswap sees each swap request and price check, and our API key identifies us. It never sees who the user is.
 - The anonymity set is small: 4 to 6 addresses and a few demo users.
 
-## Team
-
-- Felix: TEE and custody
-- Shreyas: API and accounting
-- Apurva: on-chain and execution
-- Pradnyesh: frontend and web3 integrations
-
 ## Licence
 
 [MIT](LICENSE)
