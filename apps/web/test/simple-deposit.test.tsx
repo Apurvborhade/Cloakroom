@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   balances: {} as { data?: unknown },
   mutateAsync: vi.fn(),
   send: vi.fn(),
+  lend: { mutate: vi.fn(), isPending: false, isSuccess: false, error: null as unknown, reset: vi.fn() },
   wallet: 10n ** 18n,
   walletToken: 1_000_000_000n,
 }));
@@ -21,7 +22,10 @@ vi.mock('wagmi', () => ({ useSendTransaction: () => ({ sendTransactionAsync: sta
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({ data: queryKey[1] === 'native-balance' ? state.wallet : state.walletToken }),
 }));
-vi.mock('@/hooks/use-actions', () => ({ useOpenDepositSession: () => ({ mutateAsync: state.mutateAsync, isPending: false, reset: () => undefined }) }));
+vi.mock('@/hooks/use-actions', () => ({
+  useOpenDepositSession: () => ({ mutateAsync: state.mutateAsync, isPending: false, reset: () => undefined }),
+  useMarginLendingAction: () => state.lend,
+}));
 vi.mock('@/hooks/use-chain-reader', () => ({ useReadClient: () => ({ client: {}, available: true }) }));
 vi.mock('@/hooks/use-owner', () => ({ useOwner: () => ({ owner: ADDRESS }) }));
 vi.mock('@/hooks/use-private-data', () => ({ useBalances: () => state.balances, useDepositStatuses: () => state.statuses }));
@@ -36,7 +40,9 @@ vi.mock('@/lib/config', () => {
   };
 });
 vi.mock('@/components/simple/lending-option', () => ({
-  LendingOption: ({ symbol }: { symbol: string }) => <p>Lend my {symbol}</p>,
+  LendingOption: ({ symbol, lendDeposit, onLendDepositChange }: { symbol: string; lendDeposit: boolean; onLendDepositChange: (on: boolean) => void }) => (
+    <button type="button" aria-pressed={lendDeposit} onClick={() => onLendDepositChange(!lendDeposit)}>Lend my {symbol}</button>
+  ),
 }));
 vi.mock('@/components/transactions/chain-receipt', () => ({ ChainReceipt: () => null }));
 vi.mock('@/components/transactions/tx-link', () => ({ TxLink: ({ hash }: { hash: string }) => <span>{hash}</span> }));
@@ -79,6 +85,51 @@ describe('deposit screen', () => {
     state.walletToken = 1_000_000_000n;
     state.mutateAsync = vi.fn(async (asset: string) => ({ ...session, asset }));
     state.send = vi.fn(async ({ value }: { value?: bigint }) => (value ? '0xeth' : '0xusdc'));
+    state.lend = { mutate: vi.fn(), isPending: false, isSuccess: false, error: null, reset: vi.fn() };
+  });
+
+  const creditDeposit = async (rerender: (ui: React.ReactElement) => void) => {
+    typeAmount('0.03');
+    fireEvent.click(main());
+    await screen.findByText(/You'll be credited/);
+    state.statuses = { data: { deposits: [status({ status: 'credited', nativeReceived: '40000000000000000', nativeCredited: '30000000000000000' })] } };
+    rerender(<SimpleDeposit />);
+    await screen.findByText('Deposit complete');
+  };
+
+  it('lends exactly what this deposit credited, once, when the switch is on', async () => {
+    state.balances = { data: { balances: [{ token: NATIVE, available: '900000000000000000', reserved: '0', pending: '0' }] } };
+    const { rerender } = render(<SimpleDeposit />);
+    fireEvent.click(screen.getByRole('button', { name: 'Lend my ETH' }));
+    await creditDeposit(rerender);
+    rerender(<SimpleDeposit />);
+    expect(state.lend.mutate).toHaveBeenCalledOnce();
+    expect(state.lend.mutate).toHaveBeenCalledWith({ token: NATIVE, amount: 30_000_000_000_000_000n });
+  });
+
+  it('lends nothing when the switch stays off', async () => {
+    const { rerender } = render(<SimpleDeposit />);
+    await creditDeposit(rerender);
+    expect(state.lend.mutate).not.toHaveBeenCalled();
+    expect(screen.queryByText("Your deposit wasn't lent")).toBeNull();
+  });
+
+  it('turns the switch off again for the next deposit', async () => {
+    const { rerender } = render(<SimpleDeposit />);
+    fireEvent.click(screen.getByRole('button', { name: 'Lend my ETH' }));
+    await creditDeposit(rerender);
+    fireEvent.click(main());
+    expect(screen.getByRole('button', { name: 'Lend my ETH' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('says the money is safe and offers a retry if lending fails', async () => {
+    state.lend.error = Object.assign(new Error('rejected'), { code: 4001 });
+    const { rerender } = render(<SimpleDeposit />);
+    fireEvent.click(screen.getByRole('button', { name: 'Lend my ETH' }));
+    await creditDeposit(rerender);
+    expect(screen.getByText(/You rejected it in your wallet. The money is safe in your balance./)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Try lending again' }));
+    expect(state.lend.mutate).toHaveBeenCalledTimes(2);
   });
 
   it('offers lending for the token chosen', () => {

@@ -2,11 +2,11 @@
 
 import { NATIVE } from '@cloakroom/shared';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { encodeFunctionData, erc20Abi } from 'viem';
 import type { Address, Hash } from 'viem';
 import { useSendTransaction } from 'wagmi';
-import { useOpenDepositSession } from '@/hooks/use-actions';
+import { useMarginLendingAction, useOpenDepositSession } from '@/hooks/use-actions';
 import { useReadClient } from '@/hooks/use-chain-reader';
 import { useOwner } from '@/hooks/use-owner';
 import { useBalances, useDepositStatuses } from '@/hooks/use-private-data';
@@ -70,6 +70,7 @@ export function SimpleDeposit() {
   const { owner } = useOwner();
   const tokens = knownTokens();
   const openSession = useOpenDepositSession();
+  const lend = useMarginLendingAction('supply');
   const send = useSendTransaction();
   const balances = useBalances();
   const statuses = useDepositStatuses();
@@ -85,6 +86,8 @@ export function SimpleDeposit() {
   const [error, setError] = useState<string | null>(null);
   const [balanceBefore, setBalanceBefore] = useState<bigint | null>(null);
   const [creditedByBalance, setCreditedByBalance] = useState(false);
+  const [lendDeposit, setLendDeposit] = useState(false);
+  const lendAsked = useRef(false);
 
   const nativeAsset = appConfig.native.address;
   // The route and USDC deposits shipped together, so its absence means USDC would be refused.
@@ -142,6 +145,21 @@ export function SimpleDeposit() {
 
   const credited = status === 'credited' || creditedByBalance;
   const expired = status === 'expired';
+
+  // Only what this deposit credited in the chosen token, never the rest of the balance.
+  const creditedAmount = session
+    ? BigInt(isEth ? session.nativeCredited : session.tokenCredited)
+    : credited ? amount ?? 0n : 0n;
+  const lendAmount = credited && lendDeposit ? creditedAmount : 0n;
+  const lendToken = token.address;
+  const lendMutate = lend.mutate;
+
+  // The backend can only lend what is already in the balance, so this signature comes after the credit.
+  useEffect(() => {
+    if (lendAmount <= 0n || lendAsked.current) return;
+    lendAsked.current = true;
+    lendMutate({ token: lendToken, amount: lendAmount });
+  }, [lendAmount, lendMutate, lendToken]);
 
   const minGas = BigInt(statuses.data?.deposits.find((item) => item.singleUse)?.gasReserveWei ?? appConfig.depositGasReserveWei);
   const gasValue = gasText ?? formatUnitsExact(minGas, 18);
@@ -251,6 +269,9 @@ export function SimpleDeposit() {
     setGasText(null);
     setCreditedByBalance(false);
     setBalanceBefore(null);
+    setLendDeposit(false);
+    lendAsked.current = false;
+    lend.reset();
     openSession.reset();
   };
 
@@ -283,7 +304,7 @@ export function SimpleDeposit() {
   const hashes = [sent.token, sent.native].filter((hash): hash is Hash => Boolean(hash));
 
   return (
-    <SimpleCard title="Deposit" after={<LendingOption token={token.address} symbol={token.symbol} decimals={token.decimals} />}>
+    <SimpleCard title="Deposit" after={<LendingOption token={token.address} symbol={token.symbol} decimals={token.decimals} lendDeposit={lendDeposit} onLendDepositChange={setLendDeposit} locked={credited || expired} />}>
       {tokens.length > 1 && !active && (
         <div className="flex gap-1.5 px-1 pb-1">
           {tokens.map((item) => (
@@ -372,6 +393,20 @@ export function SimpleDeposit() {
                 : 'Your balance has been updated.'}
         </StatusLine>
       )}
+      {lendAmount > 0n && lend.isPending && (
+        <StatusLine tone="working" title="Lending your deposit">Sign in your wallet to lend {display(lendAmount, token.decimals)} {token.symbol} to margin traders.</StatusLine>
+      )}
+      {lendAmount > 0n && lend.isSuccess && (
+        <StatusLine tone="ok" title="Deposit lent">{display(lendAmount, token.decimals)} {token.symbol} moved from your balance to lending. You can take it back below when it isn't out on loan.</StatusLine>
+      )}
+      {lendAmount > 0n && lend.error && (
+        <StatusLine tone="bad" title="Your deposit wasn't lent">
+          <span className="block">{isUserRejection(lend.error) ? 'You rejected it in your wallet.' : describeError(lend.error)} The money is safe in your balance.</span>
+          <button type="button" onClick={() => lend.mutate({ token: lendToken, amount: lendAmount })} className="mt-1 font-medium text-accent hover:text-accent-strong">
+            Try lending again
+          </button>
+        </StatusLine>
+      )}
       {expired && <StatusLine tone="bad" title="This deposit address expired">Don't send anything else to it. Start a new deposit.</StatusLine>}
 
       {active && (
@@ -394,7 +429,7 @@ export function SimpleDeposit() {
       )}
 
       {credited || expired ? (
-        <ActionButton label="Start a new deposit" onClick={reset} />
+        <ActionButton label="Start a new deposit" onClick={reset} disabled={lend.isPending} />
       ) : active ? (
         <ActionButton
           label={label}
